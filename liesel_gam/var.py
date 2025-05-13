@@ -9,6 +9,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
+from .roles import Roles
 
 InferenceTypes = Any
 Array = Any
@@ -29,7 +30,7 @@ class SmoothTerm(lsl.Var):
         basis_name = f"{name}_basis" if basis_name is None else basis_name
 
         if not isinstance(basis, lsl.Var):
-            basis = lsl.Var.new_obs(basis, name=basis_name)
+            basis = Basis(basis, name=basis_name)
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -50,6 +51,8 @@ class SmoothTerm(lsl.Var):
         calc = lsl.Calc(jnp.dot, basis, self.coef)
 
         super().__init__(calc, name=name)
+        self.coef.role = Roles.coef_smooth
+        self.role = Roles.term_smooth
 
     @classmethod
     def new_ig(
@@ -77,9 +80,10 @@ class SmoothTerm(lsl.Var):
             ),
             name=variance_name,
         )
-        variance.role = "hyperparam"
+        variance.role = Roles.variance_smooth
 
         scale = lsl.Var.new_calc(jnp.sqrt, variance, name=f"{variance_name}_root")
+        scale.role = Roles.scale_smooth
 
         if variance_value is None:
             ig_median = variance.dist_node.init_dist().quantile(0.5)  # type: ignore
@@ -132,7 +136,7 @@ class LinearTerm(lsl.Var):
         if not isinstance(x, lsl.Var):
             x = lsl.Var.new_obs(x, name=f"{name}_input")
 
-        basis = lsl.Var(lsl.TransientCalc(_matrix, x=x), name=basis_name)
+        basis = Basis(lsl.TransientCalc(_matrix, x=x), name=basis_name)
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -144,6 +148,8 @@ class LinearTerm(lsl.Var):
         calc = lsl.Calc(jnp.dot, basis, self.coef)
 
         super().__init__(calc, name=name)
+        self.coef.role = Roles.coef_linear
+        self.role = Roles.term_linear
 
 
 class Intercept(lsl.Var):
@@ -158,7 +164,7 @@ class Intercept(lsl.Var):
             value=value, distribution=distribution, name=name, inference=inference
         )
         self.parameter = True
-        self.role = "intercept"
+        self.role = Roles.intercept
 
 
 class Basis(lsl.Var):
@@ -168,5 +174,4 @@ class Basis(lsl.Var):
         name: str = "",
     ) -> None:
         super().__init__(value=value, name=name)
-        self.observed = True
-        self.role = "basis"
+        self.role = Roles.basis
