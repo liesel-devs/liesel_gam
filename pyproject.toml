@@ -1,0 +1,72 @@
+[project]
+name = "liesel_gam"
+dynamic = ["version"]
+description = "Functionality for Generalized Additive Models in Liesel"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "liesel>=0.4",
+]
+authors = [{ name = "Johannes Brachem" }]
+keywords = ["statistics", "machine-learning"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "mypy>=1.15.0",
+    "nbval>=0.11.0",
+    "plotnine>=0.14.5",
+    "pre-commit>=4.2.0",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "ruff>=0.11.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+# turn warnings into errors and filter out specific warnings
+filterwarnings = [
+    "error",
+    # "ignore::DeprecationWarning:tensorflow_probability",
+    "ignore:jax.interpreters.xla.pytype_aval_mappings is deprecated:DeprecationWarning:tensorflow_probability.python.internal.backend.jax.ops",
+    "ignore:shape requires ndarray or scalar arguments, got <class 'NoneType'> at position 0. In a future JAX release this will be an error.:DeprecationWarning:tensorflow_probability.python.internal.backend.jax.random_generators",
+    "ignore:.*interactive_bk attribute was deprecated in Matplotlib 3.9.*:matplotlib._api.deprecation.MatplotlibDeprecationWarning",
+
+    # Caused by the use in blackjax
+    "ignore:JAXopt is no longer maintained:DeprecationWarning",
+]
+
+[tool.ruff.lint]
+extend-select = [
+    "F",  # pyflakes (flake8 core)
+    "E",  # pycodestyle errors (flake8)
+    "W",  # pycodestyle warnings (flake8)
+    "I",  # isort (import sorting)
+    "UP", # pyupgrade (modern syntax)
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+
+[tool.mypy]
+files = ["liesel_gam", "tests"]
+ignore_missing_imports = true
+scripts_are_modules = true
+disable_error_code = "annotation-unchecked"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "liesel_gam/__about__.py"
