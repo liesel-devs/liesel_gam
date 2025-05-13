@@ -175,3 +175,4 @@ cython_debug/
 .python-version
 /.vscode
 /tests/data
+.DS_Store
