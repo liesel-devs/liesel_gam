@@ -65,7 +65,7 @@ class MultivariateNormalSingular(tfd.Distribution):
             "...i,...ij,...j->...", x_centered, self._penalty, x_centered
         )
 
-        neg_kernel = quad_form / (2 * self._scale**2)
+        neg_kernel = 0.5 * quad_form * jnp.power(self._scale, -2.0)
 
         return -(jnp.log(self._scale) * self._penalty_rank + neg_kernel)
 
