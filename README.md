@@ -13,7 +13,7 @@ which can be used to obtain basis and penalty matrices from the R package [mgcv]
 
 This package is experimental and under active development. That means:
 
-- The API cannot be considered stable.
+- The API cannot be considered stable. If you depend on this package, pin the version.
 - Testing has not been extensive as of now. Please check and verify!
 - There is currently no documentation beyond this readme.
 
