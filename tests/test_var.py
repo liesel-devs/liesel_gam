@@ -44,7 +44,7 @@ class TestBasis:
 
     def test_array_causes_error(self) -> None:
         with pytest.raises(TypeError):
-            gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)
+            gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)  # type: ignore
 
 
 class TestIntercept:
