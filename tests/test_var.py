@@ -89,3 +89,20 @@ class TestSmoothTerm:
         assert jnp.allclose(jnp.zeros(10), term.value)
         assert not jnp.isnan(term.coef.log_prob)
         assert term.coef.log_prob is not None
+
+    def test_init_ig(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+        term = gam.SmoothTerm.new_ig(
+            basis=lsl.Var(jnp.c_[x, x]),
+            penalty=jnp.eye(2),
+            name="t",
+        )
+
+        assert jnp.allclose(term.scale.value, 1.0)
+
+        assert term.basis.value.shape == (10, 2)
+        assert term.nbases == 2
+        assert jnp.allclose(jnp.zeros(2), term.coef.value)
+        assert jnp.allclose(jnp.zeros(10), term.value)
+        assert not jnp.isnan(term.coef.log_prob)
+        assert term.coef.log_prob is not None
