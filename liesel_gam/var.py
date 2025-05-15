@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Self
 
+import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
@@ -18,8 +20,8 @@ Array = Any
 class SmoothTerm(lsl.Var):
     def __init__(
         self,
-        basis: lsl.Var | Array,
-        penalty: Array,
+        basis: lsl.Var,
+        penalty: lsl.Var | Array,
         scale: lsl.Var,
         name: str,
         inference: InferenceTypes = None,
@@ -28,9 +30,6 @@ class SmoothTerm(lsl.Var):
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
         basis_name = f"{name}_basis" if basis_name is None else basis_name
-
-        if not isinstance(basis, lsl.Var):
-            basis = Basis(basis, name=basis_name)
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -136,7 +135,7 @@ class LinearTerm(lsl.Var):
         if not isinstance(x, lsl.Var):
             x = lsl.Var.new_obs(x, name=f"{name}_input")
 
-        basis = Basis(lsl.TransientCalc(_matrix, x=x), name=basis_name)
+        basis = Basis(lsl.TransientCalc(_matrix, x=x), lambda x: x, name=basis_name)
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -170,8 +169,31 @@ class Intercept(lsl.Var):
 class Basis(lsl.Var):
     def __init__(
         self,
-        value: Array,
-        name: str = "",
+        value: lsl.Var | lsl.Node,
+        basis_fn: Callable[[Array], Array],
+        name: str | None = None,
     ) -> None:
-        super().__init__(value=value, name=name)
-        self.role = Roles.basis
+        try:
+            value_ar = jnp.asarray(value.value)
+        except AttributeError:
+            raise TypeError(f"{value=} should be a liesel.model.Var instance.")
+
+        dtype = value_ar.dtype
+
+        k = basis_fn(value_ar).shape[-1]
+
+        def fn(x):
+            n = jnp.shape(jnp.atleast_1d(x))[0]
+            result_shape = jax.ShapeDtypeStruct((n, k), dtype)
+            result = jax.pure_callback(
+                basis_fn, result_shape, x, vmap_method="sequential"
+            )
+            return result
+
+        if not value.name:
+            raise ValueError(f"{value=} must be named.")
+
+        if name is None:
+            name_ = f"B({value.name})"
+
+        super().__init__(lsl.Calc(fn, value, _name=name_ + "_calc"), name=name_)
