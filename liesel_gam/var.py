@@ -69,7 +69,6 @@ class SmoothTerm(lsl.Var):
         variance_name: str | None = None,
         variance_jitter_dist: tfd.Distribution | None = None,
         coef_name: str | None = None,
-        basis_name: str | None = None,
     ) -> Self:
         variance_name = f"{name}_variance" if variance_name is None else variance_name
 
