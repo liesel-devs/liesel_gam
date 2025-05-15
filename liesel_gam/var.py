@@ -31,6 +31,9 @@ class SmoothTerm(lsl.Var):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
         basis_name = f"{name}_basis" if basis_name is None else basis_name
 
+        if not jnp.asarray(basis.value).ndim == 2:
+            raise ValueError(f"basis must have 2 dimensions, got {basis.value.ndim}.")
+
         nbases = jnp.shape(basis.value)[-1]
 
         prior = lsl.Dist(
@@ -50,6 +53,8 @@ class SmoothTerm(lsl.Var):
         calc = lsl.Calc(jnp.dot, basis, self.coef)
 
         super().__init__(calc, name=name)
+        self.coef.update()
+        self.update()
         self.coef.role = Roles.coef_smooth
         self.role = Roles.term_smooth
 
@@ -113,15 +118,15 @@ class LinearTerm(lsl.Var):
     def __init__(
         self,
         x: lsl.Var | Array,
+        name: str,
         distribution: lsl.Dist | None = None,
         inference: InferenceTypes = None,
         add_intercept: bool = False,
-        name: str = "",
         coef_name: str | None = None,
         basis_name: str | None = None,
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
-        basis_name = f"{name}_basis" if basis_name is None else basis_name
+        basis_name = f"B({name})" if basis_name is None else basis_name
 
         def _matrix(x):
             x = jnp.atleast_1d(x)
@@ -135,7 +140,8 @@ class LinearTerm(lsl.Var):
         if not isinstance(x, lsl.Var):
             x = lsl.Var.new_obs(x, name=f"{name}_input")
 
-        basis = Basis(lsl.TransientCalc(_matrix, x=x), lambda x: x, name=basis_name)
+        basis = lsl.Var(lsl.TransientCalc(_matrix, x=x), name=basis_name)
+        basis.role = Roles.basis
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -154,9 +160,9 @@ class LinearTerm(lsl.Var):
 class Intercept(lsl.Var):
     def __init__(
         self,
+        name: str,
         value: Array | float = 0.0,
         distribution: lsl.Dist | None = None,
-        name: str = "",
         inference: InferenceTypes = None,
     ) -> None:
         super().__init__(
@@ -180,11 +186,19 @@ class Basis(lsl.Var):
 
         dtype = value_ar.dtype
 
-        k = basis_fn(value_ar).shape[-1]
+        input_shape = jnp.shape(basis_fn(value_ar))
+        if len(input_shape):
+            k = input_shape[-1]
 
         def fn(x):
             n = jnp.shape(jnp.atleast_1d(x))[0]
-            result_shape = jax.ShapeDtypeStruct((n, k), dtype)
+            if len(input_shape) == 2:
+                shape = (n, k)
+            elif len(input_shape) == 1:
+                shape = (n,)
+            elif not len(input_shape):
+                shape = ()
+            result_shape = jax.ShapeDtypeStruct(shape, dtype)
             result = jax.pure_callback(
                 basis_fn, result_shape, x, vmap_method="sequential"
             )
@@ -197,3 +211,5 @@ class Basis(lsl.Var):
             name_ = f"B({value.name})"
 
         super().__init__(lsl.Calc(fn, value, _name=name_ + "_calc"), name=name_)
+        self.update()
+        self.role = Roles.basis
