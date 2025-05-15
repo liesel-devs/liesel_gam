@@ -20,16 +20,14 @@ Array = Any
 class SmoothTerm(lsl.Var):
     def __init__(
         self,
-        basis: lsl.Var,
+        basis: Basis | lsl.Var,
         penalty: lsl.Var | Array,
         scale: lsl.Var,
         name: str,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
-        basis_name: str | None = None,
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
-        basis_name = f"{name}_basis" if basis_name is None else basis_name
 
         if not jnp.asarray(basis.value).ndim == 2:
             raise ValueError(f"basis must have 2 dimensions, got {basis.value.ndim}.")
@@ -61,7 +59,7 @@ class SmoothTerm(lsl.Var):
     @classmethod
     def new_ig(
         cls,
-        basis: Basis | lsl.Var | Array,
+        basis: Basis | lsl.Var,
         penalty: Array,
         name: str,
         ig_concentration: float = 0.01,
@@ -102,7 +100,6 @@ class SmoothTerm(lsl.Var):
             inference=inference,
             name=name,
             coef_name=coef_name,
-            basis_name=basis_name,
         )
 
         variance.inference = gs.MCMCSpec(
