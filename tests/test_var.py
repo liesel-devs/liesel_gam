@@ -18,6 +18,11 @@ class TestBasis:
 
         assert jnp.allclose(x.value**2, basis.value)
 
+    def test_cube_does_not_work(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        with pytest.raises(RuntimeError):
+            gam.Basis(x, basis_fn=lambda x: jnp.expand_dims(x, axis=(1, 2)))
+
     def test_model_can_be_initialized(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
         basis = gam.Basis(x, basis_fn=lambda x: x**2)

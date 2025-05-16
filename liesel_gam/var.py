@@ -194,6 +194,11 @@ class Basis(lsl.Var):
                 shape = (n,)
             elif not len(input_shape):
                 shape = ()
+            else:
+                raise RuntimeError(
+                    "Return shape of 'basis_fn(value)' must"
+                    " have <= dimensions, got {input_shape}"
+                )
             result_shape = jax.ShapeDtypeStruct(shape, dtype)
             result = jax.pure_callback(
                 basis_fn, result_shape, x, vmap_method="sequential"
