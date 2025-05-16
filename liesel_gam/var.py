@@ -172,8 +172,10 @@ class Basis(lsl.Var):
     def __init__(
         self,
         value: lsl.Var | lsl.Node,
-        basis_fn: Callable[[Array], Array],
+        basis_fn: Callable[[Array], Array] | Callable[..., Array],
+        *args,
         name: str | None = None,
+        **kwargs,
     ) -> None:
         try:
             value_ar = jnp.asarray(value.value)
@@ -182,7 +184,7 @@ class Basis(lsl.Var):
 
         dtype = value_ar.dtype
 
-        input_shape = jnp.shape(basis_fn(value_ar))
+        input_shape = jnp.shape(basis_fn(value_ar, *args, **kwargs))
         if len(input_shape):
             k = input_shape[-1]
 
@@ -201,7 +203,7 @@ class Basis(lsl.Var):
                 )
             result_shape = jax.ShapeDtypeStruct(shape, dtype)
             result = jax.pure_callback(
-                basis_fn, result_shape, x, vmap_method="sequential"
+                basis_fn, result_shape, x, *args, vmap_method="sequential", **kwargs
             )
             return result
 
