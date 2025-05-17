@@ -57,7 +57,7 @@ skip-magic-trailing-comma = false
 
 
 [tool.mypy]
-files = ["liesel_gam", "tests"]
+files = ["src", "tests"]
 ignore_missing_imports = true
 scripts_are_modules = true
 disable_error_code = "annotation-unchecked"
@@ -67,7 +67,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "liesel_gam/__about__.py"
+path = "src/liesel_gam/__about__.py"
 
 [tool.hatch.build]
 exclude = ["tests/", "notebooks/"]
