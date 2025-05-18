@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Self
 
+import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
@@ -18,19 +20,17 @@ Array = Any
 class SmoothTerm(lsl.Var):
     def __init__(
         self,
-        basis: lsl.Var | Array,
-        penalty: Array,
+        basis: Basis | lsl.Var,
+        penalty: lsl.Var | Array,
         scale: lsl.Var,
         name: str,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
-        basis_name: str | None = None,
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
-        basis_name = f"{name}_basis" if basis_name is None else basis_name
 
-        if not isinstance(basis, lsl.Var):
-            basis = Basis(basis, name=basis_name)
+        if not jnp.asarray(basis.value).ndim == 2:
+            raise ValueError(f"basis must have 2 dimensions, got {basis.value.ndim}.")
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -51,23 +51,24 @@ class SmoothTerm(lsl.Var):
         calc = lsl.Calc(jnp.dot, basis, self.coef)
 
         super().__init__(calc, name=name)
+        self.coef.update()
+        self.update()
         self.coef.role = Roles.coef_smooth
         self.role = Roles.term_smooth
 
     @classmethod
     def new_ig(
         cls,
-        basis: Basis | lsl.Var | Array,
+        basis: Basis | lsl.Var,
         penalty: Array,
         name: str,
-        ig_concentration: float,
-        ig_scale: float,
+        ig_concentration: float = 0.01,
+        ig_scale: float = 0.01,
         inference: InferenceTypes = None,
         variance_value: float | None = None,
         variance_name: str | None = None,
         variance_jitter_dist: tfd.Distribution | None = None,
         coef_name: str | None = None,
-        basis_name: str | None = None,
     ) -> Self:
         variance_name = f"{name}_variance" if variance_name is None else variance_name
 
@@ -98,7 +99,6 @@ class SmoothTerm(lsl.Var):
             inference=inference,
             name=name,
             coef_name=coef_name,
-            basis_name=basis_name,
         )
 
         variance.inference = gs.MCMCSpec(
@@ -114,15 +114,15 @@ class LinearTerm(lsl.Var):
     def __init__(
         self,
         x: lsl.Var | Array,
+        name: str,
         distribution: lsl.Dist | None = None,
         inference: InferenceTypes = None,
         add_intercept: bool = False,
-        name: str = "",
         coef_name: str | None = None,
         basis_name: str | None = None,
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
-        basis_name = f"{name}_basis" if basis_name is None else basis_name
+        basis_name = f"B({name})" if basis_name is None else basis_name
 
         def _matrix(x):
             x = jnp.atleast_1d(x)
@@ -136,7 +136,8 @@ class LinearTerm(lsl.Var):
         if not isinstance(x, lsl.Var):
             x = lsl.Var.new_obs(x, name=f"{name}_input")
 
-        basis = Basis(lsl.TransientCalc(_matrix, x=x), name=basis_name)
+        basis = lsl.Var(lsl.TransientCalc(_matrix, x=x), name=basis_name)
+        basis.role = Roles.basis
 
         nbases = jnp.shape(basis.value)[-1]
 
@@ -155,9 +156,9 @@ class LinearTerm(lsl.Var):
 class Intercept(lsl.Var):
     def __init__(
         self,
+        name: str,
         value: Array | float = 0.0,
         distribution: lsl.Dist | None = None,
-        name: str = "",
         inference: InferenceTypes = None,
     ) -> None:
         super().__init__(
@@ -170,8 +171,48 @@ class Intercept(lsl.Var):
 class Basis(lsl.Var):
     def __init__(
         self,
-        value: Array,
-        name: str = "",
+        value: lsl.Var | lsl.Node,
+        basis_fn: Callable[[Array], Array] | Callable[..., Array],
+        *args,
+        name: str | None = None,
+        **kwargs,
     ) -> None:
-        super().__init__(value=value, name=name)
+        try:
+            value_ar = jnp.asarray(value.value)
+        except AttributeError:
+            raise TypeError(f"{value=} should be a liesel.model.Var instance.")
+
+        dtype = value_ar.dtype
+
+        input_shape = jnp.shape(basis_fn(value_ar, *args, **kwargs))
+        if len(input_shape):
+            k = input_shape[-1]
+
+        def fn(x):
+            n = jnp.shape(jnp.atleast_1d(x))[0]
+            if len(input_shape) == 2:
+                shape = (n, k)
+            elif len(input_shape) == 1:
+                shape = (n,)
+            elif not len(input_shape):
+                shape = ()
+            else:
+                raise RuntimeError(
+                    "Return shape of 'basis_fn(value)' must"
+                    " have <= dimensions, got {input_shape}"
+                )
+            result_shape = jax.ShapeDtypeStruct(shape, dtype)
+            result = jax.pure_callback(
+                basis_fn, result_shape, x, *args, vmap_method="sequential", **kwargs
+            )
+            return result
+
+        if not value.name:
+            raise ValueError(f"{value=} must be named.")
+
+        if name is None:
+            name_ = f"B({value.name})"
+
+        super().__init__(lsl.Calc(fn, value, _name=name_ + "_calc"), name=name_)
+        self.update()
         self.role = Roles.basis
