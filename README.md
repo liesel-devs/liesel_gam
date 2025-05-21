@@ -21,7 +21,13 @@ In any case, this package comes with no warranty or guarantees.
 
 ## Installation
 
-You can install the development version from GitHub via pip:
+You can install `liesel_gam` from pypi:
+
+```bash
+pip install liesel_gam
+```
+
+You can also install the development version from GitHub via pip:
 
 ```bash
 pip install git+https://github.com/liesel-devs/liesel_gam.git
