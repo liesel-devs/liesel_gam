@@ -3,6 +3,7 @@ name: pytest
 on:
   push:
     branches: [main]
+  workflow_dispatch: # trigger manually from GitHub UI
 
 jobs:
   pytest:
@@ -24,19 +25,22 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: 'release'
           use-public-rspm: true
 
+      - name: Fix R library path
+        run: |
+          echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Install R dependencies
+        run: |
+          Rscript -e "install.packages('arrow')"
+
       - name: Install Package
         run: uv sync --locked --group dev
-
-      - name: Add R shared libraries to LD_LIBRARY_PATH
-        run: |
-          echo "LD_LIBRARY_PATH=$(python -m rpy2.situation LD_LIBRARY_PATH):\$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Debug R environment
         run: |
@@ -45,9 +49,8 @@ jobs:
           find $(R RHOME) -name methods.so
           find $(R RHOME) -name libR.so
 
-
       - name: Run pytest
-        run: uv run pytest --cov=liesel_gam
+        run: uv run pytest --cov=smoothcon
 
       - name: Create coverage badge
         uses: tj-actions/coverage-badge-py@v2

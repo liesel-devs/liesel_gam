@@ -4,7 +4,10 @@ dynamic = ["version"]
 description = "Functionality for Generalized Additive Models in Liesel"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["liesel>=0.4"]
+dependencies = [
+    "liesel>=0.4",
+    "smoothcon",
+]
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]
 classifiers = [
@@ -25,6 +28,9 @@ dev = [
     "pytest-cov>=6.1.1",
     "ruff>=0.11.4",
 ]
+
+[tool.uv.sources]
+smoothcon = { git = "https://github.com/liesel-devs/smoothcon.git" }
 
 [tool.pytest.ini_options]
 testpaths = "tests"
