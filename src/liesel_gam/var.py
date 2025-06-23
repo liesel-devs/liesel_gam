@@ -212,6 +212,8 @@ class Basis(lsl.Var):
 
         if name is None:
             name_ = f"B({value.name})"
+        else:
+            name_ = name
 
         super().__init__(lsl.Calc(fn, value, _name=name_ + "_calc"), name=name_)
         self.update()
