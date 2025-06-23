@@ -63,6 +63,12 @@ class TestBasis:
         with pytest.raises(TypeError):
             gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)  # type: ignore
 
+    def test_custom_name(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        basis = gam.Basis(x, basis_fn=lambda x: x, name="custom_basis")
+
+        assert basis.name == "custom_basis"
+
 
 class TestIntercept:
     def test_init(self) -> None:
