@@ -3,6 +3,9 @@ name: pytest
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # trigger manually from GitHub UI
 
 jobs:
   pytest:
