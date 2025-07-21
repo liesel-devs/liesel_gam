@@ -15,6 +15,7 @@ from .roles import Roles
 
 InferenceTypes = Any
 Array = Any
+type Term = SmoothTerm | LinearTerm | Intercept
 
 
 class SmoothTerm(lsl.Var):

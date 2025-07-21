@@ -1,5 +1,6 @@
 from .__about__ import __version__ as __version__
-from .constructor import Constructor as Constructor
+from .builder.gam_builder import GamBuilder
+from .constructor import Constructor
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs
@@ -8,3 +9,17 @@ from .var import Basis as Basis
 from .var import Intercept as Intercept
 from .var import LinearTerm as LinearTerm
 from .var import SmoothTerm as SmoothTerm
+
+__all__ = [
+    "__version__",
+    "Constructor",
+    "GamBuilder",
+    "MultivariateNormalSingular",
+    "init_star_ig_gibbs",
+    "star_ig_gibbs",
+    "AdditivePredictor",
+    "Basis",
+    "Intercept",
+    "LinearTerm",
+    "SmoothTerm",
+]
