@@ -322,8 +322,8 @@ class FormulaParser:
             call = tree.body
             func_name = ast.unparse(call.func)
             args = [
-                ast.literal_eval(arg) 
-                if isinstance(arg, ast.Constant) 
+                ast.literal_eval(arg)
+                if isinstance(arg, ast.Constant)
                 else ast.unparse(arg)
                 for arg in call.args
             ]

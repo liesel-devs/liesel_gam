@@ -295,6 +295,7 @@ def test_parse_args_invalid():
     with pytest.raises(ValueError):
         _parse_args_in_formula("x1, k=", "s")
 
+
 def test_kwargs_with_nested_parentheses():
     """Test parsing arguments with nested parentheses in string values."""
     args, kwargs = _parse_args_in_formula("x1, name='m(x1)'", "s")
@@ -305,10 +306,12 @@ def test_kwargs_with_nested_parentheses():
 def test_parse_function_with_nested_parentheses(registry):
     """Test parsing function calls with nested parentheses in parameters."""
     parser = FormulaParser(registry)
-    
+
     # This should not fail due to nested parentheses in string literal
-    components = parser.parse("s(x1, name='m(x1)')", default_intercept=False, merge=False)
-    
+    components = parser.parse(
+        "s(x1, name='m(x1)')", default_intercept=False, merge=False
+    )
+
     assert len(components) == 1
     comp = components[0]
-    assert hasattr(comp, 'term_name') and comp.term_name == 'm(x1)'
+    assert hasattr(comp, "term_name") and comp.term_name == "m(x1)"

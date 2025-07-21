@@ -1,3 +1,5 @@
+# TODO: this file is deprecated and will be removed in the future
+
 from __future__ import annotations
 
 import abc

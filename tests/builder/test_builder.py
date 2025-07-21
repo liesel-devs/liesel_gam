@@ -281,5 +281,4 @@ def test_end_to_end_workflow(sample_data):
 
 def test_nested_parentheses_in_formula(sample_data):
     builder = GamBuilder(sample_data)
-    predictor = builder.predictor("s(x1, name='m(x)')", name="mu")
-        
+    builder.predictor("s(x1, name='m(x)')", name="mu")
