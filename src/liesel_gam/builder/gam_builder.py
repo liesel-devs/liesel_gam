@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import jax.numpy as jnp
 import liesel.model as lsl
 import pandas as pd
 
@@ -141,7 +142,7 @@ class GamBuilder:
         if var_name not in self.registry.columns:
             raise ValueError(f"Response variable '{var_name}' not found in data")
 
-        response_data = self.registry.data[var_name].to_numpy()
+        response_data = jnp.array(self.registry.data[var_name].to_numpy())
         response_name = name if name else var_name
 
         return lsl.Var.new_obs(

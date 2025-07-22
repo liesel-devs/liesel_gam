@@ -145,6 +145,9 @@ class LinearComponent(FormulaComponent):
             case False:
                 inner = "0"
 
+        if self._vars:
+            inner += "+"
+
         inner += "+".join(self._vars)
         if not simplified and self._name:
             inner += f", name={self._name}"
@@ -169,25 +172,19 @@ class LinearComponent(FormulaComponent):
 
         vars = [registry.get_var(name) for name in self._vars]
 
-        if len(vars) == 1:
-            # Single variable case
-            stacked = vars[0]
-        else:
-            # Multiple variables case
-            def stack_terms(*vars_input):
-                return jnp.column_stack([v for v in vars_input])
+        def stack_terms(*vars_input):
+            return jnp.column_stack([v for v in vars_input])
 
-            stacked = lsl.Var.new_calc(stack_terms, *vars)
+        stacked = lsl.Var.new_calc(stack_terms, *vars)
 
         intercept: bool = self.includes_intercept
-        return [
-            LinearTerm(
-                stacked,
-                name=term_name,
-                add_intercept=intercept,
-                inference=gs.MCMCSpec(gs.IWLSKernel),
-            )
-        ]
+        lt = LinearTerm(
+            stacked,
+            name=term_name,
+            add_intercept=intercept,
+            inference=gs.MCMCSpec(gs.IWLSKernel),
+        )
+        return [lt]
 
     @property
     def includes_intercept(self) -> bool:

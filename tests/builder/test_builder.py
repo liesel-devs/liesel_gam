@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 
+from liesel_gam.builder.errors import JAXCompatibilityError
 from liesel_gam.builder.gam_builder import GamBuilder
 from liesel_gam.predictor import AdditivePredictor
 from liesel_gam.var import Intercept, LinearTerm, SmoothTerm
@@ -28,6 +29,11 @@ def sample_data():
         }
     )
     return data
+
+
+@pytest.fixture
+def builder(sample_data) -> GamBuilder:
+    return GamBuilder(sample_data)
 
 
 # Basic initialization tests
@@ -282,3 +288,26 @@ def test_end_to_end_workflow(sample_data):
 def test_nested_parentheses_in_formula(sample_data):
     builder = GamBuilder(sample_data)
     builder.predictor("s(x1, name='m(x)')", name="mu")
+
+
+# Test use of categroical variable
+def test_categorical_response(builder: GamBuilder):
+    with pytest.raises(TypeError):
+        builder.response("category", tfd.Normal, loc=0.0, scale=1.0)
+
+
+def test_categorical_term(builder: GamBuilder):
+    with pytest.raises(JAXCompatibilityError):
+        builder.predictor("0 + category")
+
+
+@pytest.mark.skip("TODO: should an error be raised")
+def test_numerical_categorical_term():
+    builder2 = GamBuilder(
+        pd.DataFrame({"a": pd.Categorical([1, 2, 3]), "b": np.array([1.0, 2.0, 3.0])})
+    )
+    with pytest.raises(JAXCompatibilityError):
+        builder2.terms("b")
+
+    with pytest.raises(JAXCompatibilityError):
+        builder2.terms("b")

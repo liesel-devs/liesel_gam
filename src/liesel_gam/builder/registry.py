@@ -71,22 +71,32 @@ class VariableRegistry:
         """Get shape of the data after NA handling."""
         return self.data.shape
 
-    def _check_jax_compatibility(self, values: np.ndarray, var_name: str) -> None:
+    def _to_jax(self, values: Any, var_name: str) -> Array:
         """Check if values are compatible with JAX."""
-        if np.isnan(values).any():
+
+        try:
+            array = jnp.asarray(values)
+        except Exception as e:
+            raise JAXCompatibilityError(
+                var_name, "cound not convert to JAX array"
+            ) from e
+
+        if np.isnan(array).any():
             raise JAXCompatibilityError(var_name, "contains NaN values")
 
-        if np.isinf(values).any():
+        if np.isinf(array).any():
             raise JAXCompatibilityError(var_name, "contains infinite values")
 
-        if np.iscomplexobj(values):
+        if np.iscomplexobj(array):
             raise JAXCompatibilityError(var_name, "contains complex values")
 
         # check if numeric
-        if not np.issubdtype(values.dtype, np.number):
+        if not np.issubdtype(array.dtype, np.number):
             raise JAXCompatibilityError(
-                var_name, f"non-numeric dtype {values.dtype} not supported"
+                var_name, f"non-numeric dtype {array.dtype} not supported"
             )
+
+        return array
 
     def _get_cache_key(
         self, name: str, transform: Callable | None, var_name: str | None
@@ -120,8 +130,7 @@ class VariableRegistry:
             return self._var_cache[name]
 
         # get raw values
-        values = self.data[name].to_numpy()
-        self._check_jax_compatibility(values, name)
+        values = self._to_jax(self.data[name].to_numpy(), name)
 
         var = lsl.Var.new_obs(values, name=name)
         self._var_cache[name] = var

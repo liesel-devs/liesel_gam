@@ -71,7 +71,7 @@ def test_std_var(sample_data):
     assert std_var.name == "x1_std"
 
     # check standardization: mean ≈ 0, std ≈ 1
-    assert jnp.mean(std_var.value) == pytest.approx(0.0, abs=1e-8)
+    assert jnp.mean(std_var.value) == pytest.approx(0.0, abs=1e-7)
     assert jnp.std(std_var.value) == pytest.approx(1.0)
 
 
