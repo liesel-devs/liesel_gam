@@ -130,6 +130,22 @@ def test_na_handling_drop():
     assert not jnp.isnan(var_x.value).any()
 
 
+def test_na_handling_ignore():
+    data = pd.DataFrame(
+        {
+            "x": [1.0, 2.0, np.nan, 4.0],
+            "y": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+
+    registry = VariableRegistry(data, na_action="ignore")
+    assert registry.shape == (4, 2)  # no rows dropped
+
+    # check that NaN row is still present
+    var_x = registry.get_var("x")
+    assert jnp.isnan(var_x.value).any()
+
+
 def test_properties(sample_data):
     registry = VariableRegistry(sample_data)
 

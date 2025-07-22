@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, assert_never
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -28,16 +28,18 @@ class VariableRegistry:
     """
 
     def __init__(
-        self, data: pd.DataFrame, na_action: Literal["error", "drop"] = "error"
+        self,
+        data: pd.DataFrame,
+        na_action: Literal["error", "drop", "ignore"] = "error",
     ):
         """Initialize the variable registry.
 
         Args:
             data: pandas DataFrame containing model variables
-            na_action: How to handle NaN values. Either "error" or "drop"
+            na_action: How to handle NaN values. Either "error", "drop", or "ignore"
         """
-        if na_action not in ["error", "drop"]:
-            raise ValueError("na_action must be 'error' or 'drop'")
+        if na_action not in ["error", "drop", "ignore"]:
+            raise ValueError("na_action must be 'error', 'drop', or 'ignore'")
 
         self.original_data = data.copy()
         self.na_action = na_action
@@ -58,6 +60,10 @@ class VariableRegistry:
                 if len(clean_data) == 0:
                     raise ValueError("No rows remaining after dropping NaN values")
                 return clean_data
+            elif self.na_action == "ignore":
+                pass
+            else:
+                assert_never()
 
         return data.copy()
 
