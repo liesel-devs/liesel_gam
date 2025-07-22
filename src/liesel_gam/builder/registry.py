@@ -73,28 +73,12 @@ class VariableRegistry:
 
     def _to_jax(self, values: Any, var_name: str) -> Array:
         """Check if values are compatible with JAX."""
-
         try:
             array = jnp.asarray(values)
         except Exception as e:
             raise JAXCompatibilityError(
-                var_name, "cound not convert to JAX array"
+                var_name, "could not convert to JAX array"
             ) from e
-
-        if np.isnan(array).any():
-            raise JAXCompatibilityError(var_name, "contains NaN values")
-
-        if np.isinf(array).any():
-            raise JAXCompatibilityError(var_name, "contains infinite values")
-
-        if np.iscomplexobj(array):
-            raise JAXCompatibilityError(var_name, "contains complex values")
-
-        # check if numeric
-        if not np.issubdtype(array.dtype, np.number):
-            raise JAXCompatibilityError(
-                var_name, f"non-numeric dtype {array.dtype} not supported"
-            )
 
         return array
 
@@ -127,13 +111,13 @@ class VariableRegistry:
 
         # check if already cached
         if name in self._var_cache:
-            return self._var_cache[name]
+            var = self._var_cache[name]
+        else:
+            # get raw values
+            values = self._to_jax(self.data[name].to_numpy(), name)
+            var = lsl.Var.new_obs(values, name=name)
+            self._var_cache[name] = var
 
-        # get raw values
-        values = self._to_jax(self.data[name].to_numpy(), name)
-
-        var = lsl.Var.new_obs(values, name=name)
-        self._var_cache[name] = var
         return var
 
     def _make_transformed_var(
@@ -246,43 +230,25 @@ class VariableRegistry:
         Returns:
             Dictionary mapping category names to liesel.Var objects
         """
-        if name not in self.data.columns:
-            available = list(self.data.columns)
-            raise VariableNotFoundError(name, available)
 
-        values = self.data[name]
+        base_var, codebook = self.get_categorical_var(name)
+        base_var.name = base_var.name = f"{name}_codes"
 
-        # check if categorical type
-        if not isinstance(values.dtype, pd.CategoricalDtype):
-            raise TypeMismatchError(name, "categorical", str(values.dtype))
-
-        # get categories from categorical dtype
-        categories = values.cat.categories.tolist()
-
-        if len(categories) < 2:
+        if len(codebook) < 2:
             raise VariableTransformError(
-                name, "dummy encoding", f"only {len(categories)} unique value(s) found"
+                name, "dummy encoding", f"only {len(codebook)} unique value(s) found"
             )
 
-        # convert categorical to integer codes
-        category_codes = jnp.array(values.cat.codes.to_numpy().astype(int))
-
-        # create base variable for category codes
-        base_var_name = f"{name}_codes"
-        if base_var_name not in self._var_cache:
-            base_var = lsl.Var.new_obs(category_codes, name=base_var_name)
-            self._var_cache[base_var_name] = base_var
-        else:
-            base_var = self._var_cache[base_var_name]
-
         # jax-compatible dummy coding transformation
-        n_categories = len(categories)
+        n_categories = len(codebook)
 
         def dummy_transform(codes):
             # create dummy matrix with standard dummy coding (drop first category)
-            dummy_matrix = jnp.zeros((codes.shape[0], n_categories - 1))
+            dummy_matrix = jnp.zeros(
+                (codes.shape[0], n_categories - 1), dtype=jnp.int32
+            )
             for i in range(1, n_categories):  # only a few cat, so for loop is fine
-                dummy_matrix = dummy_matrix.at[:, i - 1].set((codes == i).astype(float))
+                dummy_matrix = dummy_matrix.at[:, i - 1].set(codes == i)
             return dummy_matrix
 
         dummy_transform.__name__ = f"{name}_dummy"
@@ -295,3 +261,117 @@ class VariableRegistry:
         )
 
         return dummy_matrix_var
+
+    def is_numeric(self, name: str) -> bool:
+        """Check if a variable is numeric.
+
+        Args:
+            name: Column name in the data
+
+        Returns:
+            True if variable is numeric, False otherwise
+        """
+        if name not in self.data.columns:
+            available = list(self.data.columns)
+            raise VariableNotFoundError(name, available)
+
+        return pd.api.types.is_numeric_dtype(self.data[name])
+
+    def is_categorical(self, name: str) -> bool:
+        """Check if a variable is categorical.
+
+        Args:
+            name: Column name in the data
+
+        Returns:
+            True if variable is categorical, False otherwise
+        """
+        if name not in self.data.columns:
+            available = list(self.data.columns)
+            raise VariableNotFoundError(name, available)
+
+        return isinstance(self.data[name].dtype, pd.CategoricalDtype)
+
+    def is_boolean(self, name: str) -> bool:
+        """Check if a variable is boolean.
+
+        Args:
+            name: Column name in the data
+
+        Returns:
+            True if variable is boolean, False otherwise
+        """
+        if name not in self.data.columns:
+            available = list(self.data.columns)
+            raise VariableNotFoundError(name, available)
+
+        return pd.api.types.is_bool_dtype(self.data[name])
+
+    def get_numeric_var(self, name: str) -> lsl.Var:
+        """Get a variable and ensure it is numeric.
+
+        Args:
+            name: Variable name to retrieve
+
+        Returns:
+            liesel.Var object for the numeric variable
+
+        Raises:
+            TypeMismatchError: If the variable is not numeric
+        """
+        if not self.is_numeric(name):
+            raise TypeMismatchError(name, "numeric", str(self.data[name].dtype))
+        return self.get_var(name)
+
+    def get_categorical_var(self, name: str) -> tuple[lsl.Var, dict[int, Any]]:
+        """Get a variable and ensure it is categorical.
+
+        Each variable is converted to integer codes.
+
+        Args:
+            name: Variable name to retrieve
+
+        Returns:
+            liesel.Var object for the categorical variable and a dictionary
+            mapping integer codes to category labels
+
+        Raises:
+            TypeMismatchError: If any variable is not categorical
+        """
+        if not self.is_categorical(name):
+            raise TypeMismatchError(name, "categorical", str(self.data[name].dtype))
+
+        # convert categorical variables to integer codes
+        values = self.data[name]
+        category_codes = values.cat.codes.to_numpy().astype(int)
+        category_labels = values.cat.categories.tolist()
+
+        coding_dict = {
+            int(code): label for label, code in zip(category_labels, category_codes)
+        }
+
+        # check if already cached
+        if name in self._var_cache:
+            var = self._var_cache[name]
+        else:
+            jax_codes = self._to_jax(category_codes, name)
+            var = lsl.Var.new_obs(jax_codes, name=name)
+            self._var_cache[name] = var
+
+        return var, coding_dict
+
+    def get_boolean_var(self, name: str) -> lsl.Var:
+        """Get a variable and ensure it is boolean.
+
+        Args:
+            name: Variable name to retrieve
+
+        Returns:
+            liesel.Var object for the boolean variable
+
+        Raises:
+            TypeMismatchError: If the variable is not boolean
+        """
+        if not self.is_boolean(name):
+            raise TypeMismatchError(name, "boolean", str(self.data[name].dtype))
+        return self.get_var(name)
