@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 
-from liesel_gam.builder.errors import JAXCompatibilityError
+from liesel_gam.builder.errors import JAXCompatibilityError, TypeMismatchError
 from liesel_gam.builder.gam_builder import GamBuilder
 from liesel_gam.predictor import AdditivePredictor
 from liesel_gam.var import Intercept, LinearTerm, SmoothTerm
@@ -297,7 +297,7 @@ def test_categorical_response(builder: GamBuilder):
 
 
 def test_categorical_term(builder: GamBuilder):
-    with pytest.raises(JAXCompatibilityError):
+    with pytest.raises(TypeMismatchError):
         builder.predictor("0 + category")
 
 

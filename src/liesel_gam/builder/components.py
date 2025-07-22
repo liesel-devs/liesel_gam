@@ -170,7 +170,7 @@ class LinearComponent(FormulaComponent):
             else:
                 return []
 
-        vars = [registry.get_var(name) for name in self._vars]
+        vars = [registry.get_numeric_var(var) for var in self._vars]
 
         def stack_terms(*vars_input):
             return jnp.column_stack([v for v in vars_input])
@@ -291,7 +291,7 @@ class LieselSplineComponent(FormulaComponent):
             term_name = f"{name_prefix}_{base_name}" if name_prefix else base_name
 
         # get the input variable
-        input_var = registry.get_var(self.variable_name)
+        input_var = registry.get_numeric_var(self.variable_name)
         input_values = input_var.value
 
         # get spline parameters
@@ -497,7 +497,7 @@ class MGCVComponent(FormulaComponent):
         )
 
         # get input variable
-        input_var = registry.get_var(self.variable_name)
+        input_var = registry.get_numeric_var(self.variable_name)
 
         # create basis using smoothcon
         basis = Basis(input_var, basis_fn=smooth, name=f"{term_name}_basis")
