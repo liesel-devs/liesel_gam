@@ -447,7 +447,7 @@ class MGCVComponent(FormulaComponent):
         # pop liesel-specific parameters (not for mgcv)
         kwargs_copy = kwargs.copy()
         self.term_name = kwargs_copy.pop("name", None)
-        self.absorb_cons = kwargs_copy.pop("absorb_cons", False)
+        self.absorb_cons = kwargs_copy.pop("absorb_cons", True)
         self.ig_concentration = kwargs_copy.pop("ig_concentration", 0.01)
         self.ig_scale = kwargs_copy.pop("ig_scale", 0.01)
 
@@ -516,8 +516,7 @@ class MGCVComponent(FormulaComponent):
 
     @property
     def includes_intercept(self) -> bool:
-        # if absorb_cons is True, smooth absorbs the intercept
-        return self.absorb_cons
+        return not self.absorb_cons
 
     @property
     def depends_on_vars(self) -> set[str]:
