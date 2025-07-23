@@ -45,9 +45,10 @@ class FormulaParser:
         self.registry = registry
 
         self.handlers: dict[str, type[FormulaComponent]] = {
+            "linear": LinearComponent,
+            "factor": FactorComponent,
             "ls": LieselSplineComponent,
             "s": MGCVComponent,
-            "factor": FactorComponent,
         }
         if handlers:
             self.handlers.update(handlers)
