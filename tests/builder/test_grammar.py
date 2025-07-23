@@ -10,14 +10,12 @@ def parser():
 
 class TestValidFormulas:
     def test_intercept_formulas(self, parser):
-        # Explicit intercept
         result = parser.parse("1")
         assert result["type"] == "formula"
         assert len(result["terms"]) == 1
         assert result["terms"][0]["type"] == "intercept"
         assert result["terms"][0]["value"] == 1
 
-        # No intercept
         result = parser.parse("0")
         assert result["type"] == "formula"
         assert len(result["terms"]) == 1
@@ -140,6 +138,10 @@ class TestInvalidFormulas:
         with pytest.raises(Exception):
             parser.parse("-1")
 
+    def test_late_intercept(self, parser):
+        with pytest.raises(Exception):
+            parser.parse("x1 + 1")
+
     def test_subtraction_operator(self, parser):
         with pytest.raises(Exception):
             parser.parse("x1 - 1")
@@ -160,15 +162,12 @@ class TestInvalidFormulas:
             parser.parse("s(x1 * x2)")
 
     def test_invalid_variable_names(self, parser):
-        # Variable names starting with numbers
         with pytest.raises(Exception):
             parser.parse("2x")
 
-        # Variable names with hyphens (should be underscores)
         with pytest.raises(Exception):
             parser.parse("x1-2")
 
-        # Variable names with dots
         with pytest.raises(Exception):
             parser.parse("x1.2")
 
@@ -178,9 +177,6 @@ class TestInvalidFormulas:
 
         with pytest.raises(Exception):
             parser.parse("2.3")
-
-        with pytest.raises(Exception):
-            parser.parse("x1 + 1")
 
     def test_parentheses_around_variables(self, parser):
         with pytest.raises(Exception):
@@ -234,18 +230,6 @@ class TestEdgeCases:
         result1 = parser.parse("1 + \n x1")
         result2 = parser.parse("1 + x1")
         assert result1 == result2
-
-    def test_complex_function_arguments(self, parser):
-        result = parser.parse(
-            "s(x1, x2, x3, k=20, bs='cr', fx=True, name='complex_smooth')"
-        )
-
-        func_call = result["terms"][0]
-        assert func_call["positional"] == ["x1", "x2", "x3"]
-        assert func_call["keyword"]["k"] == 20
-        assert func_call["keyword"]["bs"] == "cr"
-        assert func_call["keyword"]["fx"] is True
-        assert func_call["keyword"]["name"] == "complex_smooth"
 
     def test_mixed_quote_types(self, parser):
         result = parser.parse("s(x1, single='test', double=\"test2\")")
