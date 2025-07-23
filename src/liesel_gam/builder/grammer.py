@@ -1,22 +1,3 @@
-"""
-Formula parsing for GAM models.
-
-Design Note: ParsedFormula class consideration
---------------------------------------------
-Currently returns list[FormulaComponent] from parse(), but could return a
-ParsedFormula class for better encapsulation:
-
-Benefits of ParsedFormula:
-- Immutable components list (defensive copy)
-- Built-in validation (single intercept guarantee)
-- Convenience methods: has_intercept(), get_linear_terms()
-- Stores original formula string for debugging
-- Natural workflow: formula.to_terms() vs parser.convert_to_terms(components)
-
-Current approach (list) is simpler and more Pythonic, but ParsedFormula
-would provide stronger guarantees and better UX for complex operations.
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -39,13 +20,15 @@ FORMULA_GRAMMAR = r"""
 ?var: CNAME                            -> var
 ?intercept: INTERCEPT                  -> intercept
 
-VALUE: STRING | NUMBER | INTEGER | "True" | "False" | CNAME
+
 STRING: /"[^"]*"|'[^']*'/
-NUMBER: /-?\d+\.\d+/
-INTEGER: /-?\d+/
+VALUE: STRING | NUMBER | INT | "True" | "False" | CNAME
 INTERCEPT: /[01]/
 
 %import common.CNAME
+%import common.NUMBER
+%import common.BOOL
+%import common.INT
 %import common.WS
 %ignore WS
 """
