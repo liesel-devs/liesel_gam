@@ -5,6 +5,7 @@ description = "Functionality for Generalized Additive Models in Liesel"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "lark>=1.2.2",
     "liesel>=0.4",
     "smoothcon >= 0.0.4",
 ]

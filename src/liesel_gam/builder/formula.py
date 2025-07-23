@@ -1,26 +1,8 @@
-"""
-Formula parsing for GAM models.
-
-Design Note: ParsedFormula class consideration
---------------------------------------------
-Currently returns list[FormulaComponent] from parse(), but could return a
-ParsedFormula class for better encapsulation:
-
-Benefits of ParsedFormula:
-- Immutable components list (defensive copy)
-- Built-in validation (single intercept guarantee)
-- Convenience methods: has_intercept(), get_linear_terms()
-- Stores original formula string for debugging
-- Natural workflow: formula.to_terms() vs parser.convert_to_terms(components)
-
-Current approach (list) is simpler and more Pythonic, but ParsedFormula
-would provide stronger guarantees and better UX for complex operations.
-"""
-
 from __future__ import annotations
 
-import ast
-import re
+from typing import Any
+
+import lark
 
 from ..var import Term
 from .components import (
@@ -31,6 +13,7 @@ from .components import (
     LinearComponent,
     MGCVComponent,
 )
+from .grammer import make_lark_formula_parser
 from .registry import VariableRegistry
 
 
@@ -43,6 +26,7 @@ class FormulaParser:
         handlers: dict[str, type[FormulaComponent]] | None = None,
     ):
         self.registry = registry
+        self.lark_parser = make_lark_formula_parser()
 
         self.handlers: dict[str, type[FormulaComponent]] = {
             "linear": LinearComponent,
@@ -102,40 +86,8 @@ class FormulaParser:
                     list(missing_vars)[0], self.registry.columns
                 )
 
-    def _parse_formula_string(self, formula: str) -> list[str]:
-        """Split formula string on + but not inside parentheses."""
-        formula = formula.strip()
-        if not formula:
-            raise ValueError("Formula cannot be empty")
-        terms = []
-        paren_depth = 0
-        current_term = ""
-
-        for char in formula:
-            if char == "(":
-                paren_depth += 1
-            elif char == ")":
-                paren_depth -= 1
-            elif char == "+" and paren_depth == 0:
-                if current_term.strip():
-                    terms.append(current_term.strip())
-                else:
-                    raise ValueError(
-                        f"Formula cannot have empty terms separated by '+': {formula}"
-                    )
-                current_term = ""
-                continue
-            current_term += char
-
-        if current_term.strip():
-            terms.append(current_term.strip())
-        else:
-            raise ValueError(f"Formula cannot end with '+': {formula}")
-
-        return terms
-
     def _parse_formula(self, formula: str) -> list[FormulaComponent]:
-        """Parse formula string into structured components.
+        """Parse formula string into structured components using Lark.
 
         Args:
             formula: Formula string to parse
@@ -143,45 +95,46 @@ class FormulaParser:
         Returns:
             List of FormulaComponent objects representing the parsed formula
         """
-        terms = self._parse_formula_string(formula)
+        formula = formula.strip()
+        if not formula:
+            raise ValueError("Formula cannot be empty")
+
+        try:
+            ast_dict: dict[str, Any] = self.lark_parser.parse(formula)  # type: ignore
+            return self._ast_to_components(ast_dict)
+        except lark.exceptions.LarkError as e:
+            raise ValueError(f"Failed to parse formula '{formula}': {e}") from e
+
+    def _ast_to_components(self, ast_dict: dict[str, Any]) -> list[FormulaComponent]:
+        """Convert AST dictionary to FormulaComponent objects."""
         components: list[FormulaComponent] = []
         intercept_components: list[InterceptComponent] = []
 
-        for term in terms:
-            term = term.strip()
-
-            # handle explicit intercept specification
-            if term == "0":
-                intercept_comp = InterceptComponent(has_intercept=False)
+        for term in ast_dict["terms"]:
+            if term["type"] == "intercept":
+                intercept_comp = InterceptComponent(has_intercept=bool(term["value"]))
                 components.append(intercept_comp)
                 intercept_components.append(intercept_comp)
-                continue
-            elif term == "1":
-                intercept_comp = InterceptComponent(has_intercept=True)
-                components.append(intercept_comp)
-                intercept_components.append(intercept_comp)
-                continue
 
-            # check for a function call using AST parsing
-            if self._looks_like_function_call(term):
-                try:
-                    func_name, args, kwargs = self._parse_function_call(term)
-                    if func_name in self.handlers:
-                        handler = self.handlers[func_name]
-                        component = handler.from_formula(func_name, args, kwargs, term)
-                        components.append(component)
-                    else:
-                        raise ValueError(
-                            f"Unknown function '{func_name}' in formula: {term}"
-                        )
-                except ValueError:
-                    # Re-raise parsing errors for malformed function calls
-                    raise
-            # the rest are linear terms
-            else:
-                components.append(LinearComponent(vars=[term], intercept=False))
+            elif term["type"] == "var":
+                components.append(LinearComponent(vars=[term["name"]], intercept=False))
 
-        # check for conflicting intercept specifications during parsing
+            elif term["type"] == "func_call":
+                func_name = term["name"]
+                pos_args = term["positional"]
+                kwargs = term["keyword"]
+
+                if func_name in self.handlers:
+                    handler = self.handlers[func_name]
+                    original_term = _original_term_string(func_name, pos_args, kwargs)
+                    component = handler.from_formula(
+                        func_name, pos_args, kwargs, original_term
+                    )
+                    components.append(component)
+                else:
+                    raise ValueError(f"Unknown function '{func_name}' in formula")
+
+        # check for conflicting intercept specifications
         if len(intercept_components) > 1:
             keys = [comp.formula_key(simplified=False) for comp in intercept_components]
             raise ValueError(f"Multiple intercept components found: {keys}")
@@ -301,60 +254,15 @@ class FormulaParser:
 
         return new_components
 
-    def _looks_like_function_call(self, term: str) -> bool:
-        """Check if term looks like a function call using simple regex."""
-        return bool(re.match(r"^\s*\w+\s*\(.*\)\s*$", term.strip()))
 
-    def _is_function_call(self, term: str) -> bool:
-        """Check if term looks like a function call using AST."""
-        try:
-            tree = ast.parse(term.strip(), mode="eval")
-            return isinstance(tree.body, ast.Call)
-        except Exception:
-            return False
+def _original_term_string(
+    func_name: str, pos_args: list, kwargs: dict[str, Any]
+) -> str:
+    pos_args_str = ", ".join(pos_args)
+    if kwargs:
+        kwargs_str = ", ".join(f"{k}={v}" for k, v in kwargs.items())
+    else:
+        kwargs_str = ""
 
-    def _parse_function_call(self, term: str) -> tuple[str, list, dict]:
-        """Parse function call using AST to handle nested parentheses correctly."""
-        try:
-            tree = ast.parse(term.strip(), mode="eval")
-            if not isinstance(tree.body, ast.Call):
-                raise ValueError("Not a function call")
-
-            call = tree.body
-            func_name = ast.unparse(call.func)
-            args = [
-                ast.literal_eval(arg)
-                if isinstance(arg, ast.Constant)
-                else ast.unparse(arg)
-                for arg in call.args
-            ]
-            kwargs = {
-                kw.arg: ast.literal_eval(kw.value)
-                if isinstance(kw.value, ast.Constant)
-                else ast.unparse(kw.value)
-                for kw in call.keywords
-            }
-            return func_name, args, kwargs
-        except Exception as e:
-            raise ValueError(f"Failed to parse function call '{term}': {e}") from e
-
-
-def _parse_args_in_formula(arg_str: str, formula: str):
-    try:
-        expr = ast.parse(f"f({arg_str})", mode="eval")
-        call = expr.body
-        args = [
-            ast.literal_eval(a) if isinstance(a, ast.Constant) else ast.unparse(a)
-            for a in call.args  # type: ignore
-        ]
-        kwargs = {
-            kw.arg: ast.literal_eval(kw.value)
-            if isinstance(kw.value, ast.Constant)
-            else ast.unparse(kw.value)
-            for kw in call.keywords  # type: ignore
-        }
-        return args, kwargs
-    except Exception as e:
-        raise ValueError(
-            f"Failed to parse arguments in formula {formula}({arg_str})"
-        ) from e
+    args_str = f"{pos_args_str}{', ' if pos_args and kwargs else ''}{kwargs_str}"
+    return f"{func_name}({args_str})"

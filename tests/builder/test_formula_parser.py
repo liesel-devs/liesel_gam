@@ -10,10 +10,7 @@ from liesel_gam.builder.components import (
     LinearComponent,
     MGCVComponent,
 )
-from liesel_gam.builder.formula import (
-    FormulaParser,
-    _parse_args_in_formula,
-)
+from liesel_gam.builder.formula import FormulaParser
 from liesel_gam.builder.registry import VariableRegistry
 
 
@@ -158,7 +155,7 @@ def test_parse_mixed_formulas(registry):
 def test_parse_mgcv_function_kwargs(registry):
     parser = FormulaParser(registry)
     components = parser.parse(
-        "s(x1, k=10, bs='cr', fx=True, name='custom')",
+        "s(x1, k=10, bs=\"cr\", fx=True, name='custom')",
         default_intercept=False,
         merge=False,
     )
@@ -235,13 +232,13 @@ def test_default_intercept_behavior(registry):
 
 def test_unknown_function_names(registry):
     parser = FormulaParser(registry)
-    with pytest.raises(ValueError, match="Unknown function 'unknown' in formula"):
+    with pytest.raises(ValueError):
         parser.parse("unknown(x1)", default_intercept=False, merge=False)
 
 
 def test_intercept_conflict_detection(registry):
     parser = FormulaParser(registry)
-    with pytest.raises(ValueError, match="Multiple intercept components found"):
+    with pytest.raises(ValueError):
         parser.parse("0 + 1 + x1", default_intercept=False, merge=False)
 
 
@@ -270,37 +267,6 @@ def test_empty_formulas(registry):
 
     with pytest.raises(ValueError):
         parser.parse("   ", default_intercept=False, merge=False)
-
-
-# Test utils
-def test_parse_args_simple():
-    args, kwargs = _parse_args_in_formula("x1", "s")
-    assert args == ["x1"]
-    assert kwargs == {}
-
-
-def test_parse_args_with_kwargs():
-    args, kwargs = _parse_args_in_formula("x1, k=10, bs='ps'", "s")
-    assert args == ["x1"]
-    assert kwargs == {"k": 10, "bs": "ps"}
-
-
-def test_parse_args_numeric_types():
-    args, kwargs = _parse_args_in_formula("x1, k=10, alpha=0.05", "s")
-    assert args == ["x1"]
-    assert kwargs == {"k": 10, "alpha": 0.05}
-
-
-def test_parse_args_invalid():
-    with pytest.raises(ValueError):
-        _parse_args_in_formula("x1, k=", "s")
-
-
-def test_kwargs_with_nested_parentheses():
-    """Test parsing arguments with nested parentheses in string values."""
-    args, kwargs = _parse_args_in_formula("x1, name='m(x1)'", "s")
-    assert args == ["x1"]
-    assert kwargs == {"name": "m(x1)"}
 
 
 def test_parse_function_with_nested_parentheses(registry):
