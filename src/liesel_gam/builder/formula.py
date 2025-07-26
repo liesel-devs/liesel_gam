@@ -13,7 +13,7 @@ from .components import (
     LinearComponent,
     MGCVComponent,
 )
-from .grammer import make_lark_formula_parser
+from .grammar import make_lark_formula_parser
 from .registry import VariableRegistry
 
 

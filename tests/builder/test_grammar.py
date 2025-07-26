@@ -1,6 +1,6 @@
 import pytest
 
-from liesel_gam.builder.grammer import make_lark_formula_parser
+from liesel_gam.builder.grammar import make_lark_formula_parser
 
 
 @pytest.fixture
