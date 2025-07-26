@@ -123,7 +123,7 @@ class LinearTerm(lsl.Var):
         basis_name: str | None = None,
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
-        basis_name = f"DM({name})" if basis_name is None else basis_name
+        basis_name = f"B({name})" if basis_name is None else basis_name
 
         def _matrix(x):
             x = jnp.atleast_1d(x)
