@@ -165,7 +165,7 @@ class VariableRegistry:
         var = self._make_transformed_var(base_var, transform, var_name)
         return var
 
-    def get_centered_var(self, name: str, var_name: str | None = None) -> lsl.Var:
+    def get_centered_obs(self, name: str, var_name: str | None = None) -> lsl.Var:
         """Get a centered version of the variable: x - mean(x).
 
         note, mean(x) is computed from the original data and cached.
@@ -191,7 +191,7 @@ class VariableRegistry:
             base_var, center_transform, var_name or f"{name}_centered"
         )
 
-    def get_std_var(self, name: str, var_name: str | None = None) -> lsl.Var:
+    def get_standardized_obs(self, name: str, var_name: str | None = None) -> lsl.Var:
         """Get a standardized version of the variable: (x - mean(x)) / std(x).
 
         note, mean(x) and std(x) are computed from the original data and cached.
@@ -224,7 +224,7 @@ class VariableRegistry:
             base_var, std_transform, var_name or f"{name}_std"
         )
 
-    def get_dummy_vars(self, name: str, var_name_prefix: str | None = None) -> lsl.Var:
+    def get_dummy_obs(self, name: str, var_name_prefix: str | None = None) -> lsl.Var:
         """Get dummy variables for a categorical column using standard dummy coding.
 
         Args:

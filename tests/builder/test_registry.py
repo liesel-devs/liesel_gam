@@ -54,7 +54,7 @@ def test_variable_not_found(registry: VariableRegistry):
 
 
 def test_centered_var(registry: VariableRegistry):
-    centered = registry.get_centered_var("x1")
+    centered = registry.get_centered_obs("x1")
     assert centered.name == "x1_centered"
 
     # check that mean is approximately zero
@@ -62,7 +62,7 @@ def test_centered_var(registry: VariableRegistry):
 
 
 def test_std_var(registry: VariableRegistry):
-    std_var = registry.get_std_var("x1")
+    std_var = registry.get_standardized_obs("x1")
     assert std_var.name == "x1_std"
 
     # check standardization: mean ≈ 0, std ≈ 1
@@ -72,11 +72,11 @@ def test_std_var(registry: VariableRegistry):
 
 def test_std_var_constant_error(registry: VariableRegistry):
     with pytest.raises(ValueError):
-        registry.get_std_var("x3")
+        registry.get_standardized_obs("x3")
 
 
 def test_dummy_vars(registry: VariableRegistry):
-    dummy_matrix = registry.get_dummy_vars("cat")
+    dummy_matrix = registry.get_dummy_obs("cat")
     assert dummy_matrix.name == "cat_matrix"
 
     # should be (n_obs, n_categories-1) matrix
@@ -89,12 +89,12 @@ def test_dummy_vars(registry: VariableRegistry):
 
 def test_dummy_vars_type_error(registry: VariableRegistry):
     with pytest.raises(TypeError):
-        registry.get_dummy_vars("x1")
+        registry.get_dummy_obs("x1")
 
 
 def test_dummy_vars_single_category_error(registry: VariableRegistry):
     with pytest.raises(ValueError):
-        registry.get_dummy_vars("single_cat")
+        registry.get_dummy_obs("single_cat")
 
 
 def test_na_handling_error():
