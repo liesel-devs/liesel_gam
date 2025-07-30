@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import inspect
+import warnings
 from collections.abc import Callable
 from typing import Any, Literal, assert_never
 
@@ -11,6 +14,14 @@ import numpy as np
 import pandas as pd
 
 Array = Any
+
+
+class CannotHashValueError(Exception):
+    """Custom exception for values that cannot be hashed."""
+
+    def __init__(self, value: Any):
+        super().__init__(f"Cannot hash value of type '{type(value).__name__}'")
+        self.value = value
 
 
 class VariableRegistry:
@@ -38,6 +49,7 @@ class VariableRegistry:
         self.na_action = na_action
         self.data = self._validate_data(data)
         self._var_cache: dict[str, lsl.Var] = {}
+        self._derived_cache: dict[str, lsl.Var] = {}
 
     def _validate_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate data and handle NaN values according to policy."""
@@ -92,6 +104,70 @@ class VariableRegistry:
         cache_name = var_name or f"{name}_{transform_id}"
         return cache_name
 
+    def _is_closure(self, func: Callable) -> bool:
+        """Check if function is a closure (captures variables from outer scope)."""
+        return func.__closure__ is not None
+
+    def _hash_closure_value(self, value: Any) -> str:
+        """Create hash for closure values, specifically supporting JAX arrays."""
+        try:
+            # try direct hashing first
+            return str(hash(value))
+        except TypeError:
+            # handle unhashable types
+            if isinstance(value, jnp.ndarray):
+                # JAX arrays: hash shape, dtype, and content
+                return f"jax_array_{value.shape}_{value.dtype}_{hash(value.tobytes())}"
+            else:
+                # unsupported type - signal to skip caching
+                raise CannotHashValueError(value)
+
+    def _hash_function(self, func: Callable) -> str | None:
+        """Create hash for function, including closure variables if present."""
+        try:
+            # get function source code
+            source = inspect.getsource(func)
+
+            if self._is_closure(func):
+                # for mypy
+                assert func.__closure__ is not None, "Closure should have a closure"
+                # hash closure variables
+                closure_names = func.__code__.co_freevars
+                closure_values = [cell.cell_contents for cell in func.__closure__]
+
+                closure_hashes = []
+                for name, value in zip(closure_names, closure_values):
+                    try:
+                        value_hash = self._hash_closure_value(value)
+                        closure_hashes.append(f"{name}:{value_hash}")
+                    except CannotHashValueError:
+                        # unsupported closure variable, skip caching
+                        warnings.warn(
+                            f"Function uses unsupported closure variable type "
+                            f"'{type(value).__name__}'. Provide explicit cache_key "
+                            f"for caching.",
+                            UserWarning,
+                            stacklevel=3,
+                        )
+                        return None
+
+                closure_signature = ",".join(sorted(closure_hashes))
+            else:
+                closure_signature = ""
+
+            # combine source and closure state
+            combined = f"{source}|{closure_signature}"
+            return hashlib.md5(combined.encode()).hexdigest()
+
+        except Exception:
+            # handle unhashable functions gracefully, skip caching
+            warnings.warn(
+                "Function hashing failed. Provide explicit cache_key for caching.",
+                UserWarning,
+                stacklevel=3,
+            )
+            return None
+
     def get_obs(
         self,
         name: str,
@@ -122,47 +198,70 @@ class VariableRegistry:
 
         return var
 
-    def _make_transformed_var(
+    def _make_derived_var(
         self, base_var: lsl.Var, transform: Callable, var_name: str | None
     ) -> lsl.Var:
         """Apply a transformation to a base variable and return a new Var."""
-        transform_name = (
-            f"{base_var.name}_{getattr(transform, '__name__', str(transform))}"
-        )
+        if var_name is None:
+            var_name = (
+                f"{base_var.name}_{getattr(transform, '__name__', str(transform))}"
+            )
 
         try:
-            transformed_var = lsl.Var.new_calc(
-                transform, base_var, name=var_name if var_name else transform_name
-            )
+            derived_var = lsl.Var.new_calc(transform, base_var, name=var_name)
         except Exception as e:
-            transform_name = getattr(transform, "__name__", str(transform))
+            transformation_name = getattr(transform, "__name__", str(transform))
             raise ValueError(
-                f"Failed to apply transformation '{transform_name}' "
+                f"Failed to apply transformation '{transformation_name}' "
                 f"to variable '{base_var.name}': {str(e)}"
             )
 
-        return transformed_var
+        return derived_var
 
     def get_derived_obs(
         self,
         name: str,
         transform: Callable,
         var_name: str | None = None,
+        cache_key: str | None = None,
     ) -> lsl.Var:
         """Get a transformed version of the variable.
 
-        Transformed variables are not cached.
+        Transformed variables are cached when possible.
 
         Args:
             name: Column name in the data
             transform: Callable transformation function to apply
             var_name: Custom name for the resulting variable
+            cache_key: Explicit cache key. If provided, skips function hashing.
         Returns:
             liesel.Var object with transformed values
         """
 
+        # get base var
         base_var = self.get_obs(name)
-        var = self._make_transformed_var(base_var, transform, var_name)
+
+        # generate cache key
+        if cache_key is not None:
+            # explicit cache key provided
+            full_cache_key = f"{name}_{cache_key}_{var_name or 'default'}"
+        else:
+            # try to hash the function
+            func_hash = self._hash_function(transform)
+            if func_hash is None:
+                # caching not possible, return derived var without caching
+                return self._make_derived_var(base_var, transform, var_name)
+
+            full_cache_key = f"{name}_{func_hash}_{var_name or 'default'}"
+
+        # check cache first
+        if full_cache_key in self._derived_cache:
+            return self._derived_cache[full_cache_key]
+
+        # cache miss
+        var = self._make_derived_var(base_var, transform, var_name)
+        self._derived_cache[full_cache_key] = var
+
         return var
 
     def get_centered_obs(self, name: str, var_name: str | None = None) -> lsl.Var:
@@ -187,7 +286,7 @@ class VariableRegistry:
 
         center_transform.__name__ = "centered"
 
-        return self._make_transformed_var(
+        return self._make_derived_var(
             base_var, center_transform, var_name or f"{name}_centered"
         )
 
@@ -220,7 +319,7 @@ class VariableRegistry:
 
         std_transform.__name__ = "std"
 
-        return self._make_transformed_var(
+        return self._make_derived_var(
             base_var, std_transform, var_name or f"{name}_std"
         )
 

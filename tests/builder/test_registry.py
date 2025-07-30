@@ -217,3 +217,138 @@ def test_get_boolean_var_success(registry: VariableRegistry):
 def test_get_boolean_var_failure(registry: VariableRegistry):
     with pytest.raises(TypeError):
         registry.get_boolean_obs("x1")
+
+
+def test_get_derived_obs_caching_simple_function(registry: VariableRegistry):
+    def square(x):
+        return x**2
+
+    # first call should compute and cache
+    result1 = registry.get_derived_obs("x1", square)
+    assert result1.name.startswith("x1_square")
+
+    # second call should use cache (same object)
+    result2 = registry.get_derived_obs("x1", square)
+    assert result1 is result2
+
+
+@pytest.mark.skip(reason="This test is skipped hashing of methods is not implemented.")
+def test_get_derived_obs_caching_with_method(registry: VariableRegistry):
+    class Transformer:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def __call__(self, x):
+            return self.factor * x
+
+    transformer = Transformer(2)
+    # first call should compute and cache
+    result1 = registry.get_derived_obs("x1", transformer)
+
+    # second call should use cache (same object)
+    result2 = registry.get_derived_obs("x1", transformer)
+    assert result1 is result2
+
+    # different transformer should create new variable
+    transformer2 = Transformer(3)
+    result3 = registry.get_derived_obs("x1", transformer2)
+    assert result3 is not result1
+
+
+def test_get_derived_obs_no_caching_with_method(registry: VariableRegistry):
+    class Transformer:
+        def __init__(self, factor):
+            self.factor = factor
+
+        def __call__(self, x):
+            return self.factor * x
+
+    transformer = Transformer(2)
+
+     # should issue warning and skip caching
+    with pytest.warns(UserWarning):
+        result1 = registry.get_derived_obs("x1", transformer)
+        result2 = registry.get_derived_obs("x1", transformer)
+
+    # should compute each time
+    assert result1 is not result2
+
+
+def test_get_derived_obs_explicit_cache_key(registry: VariableRegistry):
+    def transform(x):
+        return 2 * x
+
+    # use explicit cache key
+    result1 = registry.get_derived_obs("x1", transform, cache_key="double")
+    result2 = registry.get_derived_obs("x1", transform, cache_key="double")
+
+    # should be cached
+    assert result1 is result2
+
+    # different cache key should create new variable
+    result3 = registry.get_derived_obs("x1", transform, cache_key="different")
+    assert result3 is not result1
+
+
+def test_get_derived_obs_closure_warning(registry: VariableRegistry):
+    unsupported_data = {"key": "value"}  # dict is not supported
+
+    def closure_func(x):
+        return x + len(unsupported_data)
+
+    # should issue warning and skip caching
+    with pytest.warns(UserWarning):
+        result1 = registry.get_derived_obs("x1", closure_func)
+        result2 = registry.get_derived_obs("x1", closure_func)
+
+    # should compute each time (not cached)
+    assert result1 is not result2
+
+
+def test_get_derived_obs_jax_closure_caching(registry: VariableRegistry):
+    import jax.numpy as jnp
+
+    # closures over jax arrays should cache correctly
+    multiplier = jnp.array([2.0, 3.0])
+
+    def jax_closure(x):
+        return x * multiplier.sum()
+
+    # should cache successfully
+    result1 = registry.get_derived_obs("x1", jax_closure)
+    result2 = registry.get_derived_obs("x1", jax_closure)
+
+    assert result1 is result2
+
+    # different multiplier should create different cache entry
+    multiplier2 = jnp.array([4.0, 5.0])
+
+    def jax_closure2(x):
+        return x * multiplier2.sum()
+
+    result3 = registry.get_derived_obs("x1", jax_closure2)
+    assert result3 is not result1
+
+
+def test_get_derived_obs_different_var_names(registry: VariableRegistry):
+    def transform(x):
+        return 2 * x
+
+    result1 = registry.get_derived_obs("x1", transform, var_name="triple1")
+    result2 = registry.get_derived_obs("x1", transform, var_name="triple2")
+
+    # different var_names should create different variables
+    assert result1 is not result2
+    assert result1.name == "triple1"
+    assert result2.name == "triple2"
+
+
+def test_get_derived_obs_cache_across_base_variables(registry: VariableRegistry):
+    def transform(x):
+        return x + 1
+
+    result_x1 = registry.get_derived_obs("x1", transform)
+    result_x2 = registry.get_derived_obs("x2", transform)
+
+    # different base variables should create different cache entries
+    assert result_x1 is not result_x2
