@@ -232,7 +232,7 @@ def test_get_derived_obs_caching_simple_function(registry: VariableRegistry):
     assert result1 is result2
 
 
-def test_get_derived_obs_caching_with_hashable_class(registry: VariableRegistry):
+def test_get_derived_obs_caching_with_transformer_class(registry: VariableRegistry):
     class Transformer:
         def __init__(self, factor):
             self.factor = factor
@@ -267,9 +267,6 @@ def test_get_derived_obs_caching_with_hashable_class(registry: VariableRegistry)
     # different transformer with same method should create new variable
     result6 = registry.get_derived_obs("x1", transformer2.more)
     assert result6 is not result4
-
-
-
 
 
 def test_get_derived_obs_explicit_cache_key(registry: VariableRegistry):

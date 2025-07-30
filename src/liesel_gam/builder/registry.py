@@ -124,49 +124,52 @@ class VariableRegistry:
 
     def _hash_function(self, func: Callable) -> str | None:
         """Create hash for function, or use object ID for methods/callable objects."""
-        try:
-            if inspect.isfunction(func):
-                # Regular functions: hash source code and closures
-                source = inspect.getsource(func)
+        if inspect.isfunction(func):
+            # Regular functions: hash source code and closures
+            source = inspect.getsource(func)
 
-                if self._is_closure(func):
-                    # for mypy
-                    assert func.__closure__ is not None, "Closure should have a closure"
-                    # hash closure variables
-                    closure_names = func.__code__.co_freevars
-                    closure_values = [cell.cell_contents for cell in func.__closure__]
+            if self._is_closure(func):
+                # for mypy
+                assert func.__closure__ is not None, "Closure should have a closure"
+                # hash closure variables
+                closure_names = func.__code__.co_freevars
+                closure_values = [cell.cell_contents for cell in func.__closure__]
 
-                    closure_hashes = []
-                    for name, value in zip(closure_names, closure_values):
-                        try:
-                            value_hash = self._hash_closure_value(value)
-                            closure_hashes.append(f"{name}:{value_hash}")
-                        except CannotHashValueError:
-                            # unsupported closure variable, skip caching
-                            warnings.warn(
-                                f"Function uses unsupported closure variable type "
-                                f"'{type(value).__name__}'. Provide explicit cache_key "
-                                f"for caching.",
-                                UserWarning,
-                                stacklevel=3,
-                            )
-                            return None
+                closure_hashes = []
+                for name, value in zip(closure_names, closure_values):
+                    try:
+                        value_hash = self._hash_closure_value(value)
+                        closure_hashes.append(f"{name}:{value_hash}")
+                    except CannotHashValueError:
+                        # unsupported closure variable, skip caching
+                        warnings.warn(
+                            f"Function uses unsupported closure variable type "
+                            f"'{type(value).__name__}'. Provide explicit cache_key "
+                            f"for caching.",
+                            UserWarning,
+                            stacklevel=3,
+                        )
+                        return None
 
-                    closure_signature = ",".join(sorted(closure_hashes))
-                else:
-                    closure_signature = ""
-
-                # combine source and closure state
-                combined = f"{source}|{closure_signature}"
-                return hashlib.md5(combined.encode()).hexdigest()
-            
+                closure_signature = ",".join(sorted(closure_hashes))
             else:
-                # Methods, callable objects, lambdas, etc.: use object ID
-                return f"obj_id_{id(func)}"
+                closure_signature = ""
 
-        except Exception:
-            # any failure in function hashing, fallback to object ID
+            # combine source and closure state
+            combined = f"{source}|{closure_signature}"
+            return hashlib.md5(combined.encode()).hexdigest()
+
+        elif inspect.ismethod(func):
+            # Bound method: use object ID + method name for consistent caching
+            obj_id = id(func.__self__)
+            method_name = func.__name__
+            return f"method_{obj_id}_{method_name}"
+
+        elif hasattr(func, "__call__"):
+            # Callable objects, lambdas, etc.: use object ID
             return f"obj_id_{id(func)}"
+        else:
+            raise TypeError(f"Unsupported function type: {type(func)}")
 
     def get_obs(
         self,
