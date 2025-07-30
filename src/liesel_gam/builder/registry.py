@@ -10,13 +10,6 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 
-from .errors import (
-    JAXCompatibilityError,
-    TypeMismatchError,
-    VariableNotFoundError,
-    VariableTransformError,
-)
-
 Array = Any
 
 
@@ -82,8 +75,8 @@ class VariableRegistry:
         try:
             array = jnp.asarray(values)
         except Exception as e:
-            raise JAXCompatibilityError(
-                var_name, "could not convert to JAX array"
+            raise ValueError(
+                f"Variable '{var_name}' could not convert to JAX array"
             ) from e
 
         return array
@@ -99,7 +92,7 @@ class VariableRegistry:
         cache_name = var_name or f"{name}_{transform_id}"
         return cache_name
 
-    def get_var(
+    def get_obs(
         self,
         name: str,
     ) -> lsl.Var:
@@ -113,7 +106,10 @@ class VariableRegistry:
         """
         if name not in self.data.columns:
             available = list(self.data.columns)
-            raise VariableNotFoundError(name, available)
+            raise KeyError(
+                f"Variable '{name}' not found in data. "
+                f"Available variables: {sorted(available)}"
+            )
 
         # check if already cached
         if name in self._var_cache:
@@ -140,11 +136,14 @@ class VariableRegistry:
             )
         except Exception as e:
             transform_name = getattr(transform, "__name__", str(transform))
-            raise VariableTransformError(base_var.name, transform_name, str(e))
+            raise ValueError(
+                f"Failed to apply transformation '{transform_name}' "
+                f"to variable '{base_var.name}': {str(e)}"
+            )
 
         return transformed_var
 
-    def get_transformed_var(
+    def get_derived_obs(
         self,
         name: str,
         transform: Callable,
@@ -162,7 +161,7 @@ class VariableRegistry:
             liesel.Var object with transformed values
         """
 
-        base_var = self.get_var(name)
+        base_var = self.get_obs(name)
         var = self._make_transformed_var(base_var, transform, var_name)
         return var
 
@@ -178,7 +177,7 @@ class VariableRegistry:
         Returns:
             liesel.Var object with centered values
         """
-        base_var = self.get_var(name)
+        base_var = self.get_obs(name)
         values = base_var.value
 
         mean_val = float(np.mean(values))
@@ -204,17 +203,16 @@ class VariableRegistry:
         Returns:
             liesel.Var object with standardized values
         """
-        base_var = self.get_var(name)
+        base_var = self.get_obs(name)
         values = base_var.value
 
         mean_val = float(np.mean(values))
         std_val = float(np.std(values))
 
         if std_val == 0:
-            raise VariableTransformError(
-                name,
-                "standardization",
-                "standard deviation is zero (constant variable)",
+            raise ValueError(
+                f"Failed to apply transformation 'standardization' to variable "
+                f"'{name}': standard deviation is zero (constant variable)"
             )
 
         def std_transform(x):
@@ -237,12 +235,13 @@ class VariableRegistry:
             Dictionary mapping category names to liesel.Var objects
         """
 
-        base_var, codebook = self.get_categorical_var(name)
+        base_var, codebook = self.get_categorical_obs(name)
         base_var.name = base_var.name = f"{name}_codes"
 
         if len(codebook) < 2:
-            raise VariableTransformError(
-                name, "dummy encoding", f"only {len(codebook)} unique value(s) found"
+            raise ValueError(
+                f"Failed to apply transformation 'dummy encoding' to variable "
+                f"'{name}': only {len(codebook)} unique value(s) found"
             )
 
         # jax-compatible dummy coding transformation
@@ -279,7 +278,10 @@ class VariableRegistry:
         """
         if name not in self.data.columns:
             available = list(self.data.columns)
-            raise VariableNotFoundError(name, available)
+            raise KeyError(
+                f"Variable '{name}' not found in data. "
+                f"Available variables: {sorted(available)}"
+            )
 
         return pd.api.types.is_numeric_dtype(self.data[name])
 
@@ -294,7 +296,10 @@ class VariableRegistry:
         """
         if name not in self.data.columns:
             available = list(self.data.columns)
-            raise VariableNotFoundError(name, available)
+            raise KeyError(
+                f"Variable '{name}' not found in data. "
+                f"Available variables: {sorted(available)}"
+            )
 
         return isinstance(self.data[name].dtype, pd.CategoricalDtype)
 
@@ -309,11 +314,14 @@ class VariableRegistry:
         """
         if name not in self.data.columns:
             available = list(self.data.columns)
-            raise VariableNotFoundError(name, available)
+            raise KeyError(
+                f"Variable '{name}' not found in data. "
+                f"Available variables: {sorted(available)}"
+            )
 
         return pd.api.types.is_bool_dtype(self.data[name])
 
-    def get_numeric_var(self, name: str) -> lsl.Var:
+    def get_numeric_obs(self, name: str) -> lsl.Var:
         """Get a variable and ensure it is numeric.
 
         Args:
@@ -323,13 +331,16 @@ class VariableRegistry:
             liesel.Var object for the numeric variable
 
         Raises:
-            TypeMismatchError: If the variable is not numeric
+            TypeError: If the variable is not numeric
         """
         if not self.is_numeric(name):
-            raise TypeMismatchError(name, "numeric", str(self.data[name].dtype))
-        return self.get_var(name)
+            raise TypeError(
+                f"Type mismatch for variable '{name}': expected numeric, "
+                f"got {str(self.data[name].dtype)}"
+            )
+        return self.get_obs(name)
 
-    def get_categorical_var(self, name: str) -> tuple[lsl.Var, dict[int, Any]]:
+    def get_categorical_obs(self, name: str) -> tuple[lsl.Var, dict[int, Any]]:
         """Get a variable and ensure it is categorical.
 
         Each variable is converted to integer codes.
@@ -342,10 +353,13 @@ class VariableRegistry:
             mapping integer codes to category labels
 
         Raises:
-            TypeMismatchError: If any variable is not categorical
+            TypeError: If any variable is not categorical
         """
         if not self.is_categorical(name):
-            raise TypeMismatchError(name, "categorical", str(self.data[name].dtype))
+            raise TypeError(
+                f"Type mismatch for variable '{name}': expected categorical, "
+                f"got {str(self.data[name].dtype)}"
+            )
 
         # convert categorical variables to integer codes
         values = self.data[name]
@@ -366,7 +380,7 @@ class VariableRegistry:
 
         return var, coding_dict
 
-    def get_boolean_var(self, name: str) -> lsl.Var:
+    def get_boolean_obs(self, name: str) -> lsl.Var:
         """Get a variable and ensure it is boolean.
 
         Args:
@@ -376,8 +390,11 @@ class VariableRegistry:
             liesel.Var object for the boolean variable
 
         Raises:
-            TypeMismatchError: If the variable is not boolean
+            TypeError: If the variable is not boolean
         """
         if not self.is_boolean(name):
-            raise TypeMismatchError(name, "boolean", str(self.data[name].dtype))
-        return self.get_var(name)
+            raise TypeError(
+                f"Type mismatch for variable '{name}': expected boolean, "
+                f"got {str(self.data[name].dtype)}"
+            )
+        return self.get_obs(name)

@@ -6,11 +6,6 @@ import pandas as pd
 import pytest
 
 from liesel_gam.builder import VariableRegistry
-from liesel_gam.builder.errors import (
-    TypeMismatchError,
-    VariableNotFoundError,
-    VariableTransformError,
-)
 
 
 @pytest.fixture
@@ -44,18 +39,18 @@ def test_basic_get_var(sample_data):
     registry = VariableRegistry(sample_data)
 
     # get variable
-    var1 = registry.get_var("x1")
+    var1 = registry.get_obs("x1")
     assert var1.name == "x1"
     assert jnp.allclose(var1.value, sample_data["x1"].to_numpy())
 
     # test caching
-    var2 = registry.get_var("x1")
+    var2 = registry.get_obs("x1")
     assert var1 is var2
 
 
 def test_variable_not_found(registry: VariableRegistry):
-    with pytest.raises(VariableNotFoundError):
-        registry.get_var("missing")
+    with pytest.raises(KeyError):
+        registry.get_obs("missing")
 
 
 def test_centered_var(registry: VariableRegistry):
@@ -76,7 +71,7 @@ def test_std_var(registry: VariableRegistry):
 
 
 def test_std_var_constant_error(registry: VariableRegistry):
-    with pytest.raises(VariableTransformError):
+    with pytest.raises(ValueError):
         registry.get_std_var("x3")
 
 
@@ -93,12 +88,12 @@ def test_dummy_vars(registry: VariableRegistry):
 
 
 def test_dummy_vars_type_error(registry: VariableRegistry):
-    with pytest.raises(TypeMismatchError):
+    with pytest.raises(TypeError):
         registry.get_dummy_vars("x1")
 
 
 def test_dummy_vars_single_category_error(registry: VariableRegistry):
-    with pytest.raises(VariableTransformError):
+    with pytest.raises(ValueError):
         registry.get_dummy_vars("single_cat")
 
 
@@ -126,7 +121,7 @@ def test_na_handling_drop():
     assert registry.shape == (3, 2)  # one row dropped
 
     # check that NaN row was removed
-    var_x = registry.get_var("x")
+    var_x = registry.get_obs("x")
     assert not jnp.isnan(var_x.value).any()
 
 
@@ -142,7 +137,7 @@ def test_na_handling_ignore():
     assert registry.shape == (4, 2)  # no rows dropped
 
     # check that NaN row is still present
-    var_x = registry.get_var("x")
+    var_x = registry.get_obs("x")
     assert jnp.isnan(var_x.value).any()
 
 
@@ -176,49 +171,49 @@ def test_is_boolean(registry: VariableRegistry):
 
 
 def test_type_check_nonexistent(registry: VariableRegistry):
-    with pytest.raises(VariableNotFoundError):
+    with pytest.raises(KeyError):
         registry.is_numeric("nonexistent")
-    with pytest.raises(VariableNotFoundError):
+    with pytest.raises(KeyError):
         registry.is_categorical("nonexistent")
-    with pytest.raises(VariableNotFoundError):
+    with pytest.raises(KeyError):
         registry.is_boolean("nonexistent")
 
 
 def test_get_numeric_vars_success(registry: VariableRegistry):
-    result = registry.get_numeric_var("x1")
+    result = registry.get_numeric_obs("x1")
     assert result.name == "x1"
 
 
 def test_get_numeric_var_failure(registry: VariableRegistry):
-    with pytest.raises(TypeMismatchError):
-        registry.get_numeric_var("cat_str")
-    with pytest.raises(TypeMismatchError):
-        registry.get_numeric_var("cat_num")
+    with pytest.raises(TypeError):
+        registry.get_numeric_obs("cat_str")
+    with pytest.raises(TypeError):
+        registry.get_numeric_obs("cat_num")
 
 
 def test_get_categorical_var_success(registry: VariableRegistry):
-    result, codes = registry.get_categorical_var("cat_str")
+    result, codes = registry.get_categorical_obs("cat_str")
     assert result.name == "cat_str"
     assert codes == {
         0: "a",
         1: "b",
     }
 
-    result2, codes2 = registry.get_categorical_var("cat_num")
+    result2, codes2 = registry.get_categorical_obs("cat_num")
     assert result2.name == "cat_num"
     assert codes2 == {0: 1, 1: 2}
 
 
 def test_get_categorical_var_failure(registry: VariableRegistry):
-    with pytest.raises(TypeMismatchError):
-        registry.get_categorical_var("x1")
+    with pytest.raises(TypeError):
+        registry.get_categorical_obs("x1")
 
 
 def test_get_boolean_var_success(registry: VariableRegistry):
-    result = registry.get_boolean_var("bool_var")
+    result = registry.get_boolean_obs("bool_var")
     assert result.name == "bool_var"
 
 
 def test_get_boolean_var_failure(registry: VariableRegistry):
-    with pytest.raises(TypeMismatchError):
-        registry.get_boolean_var("x1")
+    with pytest.raises(TypeError):
+        registry.get_boolean_obs("x1")
