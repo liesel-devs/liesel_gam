@@ -232,14 +232,16 @@ def test_get_derived_obs_caching_simple_function(registry: VariableRegistry):
     assert result1 is result2
 
 
-@pytest.mark.skip(reason="This test is skipped hashing of methods is not implemented.")
-def test_get_derived_obs_caching_with_method(registry: VariableRegistry):
+def test_get_derived_obs_caching_with_hashable_class(registry: VariableRegistry):
     class Transformer:
         def __init__(self, factor):
             self.factor = factor
 
         def __call__(self, x):
             return self.factor * x
+
+        def more(self, x):
+            return 2 * self.factor * x
 
     transformer = Transformer(2)
     # first call should compute and cache
@@ -254,24 +256,20 @@ def test_get_derived_obs_caching_with_method(registry: VariableRegistry):
     result3 = registry.get_derived_obs("x1", transformer2)
     assert result3 is not result1
 
+    # different method should not use same cache
+    result4 = registry.get_derived_obs("x1", transformer.more)
+    assert result4 is not result1
 
-def test_get_derived_obs_no_caching_with_method(registry: VariableRegistry):
-    class Transformer:
-        def __init__(self, factor):
-            self.factor = factor
+    # but same method on same transformer should use cache
+    result5 = registry.get_derived_obs("x1", transformer.more)
+    assert result5 is result4
 
-        def __call__(self, x):
-            return self.factor * x
+    # different transformer with same method should create new variable
+    result6 = registry.get_derived_obs("x1", transformer2.more)
+    assert result6 is not result4
 
-    transformer = Transformer(2)
 
-     # should issue warning and skip caching
-    with pytest.warns(UserWarning):
-        result1 = registry.get_derived_obs("x1", transformer)
-        result2 = registry.get_derived_obs("x1", transformer)
 
-    # should compute each time
-    assert result1 is not result2
 
 
 def test_get_derived_obs_explicit_cache_key(registry: VariableRegistry):
@@ -297,7 +295,7 @@ def test_get_derived_obs_closure_warning(registry: VariableRegistry):
         return x + len(unsupported_data)
 
     # should issue warning and skip caching
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning, match="unsupported closure variable type"):
         result1 = registry.get_derived_obs("x1", closure_func)
         result2 = registry.get_derived_obs("x1", closure_func)
 
