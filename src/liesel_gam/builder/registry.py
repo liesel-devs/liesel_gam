@@ -87,7 +87,7 @@ class VariableRegistry:
         try:
             array = jnp.asarray(values)
         except Exception as e:
-            raise ValueError(
+            raise TypeError(
                 f"Variable '{var_name}' could not convert to JAX array"
             ) from e
 
