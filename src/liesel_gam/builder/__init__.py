@@ -1,5 +1,5 @@
 """Builder module for constructing GAM models."""
 
-from .registry import VariableRegistry
+from .registry import PandasRegistry
 
-__all__ = ["VariableRegistry"]
+__all__ = ["PandasRegistry"]

@@ -24,10 +24,10 @@ class CannotHashValueError(Exception):
         self.value = value
 
 
-class VariableRegistry:
+class PandasRegistry:
     """Registry for managing variables and their transformations.
 
-    Handles conversion from pandas DataFrame to liesel.Var objects,
+    Handles conversion from `pandas.DataFrame` to `liesel.Var` objects,
     applies transformations, and caches results for efficiency.
     """
 
@@ -221,19 +221,20 @@ class VariableRegistry:
 
         return derived_var
 
-    def get_derived_obs(
+    def get_calc(
         self,
         name: str,
         transform: Callable,
         var_name: str | None = None,
         cache_key: str | None = None,
     ) -> lsl.Var:
-        """Get a transformed version of the variable.
+        """Get a derived version of the variable.
 
-        Transformed variables are cached when possible.
+        Derived variables are cached when possible. Creates a lsl.new_obs for the
+        base variable and a lsl.new_calc for the derived variable.
 
         Args:
-            name: Column name in the data
+            name: Column name in the data frame
             transform: Callable transformation function to apply
             var_name: Custom name for the resulting variable
             cache_key: Explicit cache key. If provided, skips function hashing.
@@ -267,7 +268,7 @@ class VariableRegistry:
 
         return var
 
-    def get_centered_obs(self, name: str, var_name: str | None = None) -> lsl.Var:
+    def get_calc_centered(self, name: str, var_name: str | None = None) -> lsl.Var:
         """Get a centered version of the variable: x - mean(x).
 
         note, mean(x) is computed from the original data and cached.
@@ -293,7 +294,7 @@ class VariableRegistry:
             base_var, center_transform, var_name or f"{name}_centered"
         )
 
-    def get_standardized_obs(self, name: str, var_name: str | None = None) -> lsl.Var:
+    def get_calc_standardized(self, name: str, var_name: str | None = None) -> lsl.Var:
         """Get a standardized version of the variable: (x - mean(x)) / std(x).
 
         note, mean(x) and std(x) are computed from the original data and cached.
@@ -326,8 +327,12 @@ class VariableRegistry:
             base_var, std_transform, var_name or f"{name}_std"
         )
 
-    def get_dummy_obs(self, name: str, var_name_prefix: str | None = None) -> lsl.Var:
-        """Get dummy variables for a categorical column using standard dummy coding.
+    def get_calc_dummymatrix(
+        self, name: str, var_name_prefix: str | None = None
+    ) -> lsl.Var:
+        """Get dummy matrix for a categorical column using standard dummy coding.
+
+        Drops the column of the first category.
 
         Args:
             name: Column name in the data

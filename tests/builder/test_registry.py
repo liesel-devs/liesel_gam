@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from liesel_gam.builder import VariableRegistry
+from liesel_gam.builder import PandasRegistry
 
 
 @pytest.fixture
@@ -32,11 +32,11 @@ def sample_data():
 
 @pytest.fixture
 def registry(sample_data):
-    return VariableRegistry(sample_data)
+    return PandasRegistry(sample_data)
 
 
 def test_basic_get_var(sample_data):
-    registry = VariableRegistry(sample_data)
+    registry = PandasRegistry(sample_data)
 
     # get variable
     var1 = registry.get_obs("x1")
@@ -48,21 +48,21 @@ def test_basic_get_var(sample_data):
     assert var1 is var2
 
 
-def test_variable_not_found(registry: VariableRegistry):
+def test_variable_not_found(registry: PandasRegistry):
     with pytest.raises(KeyError):
         registry.get_obs("missing")
 
 
-def test_centered_var(registry: VariableRegistry):
-    centered = registry.get_centered_obs("x1")
+def test_centered_var(registry: PandasRegistry):
+    centered = registry.get_calc_centered("x1")
     assert centered.name == "x1_centered"
 
     # check that mean is approximately zero
     assert jnp.mean(centered.value) == pytest.approx(0.0, abs=1e-8)
 
 
-def test_std_var(registry: VariableRegistry):
-    std_var = registry.get_standardized_obs("x1")
+def test_std_var(registry: PandasRegistry):
+    std_var = registry.get_calc_standardized("x1")
     assert std_var.name == "x1_std"
 
     # check standardization: mean ≈ 0, std ≈ 1
@@ -70,13 +70,13 @@ def test_std_var(registry: VariableRegistry):
     assert jnp.std(std_var.value) == pytest.approx(1.0)
 
 
-def test_std_var_constant_error(registry: VariableRegistry):
+def test_std_var_constant_error(registry: PandasRegistry):
     with pytest.raises(ValueError):
-        registry.get_standardized_obs("x3")
+        registry.get_calc_standardized("x3")
 
 
-def test_dummy_vars(registry: VariableRegistry):
-    dummy_matrix = registry.get_dummy_obs("cat")
+def test_dummy_vars(registry: PandasRegistry):
+    dummy_matrix = registry.get_calc_dummymatrix("cat")
     assert dummy_matrix.name == "cat_matrix"
 
     # should be (n_obs, n_categories-1) matrix
@@ -87,14 +87,14 @@ def test_dummy_vars(registry: VariableRegistry):
     assert jnp.all((row_sums == 0) | (row_sums == 1))
 
 
-def test_dummy_vars_type_error(registry: VariableRegistry):
+def test_dummy_vars_type_error(registry: PandasRegistry):
     with pytest.raises(TypeError):
-        registry.get_dummy_obs("x1")
+        registry.get_calc_dummymatrix("x1")
 
 
-def test_dummy_vars_single_category_error(registry: VariableRegistry):
+def test_dummy_vars_single_category_error(registry: PandasRegistry):
     with pytest.raises(ValueError):
-        registry.get_dummy_obs("single_cat")
+        registry.get_calc_dummymatrix("single_cat")
 
 
 def test_na_handling_error():
@@ -106,7 +106,7 @@ def test_na_handling_error():
     )
 
     with pytest.raises(ValueError):
-        VariableRegistry(data, na_action="error")
+        PandasRegistry(data, na_action="error")
 
 
 def test_na_handling_drop():
@@ -117,7 +117,7 @@ def test_na_handling_drop():
         }
     )
 
-    registry = VariableRegistry(data, na_action="drop")
+    registry = PandasRegistry(data, na_action="drop")
     assert registry.shape == (3, 2)  # one row dropped
 
     # check that NaN row was removed
@@ -133,7 +133,7 @@ def test_na_handling_ignore():
         }
     )
 
-    registry = VariableRegistry(data, na_action="ignore")
+    registry = PandasRegistry(data, na_action="ignore")
     assert registry.shape == (4, 2)  # no rows dropped
 
     # check that NaN row is still present
@@ -142,13 +142,13 @@ def test_na_handling_ignore():
 
 
 def test_properties(sample_data):
-    registry = VariableRegistry(sample_data)
+    registry = PandasRegistry(sample_data)
 
     assert registry.columns == list(sample_data.columns)
     assert registry.shape == sample_data.shape
 
 
-def test_is_numeric(registry: VariableRegistry):
+def test_is_numeric(registry: PandasRegistry):
     assert registry.is_numeric("x1") is True
     assert registry.is_numeric("x2") is True
     assert registry.is_numeric("bool_var") is True
@@ -156,7 +156,7 @@ def test_is_numeric(registry: VariableRegistry):
     assert registry.is_numeric("cat_num") is False
 
 
-def test_is_categorical(registry: VariableRegistry):
+def test_is_categorical(registry: PandasRegistry):
     assert registry.is_categorical("cat_str") is True
     assert registry.is_categorical("cat_num") is True
     assert registry.is_categorical("cat") is True
@@ -164,13 +164,13 @@ def test_is_categorical(registry: VariableRegistry):
     assert registry.is_categorical("bool_var") is False
 
 
-def test_is_boolean(registry: VariableRegistry):
+def test_is_boolean(registry: PandasRegistry):
     assert registry.is_boolean("bool_var") is True
     assert registry.is_boolean("x1") is False
     assert registry.is_boolean("cat_str") is False
 
 
-def test_type_check_nonexistent(registry: VariableRegistry):
+def test_type_check_nonexistent(registry: PandasRegistry):
     with pytest.raises(KeyError):
         registry.is_numeric("nonexistent")
     with pytest.raises(KeyError):
@@ -179,19 +179,19 @@ def test_type_check_nonexistent(registry: VariableRegistry):
         registry.is_boolean("nonexistent")
 
 
-def test_get_numeric_vars_success(registry: VariableRegistry):
+def test_get_numeric_vars_success(registry: PandasRegistry):
     result = registry.get_numeric_obs("x1")
     assert result.name == "x1"
 
 
-def test_get_numeric_var_failure(registry: VariableRegistry):
+def test_get_numeric_var_failure(registry: PandasRegistry):
     with pytest.raises(TypeError):
         registry.get_numeric_obs("cat_str")
     with pytest.raises(TypeError):
         registry.get_numeric_obs("cat_num")
 
 
-def test_get_categorical_var_success(registry: VariableRegistry):
+def test_get_categorical_var_success(registry: PandasRegistry):
     result, codes = registry.get_categorical_obs("cat_str")
     assert result.name == "cat_str"
     assert codes == {
@@ -204,35 +204,35 @@ def test_get_categorical_var_success(registry: VariableRegistry):
     assert codes2 == {0: 1, 1: 2}
 
 
-def test_get_categorical_var_failure(registry: VariableRegistry):
+def test_get_categorical_var_failure(registry: PandasRegistry):
     with pytest.raises(TypeError):
         registry.get_categorical_obs("x1")
 
 
-def test_get_boolean_var_success(registry: VariableRegistry):
+def test_get_boolean_var_success(registry: PandasRegistry):
     result = registry.get_boolean_obs("bool_var")
     assert result.name == "bool_var"
 
 
-def test_get_boolean_var_failure(registry: VariableRegistry):
+def test_get_boolean_var_failure(registry: PandasRegistry):
     with pytest.raises(TypeError):
         registry.get_boolean_obs("x1")
 
 
-def test_get_derived_obs_caching_simple_function(registry: VariableRegistry):
+def test_get_calc_caching_simple_function(registry: PandasRegistry):
     def square(x):
         return x**2
 
     # first call should compute and cache
-    result1 = registry.get_derived_obs("x1", square)
+    result1 = registry.get_calc("x1", square)
     assert result1.name.startswith("x1_square")
 
     # second call should use cache (same object)
-    result2 = registry.get_derived_obs("x1", square)
+    result2 = registry.get_calc("x1", square)
     assert result1 is result2
 
 
-def test_get_derived_obs_caching_with_transformer_class(registry: VariableRegistry):
+def test_get_calc_caching_with_transformer_class(registry: PandasRegistry):
     class Transformer:
         def __init__(self, factor):
             self.factor = factor
@@ -245,47 +245,47 @@ def test_get_derived_obs_caching_with_transformer_class(registry: VariableRegist
 
     transformer = Transformer(2)
     # first call should compute and cache
-    result1 = registry.get_derived_obs("x1", transformer)
+    result1 = registry.get_calc("x1", transformer)
 
     # second call should use cache (same object)
-    result2 = registry.get_derived_obs("x1", transformer)
+    result2 = registry.get_calc("x1", transformer)
     assert result1 is result2
 
     # different transformer should create new variable
     transformer2 = Transformer(3)
-    result3 = registry.get_derived_obs("x1", transformer2)
+    result3 = registry.get_calc("x1", transformer2)
     assert result3 is not result1
 
     # different method should not use same cache
-    result4 = registry.get_derived_obs("x1", transformer.more)
+    result4 = registry.get_calc("x1", transformer.more)
     assert result4 is not result1
 
     # but same method on same transformer should use cache
-    result5 = registry.get_derived_obs("x1", transformer.more)
+    result5 = registry.get_calc("x1", transformer.more)
     assert result5 is result4
 
     # different transformer with same method should create new variable
-    result6 = registry.get_derived_obs("x1", transformer2.more)
+    result6 = registry.get_calc("x1", transformer2.more)
     assert result6 is not result4
 
 
-def test_get_derived_obs_explicit_cache_key(registry: VariableRegistry):
+def test_get_calc_explicit_cache_key(registry: PandasRegistry):
     def transform(x):
         return 2 * x
 
     # use explicit cache key
-    result1 = registry.get_derived_obs("x1", transform, cache_key="double")
-    result2 = registry.get_derived_obs("x1", transform, cache_key="double")
+    result1 = registry.get_calc("x1", transform, cache_key="double")
+    result2 = registry.get_calc("x1", transform, cache_key="double")
 
     # should be cached
     assert result1 is result2
 
     # different cache key should create new variable
-    result3 = registry.get_derived_obs("x1", transform, cache_key="different")
+    result3 = registry.get_calc("x1", transform, cache_key="different")
     assert result3 is not result1
 
 
-def test_get_derived_obs_closure_warning(registry: VariableRegistry):
+def test_get_calc_closure_warning(registry: PandasRegistry):
     unsupported_data = {"key": "value"}  # dict is not supported
 
     def closure_func(x):
@@ -293,14 +293,14 @@ def test_get_derived_obs_closure_warning(registry: VariableRegistry):
 
     # should issue warning and skip caching
     with pytest.warns(UserWarning, match="unsupported closure variable type"):
-        result1 = registry.get_derived_obs("x1", closure_func)
-        result2 = registry.get_derived_obs("x1", closure_func)
+        result1 = registry.get_calc("x1", closure_func)
+        result2 = registry.get_calc("x1", closure_func)
 
     # should compute each time (not cached)
     assert result1 is not result2
 
 
-def test_get_derived_obs_jax_closure_caching(registry: VariableRegistry):
+def test_get_calc_jax_closure_caching(registry: PandasRegistry):
     import jax.numpy as jnp
 
     # closures over jax arrays should cache correctly
@@ -310,8 +310,8 @@ def test_get_derived_obs_jax_closure_caching(registry: VariableRegistry):
         return x * multiplier.sum()
 
     # should cache successfully
-    result1 = registry.get_derived_obs("x1", jax_closure)
-    result2 = registry.get_derived_obs("x1", jax_closure)
+    result1 = registry.get_calc("x1", jax_closure)
+    result2 = registry.get_calc("x1", jax_closure)
 
     assert result1 is result2
 
@@ -321,16 +321,16 @@ def test_get_derived_obs_jax_closure_caching(registry: VariableRegistry):
     def jax_closure2(x):
         return x * multiplier2.sum()
 
-    result3 = registry.get_derived_obs("x1", jax_closure2)
+    result3 = registry.get_calc("x1", jax_closure2)
     assert result3 is not result1
 
 
-def test_get_derived_obs_different_var_names(registry: VariableRegistry):
+def test_get_calc_different_var_names(registry: PandasRegistry):
     def transform(x):
         return 2 * x
 
-    result1 = registry.get_derived_obs("x1", transform, var_name="triple1")
-    result2 = registry.get_derived_obs("x1", transform, var_name="triple2")
+    result1 = registry.get_calc("x1", transform, var_name="triple1")
+    result2 = registry.get_calc("x1", transform, var_name="triple2")
 
     # different var_names should create different variables
     assert result1 is not result2
@@ -338,12 +338,12 @@ def test_get_derived_obs_different_var_names(registry: VariableRegistry):
     assert result2.name == "triple2"
 
 
-def test_get_derived_obs_cache_across_base_variables(registry: VariableRegistry):
+def test_get_calc_cache_across_base_variables(registry: PandasRegistry):
     def transform(x):
         return x + 1
 
-    result_x1 = registry.get_derived_obs("x1", transform)
-    result_x2 = registry.get_derived_obs("x2", transform)
+    result_x1 = registry.get_calc("x1", transform)
+    result_x2 = registry.get_calc("x2", transform)
 
     # different base variables should create different cache entries
     assert result_x1 is not result_x2
@@ -354,11 +354,11 @@ def test_dummy_vars_unknown_category_values():
     # create data with known categories A, B (codes 0, 1)
     data = pd.DataFrame({"cat": pd.Categorical(["A", "B", "A", "B"])})
 
-    registry = VariableRegistry(data)
+    registry = PandasRegistry(data)
 
     # get the dummy matrix for the original data
     # also creates the base variable with codes
-    original_dummy = registry.get_dummy_obs("cat")
+    original_dummy = registry.get_calc_dummymatrix("cat")
 
     # verify original behavior with codes 0, 1
     expected_original = jnp.array(
