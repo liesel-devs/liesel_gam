@@ -347,3 +347,48 @@ def test_get_derived_obs_cache_across_base_variables(registry: VariableRegistry)
 
     # different base variables should create different cache entries
     assert result_x1 is not result_x2
+
+
+def test_dummy_vars_unknown_category_values():
+    """test behavior when categorical data contains codes not in original codebook."""
+    # create data with known categories A, B (codes 0, 1)
+    data = pd.DataFrame({"cat": pd.Categorical(["A", "B", "A", "B"])})
+
+    registry = VariableRegistry(data)
+
+    # get the dummy matrix for the original data
+    # also creates the base variable with codes
+    original_dummy = registry.get_dummy_obs("cat")
+
+    # verify original behavior with codes 0, 1
+    expected_original = jnp.array(
+        [
+            [0],  # A (code 0, reference category)
+            [1],  # B (code 1)
+            [0],  # A (code 0, reference category)
+            [1],  # B (code 1)
+        ]
+    )
+    assert jnp.array_equal(original_dummy.value, expected_original)
+
+    # now simulate what happens when the base variable contains an unknown code
+    base_var = original_dummy.value_node.inputs[0].var
+    base_var.value = jnp.array([0, 1, 0, 2])  # introduce unknown code 2
+
+    # update the dummy matrix
+    original_dummy.update()
+
+    # unknown codes should map to nan
+    expected_with_unknown = jnp.array(
+        [
+            [0],  # A (code 0, reference)
+            [1],  # B (code 1)
+            [0],  # A (code 0, reference)
+            [jnp.nan],  # unknown code 2 should produce nan
+        ]
+    )
+
+    # since NaN != NaN, we need to check using isnan for the last element
+    result = original_dummy.value
+    assert jnp.array_equal(result[:3], expected_with_unknown[:3])  # check non-nan parts
+    assert jnp.isnan(result[3, 0])  # check that unknown code produces nan

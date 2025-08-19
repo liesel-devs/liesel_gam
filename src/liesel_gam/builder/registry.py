@@ -351,11 +351,17 @@ class VariableRegistry:
 
         def dummy_transform(codes):
             # create dummy matrix with standard dummy coding (drop first category)
+            # use float32 to support NaN for unknown codes
             dummy_matrix = jnp.zeros(
-                (codes.shape[0], n_categories - 1), dtype=jnp.int32
+                (codes.shape[0], n_categories - 1), dtype=jnp.float32
             )
             for i in range(1, n_categories):  # only a few cat, so for loop is fine
                 dummy_matrix = dummy_matrix.at[:, i - 1].set(codes == i)
+
+            # set rows with unknown codes (>= n_categories or < 0) to NaN
+            unknown_mask = (codes >= n_categories) | (codes < 0)
+            dummy_matrix = jnp.where(unknown_mask[:, None], jnp.nan, dummy_matrix)
+
             return dummy_matrix
 
         dummy_transform.__name__ = f"{name}_dummy"
