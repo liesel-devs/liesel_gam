@@ -284,6 +284,13 @@ def test_get_calc_explicit_cache_key(registry: PandasRegistry):
     result3 = registry.get_calc("x1", transform, cache_key="different")
     assert result3 is not result1
 
+    def transform2(x):
+        return 2 * x
+
+    # same cache key with different function should use cache
+    result4 = registry.get_calc("x1", transform, cache_key="double")
+    assert result4 is result1
+
 
 def test_get_calc_closure_warning(registry: PandasRegistry):
     unsupported_data = {"key": "value"}  # dict is not supported
