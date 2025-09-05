@@ -70,10 +70,10 @@ class SmoothTerm(lsl.Var):
         variance_jitter_dist: tfd.Distribution | None = None,
         coef_name: str | None = None,
     ) -> Self:
-        variance_name = f"{name}_variance" if variance_name is None else variance_name
+        variance_name = variance_name or f"{name}_variance"
 
         variance = lsl.Var.new_param(
-            value=1.0,
+            value=variance_value or 100.0,
             distribution=lsl.Dist(
                 tfd.InverseGamma,
                 concentration=ig_concentration,
@@ -85,11 +85,6 @@ class SmoothTerm(lsl.Var):
 
         scale = lsl.Var.new_calc(jnp.sqrt, variance, name=f"{variance_name}_root")
         scale.role = Roles.scale_smooth
-
-        if variance_value is None:
-            variance.value = 100.0
-        else:
-            variance.value = variance_value
 
         term = cls(
             basis=basis,
