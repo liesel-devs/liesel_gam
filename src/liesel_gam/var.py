@@ -87,8 +87,7 @@ class SmoothTerm(lsl.Var):
         scale.role = Roles.scale_smooth
 
         if variance_value is None:
-            ig_median = variance.dist_node.init_dist().quantile(0.5)  # type: ignore
-            variance.value = min(ig_median, 10.0)
+            variance.value = 100.0
         else:
             variance.value = variance_value
 
