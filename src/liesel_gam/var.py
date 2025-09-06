@@ -138,6 +138,8 @@ SmoothTerm = Term
 
 
 class LinearTerm(Term):
+    """Kept for backwards-compatibility of the interface."""
+
     def __init__(
         self,
         x: lsl.Var | Array,
@@ -178,6 +180,8 @@ class LinearTerm(Term):
 
 
 class LinearTerm2(Term):
+    """New version of LinearTerm, with interface consistent with the Term base class."""
+
     def __init__(
         self,
         value: lsl.Var | lsl.Node | Array,
