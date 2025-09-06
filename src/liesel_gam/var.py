@@ -82,6 +82,10 @@ class Term(UserVar):
         self.coef.role = Roles.coef_smooth
         self.role = Roles.term_smooth
 
+    @property
+    def includes_intercept(self) -> bool | None:
+        return self.basis.includes_intercept
+
     @classmethod
     def new_ig(
         cls,
