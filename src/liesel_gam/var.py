@@ -46,7 +46,7 @@ class UserVar(lsl.Var):
 class Term(UserVar):
     def __init__(
         self,
-        basis: Basis | lsl.Var,
+        basis: Basis,
         penalty: lsl.Var | Array,
         scale: lsl.Var,
         name: str,
@@ -85,7 +85,7 @@ class Term(UserVar):
     @classmethod
     def new_ig(
         cls,
-        basis: Basis | lsl.Var,
+        basis: Basis,
         penalty: Array,
         name: str,
         ig_concentration: float = 1.0,
