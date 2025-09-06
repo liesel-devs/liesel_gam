@@ -263,8 +263,7 @@ class Basis(UserVar):
     def __init__(
         self,
         value: lsl.Var | lsl.Node | Array,
-        basis_fn: Callable[[Array], Array] | Callable[..., Array],
-        *basis_args,
+        basis_fn: Callable[[Array], Array] | Callable[..., Array] = lambda x: x,
         name: str | None = None,
         xname: str | None = None,
         use_callback: bool = True,
@@ -288,10 +287,8 @@ class Basis(UserVar):
         if use_callback:
             value_ar = jnp.asarray(value_var.value)
             dtype = value_ar.dtype
-            input_shape = jnp.shape(basis_fn(value_ar, *basis_args, **basis_kwargs))
-            fn = make_callback(
-                basis_fn, input_shape, dtype, *basis_args, **basis_kwargs
-            )
+            input_shape = jnp.shape(basis_fn(value_ar, **basis_kwargs))
+            fn = make_callback(basis_fn, input_shape, dtype, **basis_kwargs)
         else:
             fn = basis_fn
 

@@ -15,12 +15,6 @@ class TestBasis:
 
         assert jnp.allclose(x.value, basis.value)
 
-    def test_args_in_basis_fn(self) -> None:
-        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
-        basis = gam.Basis(x, lambda x, y: x + y, 2.0)
-
-        assert jnp.allclose(x.value, basis.value - 2.0)
-
     def test_kwargs_in_basis_fn(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
         basis = gam.Basis(x, lambda x, y: x + y, y=2.0)
