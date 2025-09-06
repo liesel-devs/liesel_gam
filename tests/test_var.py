@@ -274,10 +274,12 @@ class TestLinearTerm2:
         assert jnp.allclose(x, term.basis.value[:, 1])
         assert jnp.allclose(jnp.zeros_like(x), term.value)
 
-    def test_default_dist_is_none(self) -> None:
+    def test_default_dist(self) -> None:
         x = jnp.linspace(0, 1, 5)
         term = gam.var.LinearTerm2(x, name="b0")
-        assert term.coef.dist_node is None
+        dist = term.coef.dist_node
+        assert dist is not None
+        assert dist["scale"].value == pytest.approx(1000.0)
 
     def test_dist_works(self) -> None:
         x = jnp.linspace(0, 1, 5)

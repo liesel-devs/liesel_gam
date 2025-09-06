@@ -182,7 +182,7 @@ class LinearTerm2(Term):
         self,
         value: lsl.Var | lsl.Node | Array,
         name: str,
-        scale: lsl.Var | None = None,
+        scale: lsl.Var | Array = 1000.0,
         inference: InferenceTypes = None,
         add_intercept: bool = False,
         coef_name: str | None = None,
@@ -196,9 +196,6 @@ class LinearTerm2(Term):
         if not x.name:
             # to ensure sensible basis name
             raise ValueError(f"{value=} must be named.")
-
-        constant_prior = scale is None
-        scale = scale or lsl.Var(1.0, name=f"_{name}_scale_tmp")
 
         coef_name = coef_name or f"{name}_coef"
         basis_name = basis_name or f"B({name})"
@@ -214,9 +211,6 @@ class LinearTerm2(Term):
             inference=inference,
             scale=scale,
         )
-
-        if constant_prior:
-            self.coef.dist_node = None
 
         self.coef.role = Roles.coef_linear
         self.role = Roles.term_linear
