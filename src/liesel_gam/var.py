@@ -48,7 +48,7 @@ class Term(UserVar):
         self,
         basis: Basis,
         penalty: lsl.Var | Array,
-        scale: lsl.Var,
+        scale: lsl.Var | Array,
         name: str,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
