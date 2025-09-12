@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import liesel.model as lsl
 import pytest
@@ -129,3 +130,35 @@ class TestSmoothTerm:
         assert jnp.allclose(jnp.zeros(10), term.value)
         assert not jnp.isnan(term.coef.log_prob)
         assert term.coef.log_prob is not None
+
+    def test_init_ig_1d(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+        term = gam.SmoothTerm.new_ig(
+            basis=lsl.Var(jnp.expand_dims(x, 1)),
+            penalty=jnp.eye(1),
+            name="t",
+        )
+        model = lsl.Model([term])
+        tau2 = term.scale.value_node[0]
+        kernel = tau2.inference.kernel([tau2.name], term.coef)  # type: ignore
+        proposal = kernel._transition_fn(jax.random.key(1), model.state)  # type: ignore
+        assert not jnp.isinf(proposal[tau2.name])
+        assert not jnp.isnan(proposal[tau2.name])
+        assert proposal[tau2.name] > 0.0
+        assert proposal[tau2.name].size == 1
+
+    def test_init_ig_2d(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+        term = gam.SmoothTerm.new_ig(
+            basis=lsl.Var(jnp.c_[x, x]),
+            penalty=jnp.eye(2),
+            name="t",
+        )
+        model = lsl.Model([term])
+        tau2 = term.scale.value_node[0]
+        kernel = tau2.inference.kernel([tau2.name], term.coef)  # type: ignore
+        proposal = kernel._transition_fn(jax.random.key(1), model.state)  # type: ignore
+        assert not jnp.isinf(proposal[tau2.name])
+        assert not jnp.isnan(proposal[tau2.name])
+        assert proposal[tau2.name] > 0.0
+        assert proposal[tau2.name].size == 1
