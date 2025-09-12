@@ -326,7 +326,7 @@ class TestSmoothTerm:
     def test_init_ig_1d(self) -> None:
         x = jnp.linspace(0, 1, 10)
         term = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.expand_dims(x, 1)),
+            basis=gam.Basis(jnp.expand_dims(x, 1), xname="x"),
             penalty=jnp.eye(1),
             name="t",
         )
@@ -342,7 +342,7 @@ class TestSmoothTerm:
     def test_init_ig_2d(self) -> None:
         x = jnp.linspace(0, 1, 10)
         term = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.c_[x, x]),
+            basis=gam.Basis(jnp.c_[x, x], xname="x"),
             penalty=jnp.eye(2),
             name="t",
         )
