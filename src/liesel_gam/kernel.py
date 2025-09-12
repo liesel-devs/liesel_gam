@@ -23,7 +23,7 @@ def star_ig_gibbs(coef: lsl.Var) -> gs.GibbsKernel:
     def transition(prng_key, model_state):
         pos = model.extract_position([coef.name], model_state)
 
-        coef_value = pos[coef.name].squeeze()
+        coef_value = pos[coef.name]
 
         a_gibbs = jnp.squeeze(a_value + 0.5 * rank_value)
         b_gibbs = jnp.squeeze(b_value + 0.5 * (coef_value @ penalty_value @ coef_value))
