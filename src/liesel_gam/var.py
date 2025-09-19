@@ -400,14 +400,18 @@ class Basis(UserVar):
             penalty_var = lsl.Value(penalty_arr)
 
         self._penalty = penalty_var
+
+        self.x: lsl.Var | lsl.Node = value_var
+        basis_shape = jnp.shape(self.value)
+        if len(basis_shape) >= 1:
+            self.nbases: int = basis_shape[-1]
+        else:
+            self.nbases = 1  # scalar case
+
         super().__init__(calc, name=name_)
         self.update()
         self.role = Roles.basis
         self.observed = True
-        self.x = value_var
-        basis_shape = jnp.shape(self.value)
-        if len(basis_shape) >= 1:
-            self.nbases = basis_shape[-1]
 
     @property
     def penalty(self) -> lsl.Value:
