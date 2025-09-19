@@ -94,6 +94,31 @@ class Term(UserVar):
         self.coef.role = Roles.coef_smooth
         self.role = Roles.term_smooth
 
+        self.is_noncentered = False
+
+    def reparam_noncentered(self) -> Self:
+        """
+        Turns this term into noncentered form, which means the prior for
+        the coefficient will be turned from ``coef ~ N(0, scale^2 * inv(penalty))`` into
+        ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
+        This can sometimes be helpful when sampling with the No-U-Turn Sampler.
+        """
+        if self.is_noncentered:
+            return self
+
+        assert self.coef.dist_node is not None
+
+        self.coef.dist_node["scale"] = lsl.Value(1.0)
+
+        def scaled_dot(basis, coef, scale):
+            return jnp.dot(basis, scale * coef)
+
+        self.value_node = lsl.Calc(scaled_dot, self.basis, self.coef, self.scale)
+        self.coef.update()
+        self.update()
+        self.is_noncentered = True
+        return self
+
     @classmethod
     def new_ig(
         cls,
