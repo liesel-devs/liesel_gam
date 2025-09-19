@@ -91,7 +91,7 @@ class Term(UserVar):
         ig_concentration: float = 1.0,
         ig_scale: float = 0.005,
         inference: InferenceTypes = None,
-        variance_value: float | None = None,
+        variance_value: float = 100.0,
         variance_name: str | None = None,
         variance_jitter_dist: tfd.Distribution | None = None,
         coef_name: str | None = None,
@@ -99,7 +99,7 @@ class Term(UserVar):
         variance_name = variance_name or f"{name}_variance"
 
         variance = lsl.Var.new_param(
-            value=variance_value or 100.0,
+            value=variance_value,
             distribution=lsl.Dist(
                 tfd.InverseGamma,
                 concentration=ig_concentration,
