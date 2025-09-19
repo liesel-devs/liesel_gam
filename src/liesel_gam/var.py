@@ -434,7 +434,6 @@ class Basis(UserVar):
             xname=xname,
             use_callback=False,
             cache_basis=False,
-            includes_intercept=add_intercept,
         )
 
         return basis
