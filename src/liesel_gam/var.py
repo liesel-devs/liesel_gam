@@ -283,8 +283,9 @@ class Basis(UserVar):
 
         if use_callback:
             value_ar = jnp.asarray(value_var.value)
-            dtype = value_ar.dtype
-            input_shape = jnp.shape(basis_fn(value_ar, **basis_kwargs))
+            basis_ar = basis_fn(value_ar, **basis_kwargs)
+            dtype = basis_ar.dtype
+            input_shape = jnp.shape(basis_ar)
             fn = make_callback(basis_fn, input_shape, dtype, **basis_kwargs)
         else:
             fn = basis_fn
