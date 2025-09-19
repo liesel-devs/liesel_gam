@@ -699,6 +699,18 @@ class Basis(UserVar):
         else:
             calc = lsl.TransientCalc(fn, value_var, _name=name_ + "_calc")
 
+        super().__init__(calc, name=name_)
+        self.update()
+        self.role = Roles.basis
+        self.observed = True
+
+        self.x: lsl.Var | lsl.Node = value_var
+        basis_shape = jnp.shape(self.value)
+        if len(basis_shape) >= 1:
+            self.nbases: int = basis_shape[-1]
+        else:
+            self.nbases = 1  # scalar case
+
         if isinstance(penalty, lsl.Value):
             penalty_var = penalty
         elif penalty is None:
@@ -709,18 +721,6 @@ class Basis(UserVar):
             penalty_var = lsl.Value(penalty_arr)
 
         self._penalty = penalty_var
-
-        self.x: lsl.Var | lsl.Node = value_var
-        basis_shape = jnp.shape(self.value)
-        if len(basis_shape) >= 1:
-            self.nbases: int = basis_shape[-1]
-        else:
-            self.nbases = 1  # scalar case
-
-        super().__init__(calc, name=name_)
-        self.update()
-        self.role = Roles.basis
-        self.observed = True
 
     @property
     def penalty(self) -> lsl.Value:
