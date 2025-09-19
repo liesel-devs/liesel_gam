@@ -1,16 +1,24 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Self, cast
 
+import liesel.goose as gs
 import liesel.model as lsl
+
+from .var import Intercept, Term, UserVar
 
 Array = Any
 
+term_types = Term | Intercept
 
-class AdditivePredictor(lsl.Var):
+
+class AdditivePredictor(UserVar):
     def __init__(
-        self, name: str, inv_link: Callable[[Array], Array] | None = None
+        self,
+        name: str,
+        inv_link: Callable[[Array], Array] | None = None,
+        add_intercept: bool = True,
     ) -> None:
         if inv_link is None:
 
@@ -25,21 +33,41 @@ class AdditivePredictor(lsl.Var):
 
         super().__init__(lsl.Calc(_sum), name=name)
         self.update()
-        self.terms: dict[str, lsl.Var] = {}
+        self.terms: dict[str, term_types] = {}
         """Dictionary of terms in this predictor."""
+
+        if add_intercept:
+            self += Intercept(
+                name=f"{name}_intercept",
+                value=0.0,
+                distribution=None,
+                inference=gs.MCMCSpec(gs.IWLSKernel),
+            )
 
     def update(self) -> Self:
         return cast(Self, super().update())
 
-    def __add__(self, other: lsl.Var) -> Self:
-        self.value_node.add_inputs(other)
-        self.terms[other.name] = other
-        return self.update()
+    def __iadd__(self, other: term_types | Sequence[term_types]) -> Self:
+        if isinstance(other, term_types):
+            self.append(other)
+        else:
+            self.extend(other)
+        return self
 
-    def __iadd__(self, other: lsl.Var) -> Self:
-        self.value_node.add_inputs(other)
-        self.terms[other.name] = other
-        return self.update()
+    def append(self, term: term_types) -> None:
+        if not isinstance(term, term_types):
+            raise TypeError(f"{term} is of unsupported type {type(term)}.")
+
+        if term.name in self.terms:
+            raise RuntimeError(f"{self} already contains a term of name {term.name}.")
+
+        self.value_node.add_inputs(term)
+        self.terms[term.name] = term
+        self.update()
+
+    def extend(self, terms: Sequence[term_types]) -> None:
+        for term in terms:
+            self.append(term)
 
     def __getitem__(self, name) -> lsl.Var:
         return self.terms[name]
