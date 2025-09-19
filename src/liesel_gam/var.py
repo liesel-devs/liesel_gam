@@ -302,6 +302,11 @@ class Basis(UserVar):
         self.role = Roles.basis
         self.observed = True
         self.x = value_var
+        basis_shape = jnp.shape(self.value)
+        if len(basis_shape) >= 1:
+            self.nbases = basis_shape[-1]
+        else:
+            self.nbases = 1  # scalar case
 
     @classmethod
     def new_linear(
