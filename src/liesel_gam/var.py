@@ -305,6 +305,10 @@ class Basis(UserVar):
         calculation node (``lsl.TransientCalc``) is used and the basis \
         will be recomputed with each evaluation of ``Basis.value``, \
         but not stored in memory.
+    penalty
+        Penalty matrix associated with the basis. If omitted, \
+        a default identity penalty is created based on the number \
+        of basis functions.
     **basis_kwargs
         Additional keyword arguments forwarded to ``basis_fn``.
 
@@ -332,6 +336,9 @@ class Basis(UserVar):
         The input variable (observations) used to construct the basis.
     nbases
         Number of basis functions (number of columns in the basis matrix).
+    penalty
+        Penalty matrix (wrapped as a :class:`liesel.model.Value`) associated \
+        with the basis.
 
     Examples
     --------
@@ -351,6 +358,7 @@ class Basis(UserVar):
         xname: str | None = None,
         use_callback: bool = True,
         cache_basis: bool = True,
+        penalty: ArrayLike | lsl.Value | None = None,
         **basis_kwargs,
     ) -> None:
         if isinstance(value, lsl.Var | lsl.Node):
@@ -382,6 +390,16 @@ class Basis(UserVar):
         else:
             calc = lsl.TransientCalc(fn, value_var, _name=name_ + "_calc")
 
+        if isinstance(penalty, lsl.Value):
+            penalty_var = penalty
+        elif penalty is None:
+            penalty_arr = jnp.eye(self.nbases)
+            penalty_var = lsl.Value(penalty_arr)
+        else:
+            penalty_arr = jnp.asarray(penalty)
+            penalty_var = lsl.Value(penalty_arr)
+
+        self._penalty = penalty_var
         super().__init__(calc, name=name_)
         self.update()
         self.role = Roles.basis
@@ -390,8 +408,34 @@ class Basis(UserVar):
         basis_shape = jnp.shape(self.value)
         if len(basis_shape) >= 1:
             self.nbases = basis_shape[-1]
+
+    @property
+    def penalty(self) -> lsl.Value:
+        """
+        Return the penalty matrix wrapped as a :class:`liesel.model.Value`.
+
+        Returns
+        -------
+        lsl.Value
+            Value wrapper holding the penalty (precision) matrix for this
+            basis.
+        """
+        return self._penalty
+
+    def update_penalty(self, value: ArrayLike | lsl.Value):
+        """
+        Update the penalty matrix for this basis.
+
+        Parameters
+        ----------
+        value
+            New penalty matrix or an already-wrapped :class:`liesel.model.Value`.
+        """
+        if isinstance(value, lsl.Value):
+            self._penalty.value = value.value
         else:
-            self.nbases = 1  # scalar case
+            penalty_arr = jnp.asarray(value)
+            self._penalty = lsl.Value(penalty_arr)
 
     @classmethod
     def new_linear(
