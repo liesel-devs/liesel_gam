@@ -52,6 +52,7 @@ class Term(UserVar):
         name: str,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
+        _update_on_init: bool = True,
     ):
         coef_name = f"{name}_coef" if coef_name is None else coef_name
 
@@ -79,11 +80,16 @@ class Term(UserVar):
         self.coef = lsl.Var.new_param(
             jnp.zeros(nbases), prior, inference=inference, name=coef_name
         )
-        calc = lsl.Calc(jnp.dot, basis, self.coef)
+        calc = lsl.Calc(
+            lambda basis, coef: jnp.dot(basis, coef),
+            basis=basis,
+            coef=self.coef,
+            _update_on_init=_update_on_init,
+        )
 
         super().__init__(calc, name=name)
-        self.coef.update()
-        self.update()
+        if _update_on_init:
+            self.coef.update()
         self.coef.role = Roles.coef_smooth
         self.role = Roles.term_smooth
 
