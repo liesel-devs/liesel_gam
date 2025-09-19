@@ -133,6 +133,53 @@ class Term(UserVar):
         coef_name: str | None = None,
         noncentered: bool = False,
     ) -> Term:
+        """
+        Construct a smooth term with an inverse-gamma prior on the variance.
+
+        This convenience constructor creates a term similar to :meth:`.f` but
+        sets up an explicit variance parameter with an Inverse-Gamma prior.
+        A scale variable is set up by taking the square-root, and the
+        coefficient prior uses the derived ``scale`` together with the basis
+        penalty. By default a Gibbs-style initialization is attached to the
+        variance inference via an internal kernel; an optional jitter
+        distribution can be provided for MCMC initialization.
+
+        Parameters
+        ----------
+        basis
+            Basis object providing the design matrix and penalty.
+        name
+            Term name.
+        penalty
+            Penalty matrix or a variable/value wrapping the penalty \
+            used to construct the multivariate normal prior for the coefficients.
+        ig_concentration
+            Concentration (shape) parameter of the Inverse-Gamma prior for the \
+            variance.
+        ig_scale
+            Scale parameter of the Inverse-Gamma prior for the variance.
+        inference
+            Inference specification forwarded to the coefficient variable \
+            creation, a :class:`liesel.goose.MCMCSpec`.
+        variance_value
+            Initial value for the variance parameter.
+        variance_name
+            Variance parameter name. The default is a LaTeX-like representation \
+            ``"$\\tau^2_{...}$"`` for readability in summaries.
+        coef_name
+            Coefficient name. The default coefficient name is a LaTeX-like string \
+            ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
+        noncentered
+            If ``True``, reparameterize the term to non-centered form \
+            (see :meth:`.reparam_noncentered`).
+
+        Returns
+        -------
+        A :class:`.Term` instance configured with an inverse-gamma prior on
+        the variance and an appropriate inference specification for
+        variance updates.
+
+        """
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
         variance_name = variance_name or "$\\tau^2_{" + f"{name}" + "}$"
 
