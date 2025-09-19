@@ -47,7 +47,7 @@ class Term(UserVar):
     def __init__(
         self,
         basis: Basis,
-        penalty: lsl.Var | Array,
+        penalty: lsl.Var | lsl.Value | Array,
         scale: lsl.Var | Array,
         name: str,
         inference: InferenceTypes = None,
@@ -60,12 +60,17 @@ class Term(UserVar):
 
         nbases = jnp.shape(basis.value)[-1]
 
+        if isinstance(penalty, lsl.Var | lsl.Value):
+            penalty_arr = penalty.value
+        else:
+            penalty_arr = penalty
+
         prior = lsl.Dist(
             MultivariateNormalSingular,
             loc=0.0,
             scale=scale,
             penalty=penalty,
-            penalty_rank=jnp.linalg.matrix_rank(penalty),
+            penalty_rank=jnp.linalg.matrix_rank(penalty_arr),
         )
 
         self.scale = scale
