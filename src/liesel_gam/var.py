@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
+from jax.typing import ArrayLike
 
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
