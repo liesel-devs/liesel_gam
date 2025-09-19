@@ -131,9 +131,10 @@ class Term(UserVar):
         variance_value: float = 100.0,
         variance_name: str | None = None,
         coef_name: str | None = None,
-        variance_name = variance_name or f"{name}_variance"
         noncentered: bool = False,
     ) -> Term:
+        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
+        variance_name = variance_name or "$\\tau^2_{" + f"{name}" + "}$"
 
         variance = lsl.Var.new_param(
             value=variance_value,
@@ -146,7 +147,7 @@ class Term(UserVar):
         )
         variance.role = Roles.variance_smooth
 
-        scale = lsl.Var.new_calc(jnp.sqrt, variance, name=f"{variance_name}_root")
+        scale = lsl.Var.new_calc(jnp.sqrt, variance, name="$\\tau_{" + f"{name}" + "}$")
         scale.role = Roles.scale_smooth
 
         term = cls(
