@@ -45,6 +45,63 @@ class UserVar(lsl.Var):
 
 
 class Term(UserVar):
+    """
+    General structured additive term.
+
+    A structured additive term represents a smooth or structured effect in a
+    generalized additive model. The term wraps a design/basis matrix together
+    with a prior/penalty and a set of coefficients. The object exposes the
+    coefficient variable and evaluates the term as the matrix-vector product
+    of the basis and the coefficients.
+    The term evaluates to ``basis @ coef``.
+
+    Parameters
+    ----------
+    basis
+        A :class:`.Basis` instance that produces the design matrix for the \
+        term. The basis must evaluate to a 2-D array with shape ``(n_obs, n_bases)``.
+    penalty
+        Penalty matrix or a variable/value wrapping the penalty \
+        used to construct the multivariate normal prior for the coefficients.
+    scale
+        Scale parameter for the prior on the coefficients. This \
+        is typically either a scalar or a per-coefficient scale variable.
+    name
+        Human-readable name for the term. Used for labelling variables and \
+        building sensible default names for internal nodes.
+    inference
+        :class:`liesel.goose.MCMCSpec` inference specification forwarded to coefficient\
+        creation.
+    coef_name
+        Name for the coefficient variable. If ``None``, a default name based \
+        on ``name`` will be used.
+    _update_on_init
+        If ``True`` (default) the internal calculation/graph nodes are \
+        evaluated during initialization. Set to ``False`` to delay \
+        initial evaluation.
+
+    Raises
+    ------
+    ValueError
+        If ``basis.value`` does not have two dimensions.
+
+    Attributes
+    ----------
+    scale
+        The scale variable used by the prior on the coefficients.
+    nbases
+        Number of basis functions (number of columns in the basis matrix).
+    basis
+        The basis object provided to the constructor.
+    coef
+        The coefficient variable created for this term. It holds the prior
+        (multivariate normal singular) and is used in the evaluation of the
+        term.
+    is_noncentered
+        Whether the term has been reparameterized to the non-centered form.
+
+    """
+
     def __init__(
         self,
         basis: Basis,
