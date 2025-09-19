@@ -82,10 +82,6 @@ class Term(UserVar):
         self.coef.role = Roles.coef_smooth
         self.role = Roles.term_smooth
 
-    @property
-    def includes_intercept(self) -> bool | None:
-        return self.basis.includes_intercept
-
     @classmethod
     def new_ig(
         cls,
@@ -220,7 +216,7 @@ class LinearTerm2(Term):
         self.role = Roles.term_linear
 
 
-class Intercept(lsl.Var):
+class Intercept(UserVar):
     def __init__(
         self,
         name: str,
@@ -270,7 +266,6 @@ class Basis(UserVar):
         xname: str | None = None,
         use_callback: bool = True,
         cache_basis: bool = True,
-        includes_intercept: bool | None = None,
         **basis_kwargs,
     ) -> None:
         if isinstance(value, lsl.Var | lsl.Node):
@@ -305,7 +300,6 @@ class Basis(UserVar):
         self.update()
         self.role = Roles.basis
         self.observed = True
-        self.includes_intercept = includes_intercept
         self.x = value_var
 
     @classmethod

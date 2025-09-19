@@ -150,17 +150,6 @@ class TestBasis:
         pos = model.extract_position(["x"])
         jax.jit(basis_update)(pos, model.state)
 
-    def test_include_intercept(self) -> None:
-        x = jnp.linspace(0, 1, 10)
-        basis = gam.Basis(x, basis_fn=lambda x: x, xname="x")
-        assert basis.includes_intercept is None
-
-        basis = gam.Basis(x, basis_fn=lambda x: x, xname="x", includes_intercept=False)
-        assert basis.includes_intercept is False
-
-        basis = gam.Basis(x, basis_fn=lambda x: x, xname="x", includes_intercept=True)
-        assert basis.includes_intercept is True
-
     def test_cache_basis(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
         basis = gam.Basis(x, basis_fn=lambda x: jnp.c_[x, x], cache_basis=True)

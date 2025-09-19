@@ -36,13 +36,13 @@ class TestPredictor:
         pred = gam.AdditivePredictor("loc")
         pred += term1, term2
         assert jnp.allclose(pred.value, 3.0)
-        assert len(pred.terms) == 2
+        assert len(pred.terms) == 3  # because intercept is in there, too
 
         # list
         pred = gam.AdditivePredictor("loc")
         pred += [term1, term2]
         assert jnp.allclose(pred.value, 3.0)
-        assert len(pred.terms) == 2
+        assert len(pred.terms) == 3  # because intercept is in there, too
 
     def test_add_term_with_same_name(self) -> None:
         pred = gam.AdditivePredictor("loc")
@@ -59,54 +59,13 @@ class TestPredictor:
         pred += term1
         assert pred[term1.name] is term1
 
-    def test_intercept_none(self) -> None:
+    def test_intercept(self) -> None:
         pred = gam.AdditivePredictor("loc")
-        term = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.atleast_2d(1.0), lambda x: x, xname="x1"),
-            penalty=jnp.eye(1),
-            name="s(x1)",
-        )
-        pred += term
+        assert "loc_intercept" in pred.terms
 
-        assert pred.includes_intercept is None
+        pred = gam.AdditivePredictor("loc", add_intercept=False)
+        assert "loc_intercept" not in pred.terms
 
-        # when a second term is added that has no intercept,
-        # we still don't know whether the first term might have one.
-        term2 = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.atleast_2d(1.0), xname="x2", includes_intercept=False),
-            penalty=jnp.eye(1),
-            name="s(x2)",
-        )
-        pred += term2
-        assert pred.includes_intercept is None
-
-    def test_intercept_true(self) -> None:
-        pred = gam.AdditivePredictor("loc")
-        term = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.atleast_2d(1.0), xname="x1"),
-            penalty=jnp.eye(1),
-            name="s(x1)",
-        )
-        pred += term
-        assert pred.includes_intercept is None
-
-        # when a second term is added that has an intercept,
-        # we know the predictor contains an intercept
-        term2 = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.atleast_2d(1.0), xname="x2", includes_intercept=True),
-            penalty=jnp.eye(1),
-            name="s(x2)",
-        )
-        pred += term2
-        assert pred.includes_intercept is True
-
-    def test_intercept_false(self) -> None:
-        pred = gam.AdditivePredictor("loc")
-        term = gam.SmoothTerm.new_ig(
-            basis=gam.Basis(jnp.atleast_2d(1.0), xname="x1", includes_intercept=False),
-            penalty=jnp.eye(1),
-            name="s(x1)",
-        )
-        pred += term
-
-        assert pred.includes_intercept is False
+        pred = gam.AdditivePredictor("loc", add_intercept=False)
+        pred += gam.Intercept("b0")
+        assert "b0" in pred.terms
