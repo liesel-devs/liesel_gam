@@ -123,7 +123,7 @@ class Term(UserVar):
     def new_ig(
         cls,
         basis: Basis,
-        penalty: Array,
+        penalty: lsl.Var | lsl.Value | Array,
         name: str,
         ig_concentration: float = 1.0,
         ig_scale: float = 0.005,
