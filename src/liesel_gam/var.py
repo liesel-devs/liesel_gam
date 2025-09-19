@@ -131,8 +131,9 @@ class Term(UserVar):
         variance_value: float = 100.0,
         variance_name: str | None = None,
         coef_name: str | None = None,
-    ) -> Self:
         variance_name = variance_name or f"{name}_variance"
+        noncentered: bool = False,
+    ) -> Term:
 
         variance = lsl.Var.new_param(
             value=variance_value,
@@ -161,6 +162,9 @@ class Term(UserVar):
             init_star_ig_gibbs,
             kernel_kwargs={"coef": term.coef, "scale": scale},
         )
+
+        if noncentered:
+            term.reparam_noncentered()
 
         return term
 
