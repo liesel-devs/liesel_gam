@@ -352,7 +352,7 @@ class Basis(UserVar):
 
     def __init__(
         self,
-        value: lsl.Var | lsl.Node | Array,
+        value: lsl.Var | lsl.Node | ArrayLike,
         basis_fn: Callable[[Array], Array] | Callable[..., Array] = lambda x: x,
         name: str | None = None,
         xname: str | None = None,
@@ -368,7 +368,7 @@ class Basis(UserVar):
                 raise ValueError(
                     "When supplying an array to `value`, `xname` must be defined."
                 )
-            value_var = lsl.Var.new_obs(value, name=xname)
+            value_var = lsl.Var.new_obs(jnp.asarray(value), name=xname)
 
         if not value_var.name:
             # to ensure sensible basis name
