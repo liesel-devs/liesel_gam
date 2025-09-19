@@ -177,6 +177,176 @@ class Term(UserVar):
         return self
 
     @classmethod
+    def f(
+        cls,
+        basis: Basis,
+        fname: str = "f",
+        penalty: lsl.Var | lsl.Value | Array | None = None,
+        scale: lsl.Var | Array | float = 1000.0,
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        noncentered: bool = False,
+    ) -> Term:
+        """
+        Construct a smooth term from a :class:`.Basis`.
+
+        This convenience constructor builds a named ``term`` using the
+        provided basis. The penalty matrix is taken from ``basis.penalty`` and
+        a coefficient variable with an appropriate multivariate-normal prior
+        is created. The returned term evaluates to ``basis @ coef``.
+
+        Parameters
+        ----------
+        basis
+            Basis object that provides the design matrix and penalty for the \
+            smooth term. The basis must have an associated input variable with \
+            a meaningful name (used to compose the term name).
+        fname
+            Function-name prefix used when constructing the term name. Default \
+            is ``'f'`` which results in names like ``f(x)`` when the basis \
+            input is named ``x``.
+        penalty
+            Optional penalty matrix or a variable/value wrapping the penalty \
+            used to construct the multivariate normal prior for the coefficients. \
+            If ``None`` (default), ``basis.penalty`` is used.
+        scale
+            Scale parameter passed to the coefficient prior. \
+            Defaults to ``1000.0`` for a weakly-informative prior.
+        inference
+            Inference specification forwarded to the coefficient variable \
+            creation, a :class:`liesel.goose.MCMCSpec`.
+        noncentered
+            If ``True``, the term is reparameterized to the non-centered \
+            form via :meth:`.reparam_noncentered` before being returned.
+        coef_name
+            Coefficient name. The default coefficient name is a LaTeX-like string \
+            ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
+
+        Returns
+        -------
+        A :class:`.Term` instance configured with the given basis and prior settings.
+
+        """
+        name = f"{fname}({basis.x.name})"
+
+        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
+        penalty = penalty or basis.penalty
+
+        term = cls(
+            basis=basis,
+            penalty=penalty,
+            scale=scale,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+        )
+
+        if noncentered:
+            term.reparam_noncentered()
+
+        return term
+
+    @classmethod
+    def f_ig(
+        cls,
+        basis: Basis,
+        fname: str = "f",
+        penalty: lsl.Var | lsl.Value | Array | None = None,
+        ig_concentration: float = 1.0,
+        ig_scale: float = 0.005,
+        inference: InferenceTypes = None,
+        variance_value: float = 100.0,
+        variance_name: str | None = None,
+        coef_name: str | None = None,
+        noncentered: bool = False,
+    ) -> Term:
+        """
+        Construct a smooth term with an inverse-gamma prior on the variance.
+
+        This convenience constructor creates a term similar to :meth:`.f` but
+        sets up an explicit variance parameter with an Inverse-Gamma prior.
+        A scale variable is set up by taking the square-root, and the
+        coefficient prior uses the derived ``scale`` together with the basis
+        penalty. By default a Gibbs-style initialization is attached to the
+        variance inference via an internal kernel; an optional jitter
+        distribution can be provided for MCMC initialization.
+
+        Parameters
+        ----------
+        basis
+            Basis object providing the design matrix and penalty.
+        fname
+            Prefix used to build the term name (default: ``'f'``).
+        penalty
+            Optional penalty matrix or a variable/value wrapping the penalty \
+            used to construct the multivariate normal prior for the coefficients. \
+            If ``None`` (default), ``basis.penalty`` is used.
+        ig_concentration
+            Concentration (shape) parameter of the Inverse-Gamma prior for the \
+            variance.
+        ig_scale
+            Scale parameter of the Inverse-Gamma prior for the variance.
+        inference
+            Inference specification forwarded to the coefficient variable \
+            creation, a :class:`liesel.goose.MCMCSpec`.
+        variance_value
+            Initial value for the variance parameter.
+        variance_name
+            Variance parameter name. The default is a LaTeX-like representation \
+            ``"$\\tau^2_{...}$"`` for readability in summaries.
+        coef_name
+            Coefficient name. The default coefficient name is a LaTeX-like string \
+            ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
+        noncentered
+            If ``True``, reparameterize the term to non-centered form \
+            (see :meth:`.reparam_noncentered`).
+
+        Returns
+        -------
+        A :class:`.Term` instance configured with an inverse-gamma prior on
+        the variance and an appropriate inference specification for
+        variance updates.
+
+        """
+        name = f"{fname}({basis.x.name})"
+        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
+        variance_name = variance_name or "$\\tau^2_{" + f"{name}" + "}$"
+        penalty = penalty or basis.penalty
+
+        variance = lsl.Var.new_param(
+            value=variance_value,
+            distribution=lsl.Dist(
+                tfd.InverseGamma,
+                concentration=ig_concentration,
+                scale=ig_scale,
+            ),
+            name=variance_name,
+        )
+        variance.role = Roles.variance_smooth
+
+        scale = lsl.Var.new_calc(jnp.sqrt, variance, name="$\\tau_{" + f"{name}" + "}$")
+        scale.role = Roles.scale_smooth
+
+        term = cls(
+            basis=basis,
+            scale=scale,
+            penalty=penalty,
+            inference=inference,
+            name=name,
+            coef_name=coef_name,
+        )
+
+        variance.inference = gs.MCMCSpec(
+            init_star_ig_gibbs,
+            kernel_kwargs={"coef": term.coef, "scale": scale},
+        )
+
+        if noncentered:
+            term.reparam_noncentered()
+
+        return term
+
+    @classmethod
     def new_ig(
         cls,
         basis: Basis,
