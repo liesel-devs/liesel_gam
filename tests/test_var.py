@@ -320,6 +320,7 @@ class TestSmoothTerm:
             name="t",
         )
         model = lsl.Model([term])
+        assert isinstance(term.scale, lsl.Var)
         tau2 = term.scale.value_node[0]
         kernel = tau2.inference.kernel([tau2.name], term.coef)  # type: ignore
         proposal = kernel._transition_fn(jax.random.key(1), model.state)  # type: ignore
@@ -336,6 +337,7 @@ class TestSmoothTerm:
             name="t",
         )
         model = lsl.Model([term])
+        assert isinstance(term.scale, lsl.Var)
         tau2 = term.scale.value_node[0]
         kernel = tau2.inference.kernel([tau2.name], term.coef)  # type: ignore
         proposal = kernel._transition_fn(jax.random.key(1), model.state)  # type: ignore
