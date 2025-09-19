@@ -545,11 +545,11 @@ class Intercept(UserVar):
         self.role = Roles.intercept
 
 
-def make_callback(function, input_shape, dtype, *args, **kwargs):
+def make_callback(function, input_shape, dtype):
     if len(input_shape):
         k = input_shape[-1]
 
-    def fn(x):
+    def fn(x, **basis_kwargs):
         n = jnp.shape(jnp.atleast_1d(x))[0]
         if len(input_shape) == 2:
             shape = (n, k)
@@ -564,7 +564,7 @@ def make_callback(function, input_shape, dtype, *args, **kwargs):
             )
         result_shape = jax.ShapeDtypeStruct(shape, dtype)
         result = jax.pure_callback(
-            function, result_shape, x, *args, vmap_method="sequential", **kwargs
+            function, result_shape, x, vmap_method="sequential", **basis_kwargs
         )
         return result
 
@@ -685,19 +685,27 @@ class Basis(UserVar):
 
         if use_callback:
             value_ar = jnp.asarray(value_var.value)
-            basis_ar = basis_fn(value_ar, **basis_kwargs)
+            basis_kwargs_arr = {}
+            for k, v in basis_kwargs.items():
+                if isinstance(v, lsl.Var | lsl.Node):
+                    basis_kwargs_arr[k] = v.value
+                else:
+                    basis_kwargs_arr[k] = v
+            basis_ar = basis_fn(value_ar, **basis_kwargs_arr)
             dtype = basis_ar.dtype
             input_shape = jnp.shape(basis_ar)
-            fn = make_callback(basis_fn, input_shape, dtype, **basis_kwargs)
+            fn = make_callback(basis_fn, input_shape, dtype)
         else:
             fn = basis_fn
 
         name_ = name or f"B({value_var.name})"
 
         if cache_basis:
-            calc = lsl.Calc(fn, value_var, _name=name_ + "_calc")
+            calc = lsl.Calc(fn, value_var, **basis_kwargs, _name=name_ + "_calc")
         else:
-            calc = lsl.TransientCalc(fn, value_var, _name=name_ + "_calc")
+            calc = lsl.TransientCalc(
+                fn, value_var, **basis_kwargs, _name=name_ + "_calc"
+            )
 
         super().__init__(calc, name=name_)
         self.update()

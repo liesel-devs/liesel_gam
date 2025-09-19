@@ -15,11 +15,24 @@ class TestBasis:
 
         assert jnp.allclose(x.value, basis.value)
 
-    def test_kwargs_in_basis_fn(self) -> None:
+    @pytest.mark.parametrize("use_callback", (True, False))
+    def test_static_kwargs_in_basis_fn(self, use_callback) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
-        basis = gam.Basis(x, lambda x, y: x + y, y=2.0)
+        basis = gam.Basis(x, lambda x, y: x + y, y=2.0, use_callback=use_callback)
 
         assert jnp.allclose(x.value, basis.value - 2.0)
+
+    @pytest.mark.parametrize("use_callback", (True, False))
+    def test_dynamic_kwargs_in_basis_fn(self, use_callback) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        y = lsl.Var.new_obs(2.0, name="y")
+        basis = gam.Basis(x, lambda x, y: x + y, y=y, use_callback=use_callback)
+
+        assert jnp.allclose(basis.value, x.value + y.value)
+
+        y.value = 3.0
+        basis.update()
+        assert jnp.allclose(basis.value, x.value + y.value)
 
     def test_square(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
