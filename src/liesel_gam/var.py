@@ -130,7 +130,6 @@ class Term(UserVar):
         inference: InferenceTypes = None,
         variance_value: float = 100.0,
         variance_name: str | None = None,
-        variance_jitter_dist: tfd.Distribution | None = None,
         coef_name: str | None = None,
     ) -> Self:
         variance_name = variance_name or f"{name}_variance"
@@ -160,8 +159,7 @@ class Term(UserVar):
 
         variance.inference = gs.MCMCSpec(
             init_star_ig_gibbs,
-            kernel_kwargs={"coef": term.coef},
-            jitter_dist=variance_jitter_dist,
+            kernel_kwargs={"coef": term.coef, "scale": scale},
         )
 
         return term
