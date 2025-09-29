@@ -551,7 +551,7 @@ def make_callback(function, output_shape, dtype):
         k = output_shape[-1]
 
     def fn(x, **basis_kwargs):
-        n = jnp.shape(jnp.atleast_1d(x))[0]
+        n = np.shape(np.atleast_1d(x))[0]
         if len(output_shape) == 2:
             shape = (n, k)
         elif len(output_shape) == 1:
