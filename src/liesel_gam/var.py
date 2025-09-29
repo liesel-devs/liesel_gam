@@ -7,7 +7,6 @@ import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
-import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
 
@@ -551,7 +550,7 @@ def make_callback(function, output_shape, dtype):
         k = output_shape[-1]
 
     def fn(x, **basis_kwargs):
-        n = np.shape(np.atleast_1d(x))[0]
+        n = jnp.shape(jnp.atleast_1d(x))[0]
         if len(output_shape) == 2:
             shape = (n, k)
         elif len(output_shape) == 1:
