@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
+import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
 
@@ -545,22 +546,22 @@ class Intercept(UserVar):
         self.role = Roles.intercept
 
 
-def make_callback(function, input_shape, dtype):
-    if len(input_shape):
-        k = input_shape[-1]
+def make_callback(function, output_shape, dtype):
+    if len(output_shape):
+        k = output_shape[-1]
 
     def fn(x, **basis_kwargs):
         n = jnp.shape(jnp.atleast_1d(x))[0]
-        if len(input_shape) == 2:
+        if len(output_shape) == 2:
             shape = (n, k)
-        elif len(input_shape) == 1:
+        elif len(output_shape) == 1:
             shape = (n,)
-        elif not len(input_shape):
+        elif not len(output_shape):
             shape = ()
         else:
             raise RuntimeError(
                 "Return shape of 'basis_fn(value)' must"
-                f" have <= dimensions, got {input_shape}"
+                f" have <= 2 dimensions, got {output_shape}"
             )
         result_shape = jax.ShapeDtypeStruct(shape, dtype)
         result = jax.pure_callback(
