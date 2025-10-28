@@ -4,7 +4,10 @@ dynamic = ["version"]
 description = "Functionality for Generalized Additive Models in Liesel"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["liesel>=0.4"]
+dependencies = [
+    "formulaic>=1.2.1",
+    "liesel>=0.4",
+]
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]
 classifiers = [
