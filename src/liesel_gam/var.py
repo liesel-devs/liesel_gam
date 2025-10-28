@@ -44,6 +44,51 @@ class UserVar(lsl.Var):
         )
 
 
+def mvn_diag_prior(scale: lsl.Var) -> lsl.Dist:
+    return lsl.Dist(tfd.Normal, loc=0.0, scale=scale)
+
+
+def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Dist:
+    if isinstance(penalty, lsl.Var) and not penalty.strong:
+        raise NotImplementedError(
+            "Varying penalties or currently not supported by this function."
+        )
+    prior = lsl.Dist(
+        MultivariateNormalSingular,
+        loc=0.0,
+        scale=scale,
+        penalty=penalty,
+        penalty_rank=jnp.linalg.matrix_rank(penalty.value),
+    )
+    return prior
+
+
+def term_prior(
+    scale: lsl.Var | Array | None, penalty: lsl.Var | lsl.Value | Array | None
+) -> lsl.Dist | None:
+    """
+    Returns
+    - None if scale=None
+    - A simple Normal prior with loc=0.0 and scale=scale if penalty=None
+    - A potentially rank-deficient structured multivariate normal prior otherwise
+    """
+    if scale is None:
+        if penalty is not None:
+            raise ValueError(f"If {scale=}, then penalty must also be None.")
+        return None
+
+    if not isinstance(scale, lsl.Var | lsl.Value):
+        scale = lsl.Var(scale)
+
+    if penalty is None:
+        return mvn_diag_prior(scale)
+
+    if not isinstance(penalty, lsl.Var | lsl.Value):
+        penalty = lsl.Value(penalty)
+
+    return mvn_structured_prior(scale, penalty)
+
+
 class Term(UserVar):
     """
     General structured additive term.
@@ -105,8 +150,8 @@ class Term(UserVar):
     def __init__(
         self,
         basis: Basis,
-        penalty: lsl.Var | lsl.Value | Array,
-        scale: lsl.Var | Array,
+        penalty: lsl.Var | lsl.Value | Array | None,
+        scale: lsl.Var | Array | None,
         name: str,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
@@ -119,20 +164,8 @@ class Term(UserVar):
 
         nbases = jnp.shape(basis.value)[-1]
 
-        if isinstance(penalty, lsl.Var | lsl.Value):
-            penalty_arr = penalty.value
-        else:
-            penalty_arr = penalty
+        prior = term_prior(scale, penalty)
 
-        prior = lsl.Dist(
-            MultivariateNormalSingular,
-            loc=0.0,
-            scale=scale,
-            penalty=penalty,
-            penalty_rank=jnp.linalg.matrix_rank(penalty_arr),
-        )
-
-        self.scale = prior["scale"]
         self.nbases = nbases
         self.basis = basis
         self.coef = lsl.Var.new_param(
@@ -153,6 +186,19 @@ class Term(UserVar):
 
         self.is_noncentered = False
 
+    @property
+    def scale(self) -> lsl.Var | lsl.Node | None:
+        prior = self.coef.dist_node
+        return prior["scale"] if prior is not None else None
+
+    @scale.setter
+    def scale(self, value: lsl.Var):
+        prior = self.coef.dist_node
+        if prior is None:
+            raise ValueError(f"{self.coef.dist_node=}, so scale cannot be set.")
+
+        prior["scale"] = value
+
     def reparam_noncentered(self) -> Self:
         """
         Turns this term into noncentered form, which means the prior for
@@ -160,6 +206,11 @@ class Term(UserVar):
         ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
         This can sometimes be helpful when sampling with the No-U-Turn Sampler.
         """
+        if self.scale is None:
+            raise ValueError(
+                f"Noncentering reparameterization of {self} fails, "
+                f"because {self.scale=}."
+            )
         if self.is_noncentered:
             return self
 
@@ -181,8 +232,7 @@ class Term(UserVar):
         cls,
         basis: Basis,
         fname: str = "f",
-        penalty: lsl.Var | lsl.Value | Array | None = None,
-        scale: lsl.Var | Array | float = 1000.0,
+        scale: lsl.Var | Array | None = None,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         noncentered: bool = False,
@@ -205,10 +255,6 @@ class Term(UserVar):
             Function-name prefix used when constructing the term name. Default \
             is ``'f'`` which results in names like ``f(x)`` when the basis \
             input is named ``x``.
-        penalty
-            Optional penalty matrix or a variable/value wrapping the penalty \
-            used to construct the multivariate normal prior for the coefficients. \
-            If ``None`` (default), ``basis.penalty`` is used.
         scale
             Scale parameter passed to the coefficient prior. \
             Defaults to ``1000.0`` for a weakly-informative prior.
@@ -230,11 +276,10 @@ class Term(UserVar):
         name = f"{fname}({basis.x.name})"
 
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
-        penalty = penalty or basis.penalty
 
         term = cls(
             basis=basis,
-            penalty=penalty,
+            penalty=basis.penalty,
             scale=scale,
             inference=inference,
             coef_name=coef_name,
@@ -251,7 +296,6 @@ class Term(UserVar):
         cls,
         basis: Basis,
         fname: str = "f",
-        penalty: lsl.Var | lsl.Value | Array | None = None,
         ig_concentration: float = 1.0,
         ig_scale: float = 0.005,
         inference: InferenceTypes = None,
@@ -277,10 +321,6 @@ class Term(UserVar):
             Basis object providing the design matrix and penalty.
         fname
             Prefix used to build the term name (default: ``'f'``).
-        penalty
-            Optional penalty matrix or a variable/value wrapping the penalty \
-            used to construct the multivariate normal prior for the coefficients. \
-            If ``None`` (default), ``basis.penalty`` is used.
         ig_concentration
             Concentration (shape) parameter of the Inverse-Gamma prior for the \
             variance.
@@ -311,7 +351,6 @@ class Term(UserVar):
         name = f"{fname}({basis.x.name})"
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
         variance_name = variance_name or "$\\tau^2_{" + f"{name}" + "}$"
-        penalty = penalty or basis.penalty
 
         variance = lsl.Var.new_param(
             value=variance_value,
@@ -330,7 +369,7 @@ class Term(UserVar):
         term = cls(
             basis=basis,
             scale=scale,
-            penalty=penalty,
+            penalty=basis.penalty,
             inference=inference,
             name=name,
             coef_name=coef_name,
@@ -350,7 +389,7 @@ class Term(UserVar):
     def new_ig(
         cls,
         basis: Basis,
-        penalty: lsl.Var | lsl.Value | Array,
+        penalty: lsl.Var | lsl.Value | Array | None,
         name: str,
         ig_concentration: float = 1.0,
         ig_scale: float = 0.005,
@@ -489,21 +528,20 @@ class LinearTerm(Term):
         self.role = Roles.term_linear
 
 
-class LinearTerm2(Term):
-    """New version of LinearTerm, with interface consistent with the Term base class."""
-
+class LinearTerm2(UserVar):
     def __init__(
         self,
-        value: lsl.Var | lsl.Node | Array,
+        value: lsl.Var | Array,
         name: str,
-        scale: lsl.Var | Array = 1000.0,
+        prior: lsl.Dist | None = None,
         inference: InferenceTypes = None,
         add_intercept: bool = False,
         coef_name: str | None = None,
         basis_name: str | None = None,
+        _update_on_init: bool = True,
     ):
-        if not isinstance(value, lsl.Var | lsl.Node):
-            x: lsl.Var | lsl.Node = lsl.Var.new_obs(value, name=f"{name}_input")
+        if not isinstance(value, lsl.Var):
+            x: lsl.Var = lsl.Var.new_obs(value, name=f"{name}_input")
         else:
             x = value
 
@@ -513,18 +551,21 @@ class LinearTerm2(Term):
 
         coef_name = coef_name or f"{name}_coef"
         basis_name = basis_name or f"B({name})"
-        basis = Basis.new_linear(value=x, name=basis_name, add_intercept=add_intercept)
-
-        nbases = jnp.shape(basis.value)[-1]
-        penalty = jnp.eye(nbases)
-        super().__init__(
-            basis=basis,
-            penalty=penalty,
-            coef_name=coef_name,
-            name=name,
-            inference=inference,
-            scale=scale,
+        self.basis = Basis.new_linear(
+            value=x, name=basis_name, add_intercept=add_intercept
         )
+
+        self.coef = lsl.Var.new_param(
+            jnp.zeros(self.basis.nbases), prior, inference=inference, name=coef_name
+        )
+        calc = lsl.Calc(
+            lambda basis, coef: jnp.dot(basis, coef),
+            basis=self.basis,
+            coef=self.coef,
+            _update_on_init=_update_on_init,
+        )
+
+        super().__init__(calc, name=name)
 
         self.coef.role = Roles.coef_linear
         self.role = Roles.term_linear

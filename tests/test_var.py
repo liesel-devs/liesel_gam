@@ -280,13 +280,13 @@ class TestLinearTerm2:
         x = jnp.linspace(0, 1, 5)
         term = gam.var.LinearTerm2(x, name="b0")
         dist = term.coef.dist_node
-        assert dist is not None
-        assert dist["scale"].value == pytest.approx(1000.0)
+        assert dist is None
 
     def test_dist_works(self) -> None:
         x = jnp.linspace(0, 1, 5)
         scale = lsl.Var.new_param(1.0, name="scale")
-        term = gam.var.LinearTerm2(x, name="b0", scale=scale)
+        prior = gam.var.mvn_diag_prior(scale=scale)
+        term = gam.var.LinearTerm2(x, name="b0", prior=prior)
         assert term.coef.dist_node is not None
         assert term.coef.dist_node["scale"] is scale
 
@@ -308,6 +308,33 @@ class TestSmoothTerm:
         assert not jnp.isnan(term.coef.log_prob)
         assert term.coef.log_prob is not None
 
+    def test_scale_none(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+
+        with pytest.raises(ValueError):
+            gam.SmoothTerm(
+                basis=gam.Basis(jnp.c_[x, x], xname="x"),
+                penalty=jnp.eye(2),
+                scale=None,
+                name="t",
+            )
+
+        term = gam.SmoothTerm(
+            basis=gam.Basis(jnp.c_[x, x], xname="x"),
+            penalty=None,
+            scale=None,
+            name="t",
+        )
+
+        assert term.scale is None
+        assert term.coef.dist_node is None
+        assert term.basis.value.shape == (10, 2)
+        assert term.nbases == 2
+        assert jnp.allclose(jnp.zeros(2), term.coef.value)
+        assert jnp.allclose(jnp.zeros(10), term.value)
+        assert not jnp.isnan(term.coef.log_prob)
+        assert term.coef.log_prob is not None
+
     def test_init_ig(self) -> None:
         x = jnp.linspace(0, 1, 10)
         term = gam.SmoothTerm.new_ig(
@@ -316,6 +343,7 @@ class TestSmoothTerm:
             name="t",
         )
 
+        assert term.scale is not None
         assert jnp.allclose(term.scale.value, 10.0)
 
         assert term.basis.value.shape == (10, 2)
