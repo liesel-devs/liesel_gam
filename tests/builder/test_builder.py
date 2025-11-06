@@ -37,7 +37,7 @@ class TestFoBasisLinearNumeric:
     def test_name(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y + x_float", name="X")
+        basis = bases.fo("y + x_float", name="X")
 
         assert basis.name == "B(X)"
 
@@ -45,17 +45,17 @@ class TestFoBasisLinearNumeric:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(RuntimeError):
-            bases.fo_basis("-1 + y + x_float", name="X")
+            bases.fo("-1 + y + x_float", name="X")
 
         with pytest.raises(RuntimeError):
-            bases.fo_basis("0 + y + x_float", name="X")
+            bases.fo("0 + y + x_float", name="X")
 
     def test_removing_intercept_manually_does_not_interfere_with_names(self, data):
         # edge case with unfortunate variable name
         data["-1"] = data["x_float"]
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y + `-1`", name="X")
+        basis = bases.fo("y + `-1`", name="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -67,7 +67,7 @@ class TestFoBasisLinearNumeric:
     def test_simple_linear(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y + x_float", name="X")
+        basis = bases.fo("y + x_float", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -82,7 +82,7 @@ class TestFoBasisLinearNumeric:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         # Alernative method
-        basis = bases.fo_basis("y + Q('weird:col*name')", name="X")
+        basis = bases.fo("y + Q('weird:col*name')", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -96,7 +96,7 @@ class TestFoBasisLinearNumeric:
     def test_explicit_removed_intercept_m1(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("-1 + y + x_float", name="X")
+        basis = bases.fo("-1 + y + x_float", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -110,7 +110,7 @@ class TestFoBasisLinearNumeric:
     def test_explicit_removed_intercept_0(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("0 + y + x_float", name="X")
+        basis = bases.fo("0 + y + x_float", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -218,7 +218,7 @@ class TestFoBasisOperators:
     def test_simple_linear_with_double_terms(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y + y + x_float", name="X")
+        basis = bases.fo("y + y + x_float", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -231,7 +231,7 @@ class TestFoBasisOperators:
     def test_simple_interaction(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y + x_float + y:x_float", name="X")
+        basis = bases.fo("y + x_float + y:x_float", name="X")
 
         assert basis.value.shape == (84, 3)
 
@@ -245,7 +245,7 @@ class TestFoBasisOperators:
     def test_interaction(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y*x_float", name="X")
+        basis = bases.fo("y*x_float", name="X")
 
         assert basis.value.shape == (84, 3)
 
@@ -259,7 +259,7 @@ class TestFoBasisOperators:
     def test_interaction_with_double_terms(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("y + x_float + y:x_float + y*x_float", name="X")
+        basis = bases.fo("y + x_float + y:x_float + y*x_float", name="X")
 
         assert basis.value.shape == (84, 3)
 
@@ -273,29 +273,29 @@ class TestFoBasisOperators:
     def test_nesting(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis1 = bases.fo_basis("y/x_float", name="X")
-        basis2 = bases.fo_basis("y + y:x_float", name="X")
+        basis1 = bases.fo("y/x_float", name="X")
+        basis2 = bases.fo("y + y:x_float", name="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
-        basis1 = bases.fo_basis("(y + x_float) / x_int", name="X")
-        basis2 = bases.fo_basis("y + x_float + y:x_float:x_int", name="X")
+        basis1 = bases.fo("(y + x_float) / x_int", name="X")
+        basis2 = bases.fo("y + x_float + y:x_float:x_int", name="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
     def test_inverted_nesting(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis1 = bases.fo_basis("y/x_float", name="X")
-        basis2 = bases.fo_basis("x_float %in% y", name="X")
+        basis1 = bases.fo("y/x_float", name="X")
+        basis2 = bases.fo("x_float %in% y", name="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
     def test_remove_term(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis1 = bases.fo_basis("y + x_float - x_float", name="X")
-        basis2 = bases.fo_basis("y", name="X")
+        basis1 = bases.fo("y + x_float - x_float", name="X")
+        basis2 = bases.fo("y", name="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
@@ -303,19 +303,19 @@ class TestFoBasisOperators:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(FormulaSyntaxError):
-            bases.fo_basis("y +", name="X")
+            bases.fo("y +", name="X")
 
     def test_split_formula(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(FormulaSyntaxError):
-            bases.fo_basis(r"y + x_float \| x_int", name="X")
+            bases.fo(r"y + x_float \| x_int", name="X")
 
     def test_tilde_in_formula(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(ValueError):
-            bases.fo_basis("y ~ x_float", name="X")
+            bases.fo("y ~ x_float", name="X")
 
 
 class TestFoBasisTransforms:
@@ -337,7 +337,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.fo_basis("y + center(x_float)", name="X")
+        basis = bases.fo("y + center(x_float)", name="X")
         assert basis.value.shape == (89, 2)
 
         y = bases.data["y"].to_numpy()
@@ -352,7 +352,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.fo_basis("y + scale(x_float)", name="X")
+        basis = bases.fo("y + scale(x_float)", name="X")
         assert basis.value.shape == (89, 2)
 
         y = bases.data["y"].to_numpy()
@@ -368,7 +368,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.fo_basis("y + standardize(x_float)", name="X")
+        basis = bases.fo("y + standardize(x_float)", name="X")
         assert basis.value.shape == (89, 2)
 
         y = bases.data["y"].to_numpy()
@@ -384,7 +384,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.fo_basis("y + scale(x_float)", name="X")
+        basis = bases.fo("y + scale(x_float)", name="X")
         assert basis.value.shape == (89, 2)
 
         x_float = bases.data["x_float"].to_numpy()
@@ -458,7 +458,7 @@ class TestFoBasisLinearCategorical:
     def test_simple_categorical_unordered(self, data) -> data:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("C(cat_unordered)", name="X")
+        basis = bases.fo("C(cat_unordered)", name="X")
 
         mapping = bases.mappings["cat_unordered"].labels_to_integers_map
 
@@ -483,7 +483,7 @@ class TestFoBasisLinearCategorical:
     def test_simple_categorical_ordered(self, data) -> data:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.fo_basis("C(cat_ordered)", name="X")
+        basis = bases.fo("C(cat_ordered)", name="X")
 
         mapping = bases.mappings["cat_ordered"].labels_to_integers_map
 

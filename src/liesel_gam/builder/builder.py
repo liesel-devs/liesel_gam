@@ -60,7 +60,7 @@ class BasisBuilder:
     def data(self) -> pd.DataFrame:
         return self.registry.data
 
-    def fo_basis(
+    def fo(
         self,
         formula: str,
         name: str = "",
