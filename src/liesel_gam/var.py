@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any, Self
 
 import jax
@@ -10,7 +9,6 @@ import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
-from numpy import concatenate
 
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
