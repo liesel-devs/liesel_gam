@@ -6,4 +6,5 @@ from .predictor import AdditivePredictor as AdditivePredictor
 from .var import Basis as Basis
 from .var import Intercept as Intercept
 from .var import LinearTerm as LinearTerm
+from .var import ScaleIG as ScaleIG
 from .var import SmoothTerm as SmoothTerm
