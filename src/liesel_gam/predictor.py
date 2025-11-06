@@ -6,11 +6,11 @@ from typing import Any, Self, cast
 import liesel.goose as gs
 import liesel.model as lsl
 
-from .var import Intercept, Term, UserVar
+from .var import BasisDot, Term, UserVar
 
 Array = Any
 
-term_types = Term | Intercept
+term_types = Term | BasisDot
 
 
 class AdditivePredictor(UserVar):
@@ -18,31 +18,41 @@ class AdditivePredictor(UserVar):
         self,
         name: str,
         inv_link: Callable[[Array], Array] | None = None,
-        add_intercept: bool = True,
+        intercept: bool | lsl.Var = True,
     ) -> None:
         if inv_link is None:
 
-            def _sum(*args, **kwargs):
+            def _sum(*args, intercept, **kwargs):
                 # the + 0. implicitly ensures correct dtype also for empty predictors
-                return sum(args) + sum(kwargs.values()) + 0.0
+                return sum(args) + sum(kwargs.values()) + 0.0 + intercept
         else:
 
-            def _sum(*args, **kwargs):
+            def _sum(*args, intercept, **kwargs):
                 # the + 0. implicitly ensures correct dtype also for empty predictors
-                return inv_link(sum(args) + sum(kwargs.values()) + 0.0)
+                return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
 
-        super().__init__(lsl.Calc(_sum), name=name)
-        self.update()
-        self.terms: dict[str, term_types] = {}
-        """Dictionary of terms in this predictor."""
-
-        if add_intercept:
-            self += Intercept(
+        if intercept and not isinstance(intercept, lsl.Var):
+            intercept = lsl.Var.new_param(
                 name=f"{name}_intercept",
                 value=0.0,
                 distribution=None,
                 inference=gs.MCMCSpec(gs.IWLSKernel),
             )
+        else:
+            intercept = 0.0
+
+        super().__init__(lsl.Calc(_sum, intercept=intercept), name=name)
+        self.update()
+        self.terms: dict[str, term_types] = {}
+        """Dictionary of terms in this predictor."""
+
+    @property
+    def intercept(self) -> lsl.Var | float:
+        return self.value_node["intercept"]
+
+    @intercept.setter
+    def intercept(self, value: lsl.Var):
+        self.value_node["intercept"] = value
 
     def update(self) -> Self:
         return cast(Self, super().update())

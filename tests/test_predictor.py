@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import liesel.model as lsl
 import pytest
 
 import liesel_gam as gam
@@ -36,13 +37,13 @@ class TestPredictor:
         pred = gam.AdditivePredictor("loc")
         pred += term1, term2
         assert jnp.allclose(pred.value, 3.0)
-        assert len(pred.terms) == 3  # because intercept is in there, too
+        assert len(pred.terms) == 2  # because intercept is not in terms
 
         # list
         pred = gam.AdditivePredictor("loc")
         pred += [term1, term2]
         assert jnp.allclose(pred.value, 3.0)
-        assert len(pred.terms) == 3  # because intercept is in there, too
+        assert len(pred.terms) == 2  # because intercept is not in terms
 
     def test_add_term_with_same_name(self) -> None:
         pred = gam.AdditivePredictor("loc")
@@ -61,11 +62,8 @@ class TestPredictor:
 
     def test_intercept(self) -> None:
         pred = gam.AdditivePredictor("loc")
-        assert "loc_intercept" in pred.terms
+        assert pred.intercept.name == "loc_intercept"
+        assert pred.intercept.parameter
 
-        pred = gam.AdditivePredictor("loc", add_intercept=False)
-        assert "loc_intercept" not in pred.terms
-
-        pred = gam.AdditivePredictor("loc", add_intercept=False)
-        pred += gam.Intercept("b0")
-        assert "b0" in pred.terms
+        pred = gam.AdditivePredictor("loc", intercept=False)
+        assert isinstance(pred.intercept, lsl.Value)
