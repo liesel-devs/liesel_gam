@@ -64,14 +64,15 @@ class TestBasis:
         assert jnp.allclose(x.value, basis.value[:, 1])
         assert basis.value.shape == (x.value.shape[0], 2)
 
-    def test_unnamed_value_causes_error(self) -> None:
-        with pytest.raises(ValueError):
-            x = lsl.Var.new_obs(jnp.linspace(0, 1, 10))
-            gam.Basis(x, basis_fn=lambda x: x)
+    def test_unnamed_value(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10))
+        basis = gam.Basis(x, basis_fn=lambda x: x)
+        assert basis.name == ""
 
-    def test_array_without_name_causes_error(self) -> None:
-        with pytest.raises(ValueError):
-            gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)  # type: ignore
+    def test_array_without_name(self) -> None:
+        basis = gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)  # type: ignore
+        assert basis.name == ""
+        assert basis.x.name == ""
 
     def test_array(self) -> None:
         x = jnp.linspace(0, 1, 10)

@@ -612,6 +612,28 @@ def make_callback(function, output_shape, dtype):
     return fn
 
 
+def _append_name(name: str, append: str) -> str:
+    if name == "":
+        return ""
+    else:
+        return name + append
+
+
+def _ensure_var_or_node(
+    x: lsl.Var | lsl.Node | ArrayLike, name: str | None
+) -> lsl.Var | lsl.Node:
+    if isinstance(x, lsl.Var | lsl.Node):
+        x_var = x
+    else:
+        name = name if name is not None else ""
+        x_var = lsl.Var.new_obs(jnp.asarray(x), name=name)
+
+    if name is not None and x_var.name != name:
+        raise ValueError(f"{x_var.name=} and {name=} are incompatible.")
+
+    return x_var
+
+
 class Basis(UserVar):
     """
     General basis for a structured additive term.
@@ -711,18 +733,8 @@ class Basis(UserVar):
         penalty: ArrayLike | lsl.Value | None = None,
         **basis_kwargs,
     ) -> None:
-        if isinstance(value, lsl.Var | lsl.Node):
-            value_var = value
-        else:
-            if not xname:
-                raise ValueError(
-                    "When supplying an array to `value`, `xname` must be defined."
-                )
-            value_var = lsl.Var.new_obs(jnp.asarray(value), name=xname)
-
-        if not value_var.name:
-            # to ensure sensible basis name
-            raise ValueError(f"{value=} must be named.")
+        self._validate_xname(value, xname)
+        value_var = _ensure_var_or_node(value, xname)
 
         if use_callback:
             value_ar = jnp.asarray(value_var.value)
@@ -739,13 +751,15 @@ class Basis(UserVar):
         else:
             fn = basis_fn
 
-        name_ = name or f"B({value_var.name})"
+        name_ = self._basis_name(value_var, name)
 
         if cache_basis:
-            calc = lsl.Calc(fn, value_var, **basis_kwargs, _name=name_ + "_calc")
+            calc = lsl.Calc(
+                fn, value_var, **basis_kwargs, _name=_append_name(name_, "_calc")
+            )
         else:
             calc = lsl.TransientCalc(
-                fn, value_var, **basis_kwargs, _name=name_ + "_calc"
+                fn, value_var, **basis_kwargs, _name=_append_name(name_, "_calc")
             )
 
         super().__init__(calc, name=name_)
@@ -770,6 +784,24 @@ class Basis(UserVar):
             penalty_var = lsl.Value(penalty_arr)
 
         self._penalty = penalty_var
+
+    def _validate_xname(self, value: lsl.Var | lsl.Node | ArrayLike, xname: str | None):
+        if isinstance(value, lsl.Var | lsl.Node) and xname is not None:
+            raise ValueError(
+                "When supplying a variable or node to `value`, `xname` must not be "
+                "used. Name the variable instead."
+            )
+
+    def _basis_name(self, value: lsl.Var | lsl.Node | ArrayLike, name: str | None):
+        if name is not None and name != "":
+            return name
+
+        if isinstance(value, lsl.Var | lsl.Node) and value.name == "":
+            return ""
+
+        if hasattr(value, "name"):
+            return f"B({value.name})"
+        return ""
 
     @property
     def penalty(self) -> lsl.Value:
