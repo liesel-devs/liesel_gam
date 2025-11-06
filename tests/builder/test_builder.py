@@ -123,15 +123,15 @@ class TestFoBasisLinearNumeric:
 class TestFoBasisOperators:
     def test_string_literal(self, bases) -> None:
         with pytest.raises(FormulaSyntaxError):
-            bases.fo_basis("y + 'string_literal'", name="X")
+            bases.fo("y + 'string_literal'", name="X")
 
     def test_numeric_literal(self, bases) -> None:
         with pytest.raises(FormulaSyntaxError):
-            bases.fo_basis("y + 5", name="X")
+            bases.fo("y + 5", name="X")
 
     def test_special_names_with_backticks(self, bases) -> None:
         # name with space
-        basis = bases.fo_basis("y + `with space`", name="X")
+        basis = bases.fo("y + `with space`", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -142,7 +142,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 1], with_space)
 
         # weird name
-        basis = bases.fo_basis("y + `weird:col*name`", name="X")
+        basis = bases.fo("y + `weird:col*name`", name="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -156,7 +156,7 @@ class TestFoBasisOperators:
         def subtract_five(x):
             return x - 5
 
-        basis = bases.fo_basis(
+        basis = bases.fo(
             "y + subtract_five(x_float)",
             name="X",
             context={"subtract_five": subtract_five},
@@ -171,7 +171,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 1], x_float)
 
     def test_quoted_python(self, bases) -> None:
-        basis = bases.fo_basis("y + {x_float-5}", name="X")
+        basis = bases.fo("y + {x_float-5}", name="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -181,7 +181,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 1], x_float)
 
     def test_grouped_operation(self, bases) -> None:
-        basis = bases.fo_basis("y + (x_float-1)", name="X")
+        basis = bases.fo("y + (x_float-1)", name="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -192,10 +192,10 @@ class TestFoBasisOperators:
 
     def test_wildcard(self, bases) -> None:
         with pytest.raises(FormulaParsingError):
-            bases.fo_basis(".", name="X")
+            bases.fo(".", name="X")
 
     def test_nth_order_interactions(self, bases) -> None:
-        basis = bases.fo_basis("(y + x_float + x_int)**2", name="X")
+        basis = bases.fo("(y + x_float + x_int)**2", name="X")
 
         assert basis.value.shape == (84, 6)
 
@@ -210,7 +210,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 4], y * x_int)
         assert jnp.allclose(basis.value[:, 5], x_float * x_int)
 
-        basis2 = bases.fo_basis("(y + x_float + x_int)^2", name="X")
+        basis2 = bases.fo("(y + x_float + x_int)^2", name="X")
 
         assert jnp.allclose(basis.value, basis2.value)
 
@@ -319,7 +319,7 @@ class TestFoBasisOperators:
 
 class TestFoBasisTransforms:
     def test_identity_transform(self, bases) -> None:
-        basis = bases.fo_basis("y + I(x_float-5)", name="X")
+        basis = bases.fo("y + I(x_float-5)", name="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -330,7 +330,7 @@ class TestFoBasisTransforms:
 
     def test_lookup_q(self, bases) -> None:
         with pytest.raises(FactorEvaluationError):
-            bases.fo_basis("y + Q('with space')", name="X")
+            bases.fo("y + Q('with space')", name="X")
 
     def test_center(self, bases) -> None:
         data = make_test_df(perturb=False)
@@ -402,25 +402,25 @@ class TestFoBasisTransforms:
         assert squared_error < 0.02
 
     def test_lag(self, bases) -> None:
-        basis = bases.fo_basis("y + lag(y)", name="X")
+        basis = bases.fo("y + lag(y)", name="X")
         assert basis.value.shape == (83, 2)
 
         assert jnp.allclose(basis.value[:, 0], bases.data["y"].to_numpy()[1:])
         assert jnp.allclose(basis.value[:, 1], bases.data["y"].to_numpy()[:-1])
 
-        basis = bases.fo_basis("y + lag(y, 2)", name="X")
+        basis = bases.fo("y + lag(y, 2)", name="X")
         assert basis.value.shape == (82, 2)
         assert jnp.allclose(basis.value[:, 0], bases.data["y"].to_numpy()[2:])
         assert jnp.allclose(basis.value[:, 1], bases.data["y"].to_numpy()[:-2])
 
     def test_exp(self, bases) -> None:
-        basis = bases.fo_basis("y + exp(y)", name="X")
+        basis = bases.fo("y + exp(y)", name="X")
         assert basis.value.shape == (84, 2)
 
         assert jnp.allclose(basis.value[:, 1], np.exp(bases.data["y"].to_numpy()))
 
     def test_poly(self, bases) -> None:
-        basis = bases.fo_basis("poly(y, degree=3, raw=True)", name="X")
+        basis = bases.fo("poly(y, degree=3, raw=True)", name="X")
         assert basis.value.shape == (84, 3)
 
         y = bases.data["y"].to_numpy()
@@ -429,27 +429,27 @@ class TestFoBasisTransforms:
         assert jnp.allclose(basis.value[:, 2], y**3)
 
     def test_bs(self, bases) -> None:
-        basis = bases.fo_basis("bs(y, df=6, degree=3)", name="X")
+        basis = bases.fo("bs(y, df=6, degree=3)", name="X")
         assert basis.value.shape == (84, 6)
 
     def test_cs(self, bases) -> None:
-        basis = bases.fo_basis("cs(y, df=6)", name="X")
+        basis = bases.fo("cs(y, df=6)", name="X")
         assert basis.value.shape == (84, 6)
 
     def test_cc(self, bases) -> None:
-        basis = bases.fo_basis("cc(y, df=6)", name="X")
+        basis = bases.fo("cc(y, df=6)", name="X")
         assert basis.value.shape == (84, 6)
 
     def test_cr(self, bases) -> None:
-        basis = bases.fo_basis("cc(y, df=6)", name="X")
+        basis = bases.fo("cc(y, df=6)", name="X")
         assert basis.value.shape == (84, 6)
 
     def test_te(self, bases) -> None:
         with pytest.raises(FactorEvaluationError):
-            bases.fo_basis("te(y, x_float)", name="X")
+            bases.fo("te(y, x_float)", name="X")
 
     def test_hashed(self, bases) -> None:
-        basis = bases.fo_basis("hashed(y, levels=5)", name="X")
+        basis = bases.fo("hashed(y, levels=5)", name="X")
         assert basis.value.shape == (84, 5)
 
 
