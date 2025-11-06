@@ -1,4 +1,3 @@
-import formulaic as fo
 import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
