@@ -1,4 +1,6 @@
 from .__about__ import __version__ as __version__
+from .builder import BasisBuilder as BasisBuilder
+from .builder import TermBuilder as TermBuilder
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs

@@ -4,13 +4,15 @@ from typing import Any
 
 import formulaic as fo
 import jax.numpy as jnp
+import liesel.goose as gs
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
-from smoothcon import SmoothFactory
 
-from ..var import Basis
+from ..var import Basis, BasisDot
 from .registry import CategoryMapping, PandasRegistry
+
+InferenceTypes = Any
 
 
 def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> dict:
@@ -158,6 +160,14 @@ class BasisBuilder:
 class TermBuilder:
     def __init__(self, registry: PandasRegistry) -> None:
         self.registry = registry
+        self.bases = BasisBuilder(registry)
+
+        self._automatically_assigned_xnames: list[str] = []
+
+    def _auto_xname(self) -> str:
+        name = "x" + str(len(self._automatically_assigned_xnames) + 1)
+        self._automatically_assigned_xnames.append(name)
+        return name
 
     @classmethod
     def from_dict(cls, data: dict[str, np.typing.ArrayLike]) -> TermBuilder:
@@ -167,3 +177,30 @@ class TermBuilder:
     def from_df(cls, data: pd.DataFrame) -> TermBuilder:
         registry = PandasRegistry(data, na_action="drop")
         return cls(registry)
+
+    def fo(
+        self,
+        formula: str,
+        prior: lsl.Dist | None = None,
+        name: str = "",
+        xname: str = "",
+        coef_name: str = "",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        include_intercept: bool = False,
+        context: dict[str, Any] | None = None,
+    ) -> BasisDot:
+        if xname == "":
+            xname = self._auto_xname()
+
+        if name == "":
+            name = "fo(" + xname + ")"
+
+        basis = self.bases.fo(
+            formula, name=xname, include_intercept=include_intercept, context=context
+        )
+
+        term = BasisDot(
+            basis, prior=prior, name=name, inference=inference, coef_name=coef_name
+        )
+
+        return term
