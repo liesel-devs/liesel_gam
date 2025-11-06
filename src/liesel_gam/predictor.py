@@ -22,14 +22,12 @@ class AdditivePredictor(UserVar):
     ) -> None:
         if inv_link is None:
 
-            def _sum(*args, intercept, **kwargs):
-                # the + 0. implicitly ensures correct dtype also for empty predictors
-                return sum(args) + sum(kwargs.values()) + 0.0 + intercept
-        else:
+            def inv_link(x):
+                x
 
-            def _sum(*args, intercept, **kwargs):
-                # the + 0. implicitly ensures correct dtype also for empty predictors
-                return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
+        def _sum(*args, intercept, **kwargs):
+            # the + 0. implicitly ensures correct dtype also for empty predictors
+            return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
 
         if intercept and not isinstance(intercept, lsl.Var):
             intercept = lsl.Var.new_param(
