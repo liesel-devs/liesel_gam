@@ -12,7 +12,6 @@ from jax.typing import ArrayLike
 
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
-from .roles import Roles
 
 InferenceTypes = Any
 Array = Any
@@ -280,8 +279,6 @@ class Term(UserVar):
         super().__init__(calc, name=name)
         if _update_on_init:
             self.coef.update()
-        self.coef.role = Roles.coef_smooth
-        self.role = Roles.term_smooth
 
         self.is_noncentered = False
 
@@ -518,8 +515,6 @@ class LinearTerm(Term):
             coef_name=coef_name,
         )
         self.coef.dist_node = distribution
-        self.coef.role = Roles.coef_linear
-        self.role = Roles.term_linear
 
 
 class LinearTerm2(UserVar):
@@ -549,9 +544,6 @@ class LinearTerm2(UserVar):
 
         super().__init__(calc, name=name)
 
-        self.coef.role = Roles.coef_linear
-        self.role = Roles.term_linear
-
 
 class Intercept(UserVar):
     def __init__(
@@ -565,7 +557,6 @@ class Intercept(UserVar):
             value=value, distribution=distribution, name=name, inference=inference
         )
         self.parameter = True
-        self.role = Roles.intercept
 
 
 def make_callback(function, output_shape, dtype, m: int = 0):
@@ -736,7 +727,6 @@ class Basis(UserVar):
 
         super().__init__(calc, name=name_)
         self.update()
-        self.role = Roles.basis
         self.observed = True
 
         self.x: lsl.Var | lsl.Node = value_var
