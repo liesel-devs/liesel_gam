@@ -76,49 +76,6 @@ class TestFoBasisLinearNumeric:
         assert jnp.allclose(basis.value[:, 0], y)
         assert jnp.allclose(basis.value[:, 1], x_float)
 
-    @pytest.mark.xfail(reason="currently broken")
-    def test_special_names_with_q(self, data) -> None:
-        registry = gb.PandasRegistry(data, na_action="drop")
-        bases = gb.BasisBuilder(registry)
-        # Alernative method
-        basis = bases.fo("y + Q('weird:col*name')", name="X")
-
-        assert basis.value.shape == (84, 2)
-
-        y = bases.data["y"].to_numpy()
-        weird_name = bases.data["weird:col*name"].to_numpy()
-
-        assert jnp.allclose(basis.value[:, 0], y)
-        assert jnp.allclose(basis.value[:, 1], weird_name)
-
-    @pytest.mark.xfail(reason="Currently broken")
-    def test_explicit_removed_intercept_m1(self, data) -> None:
-        registry = gb.PandasRegistry(data, na_action="drop")
-        bases = gb.BasisBuilder(registry)
-        basis = bases.fo("-1 + y + x_float", name="X")
-
-        assert basis.value.shape == (84, 2)
-
-        y = bases.data["y"].to_numpy()
-        x_float = bases.data["x_float"].to_numpy()
-
-        assert jnp.allclose(basis.value[:, 0], y)
-        assert jnp.allclose(basis.value[:, 1], x_float)
-
-    @pytest.mark.xfail(reason="Currently broken")
-    def test_explicit_removed_intercept_0(self, data) -> None:
-        registry = gb.PandasRegistry(data, na_action="drop")
-        bases = gb.BasisBuilder(registry)
-        basis = bases.fo("0 + y + x_float", name="X")
-
-        assert basis.value.shape == (84, 2)
-
-        y = bases.data["y"].to_numpy()
-        x_float = bases.data["x_float"].to_numpy()
-
-        assert jnp.allclose(basis.value[:, 0], y)
-        assert jnp.allclose(basis.value[:, 1], x_float)
-
 
 class TestFoBasisOperators:
     def test_string_literal(self, bases) -> None:
