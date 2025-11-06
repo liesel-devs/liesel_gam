@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Self
 
 import jax
@@ -9,6 +10,7 @@ import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
+from numpy import concatenate
 
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
@@ -16,6 +18,51 @@ from .roles import Roles
 
 InferenceTypes = Any
 Array = Any
+
+
+def _append_name(name: str, append: str) -> str:
+    if name == "":
+        return ""
+    else:
+        return name + append
+
+
+def _ensure_var_or_node(
+    x: lsl.Var | lsl.Node | ArrayLike,
+    name: str | None,
+) -> lsl.Var | lsl.Node:
+    """
+    If x is an array, creates a new observed variable.
+    """
+    if isinstance(x, lsl.Var | lsl.Node):
+        x_var = x
+    else:
+        name = name if name is not None else ""
+        x_var = lsl.Var.new_obs(jnp.asarray(x), name=name)
+
+    if name is not None and x_var.name != name:
+        raise ValueError(f"{x_var.name=} and {name=} are incompatible.")
+
+    return x_var
+
+
+def _ensure_value(
+    x: lsl.Var | lsl.Node | ArrayLike,
+    name: str | None,
+) -> lsl.Var | lsl.Node:
+    """
+    If x is an array, creates a new value node.
+    """
+    if isinstance(x, lsl.Var | lsl.Node):
+        x_var = x
+    else:
+        name = name if name is not None else ""
+        x_var = lsl.Value(jnp.asarray(x), _name=name)
+
+    if name is not None and x_var.name != name:
+        raise ValueError(f"{x_var.name=} and {name=} are incompatible.")
+
+    return x_var
 
 
 class UserVar(lsl.Var):
@@ -89,6 +136,59 @@ def term_prior(
     return mvn_structured_prior(scale, penalty)
 
 
+class ScaleIG(UserVar):
+    """
+    A variable with an Inverse Gamma prior on its square.
+
+    The variance parameter (i.e. the squared scale) is flagged as a parameter.
+
+    Parameters
+    ----------
+    value
+        Initial value of the variable.
+    concentration
+        Concentration parameter of the inverse gamma distribution.\
+        In some parameterizations, this parameter is called ``a``.
+    scale
+        Scale parameter of the inverse gamma distribution.\
+        In some parameterizations, this parameter is called ``b``.
+    name
+        Name of the variable.
+    inference
+        Inference type.
+    """
+
+    def __init__(
+        self,
+        value: Array,
+        concentration: float | lsl.Var | lsl.Node,
+        scale: float | lsl.Var | lsl.Node,
+        name: str = "",
+        inference: InferenceTypes = None,
+    ):
+        value = jnp.asarray(value)
+        concentration_node = _ensure_value(
+            concentration, name=_append_name(name, "_concentration")
+        )
+        scale_node = _ensure_value(scale, name=_append_name(name, "_scale"))
+
+        prior = lsl.Dist(
+            tfd.InverseGamma, concentration=concentration_node, scale=scale_node
+        )
+
+        self._variance_param = lsl.Var.new_param(
+            value, prior, inference=inference, name=_append_name(name, "_square")
+        )
+        super().__init__(lsl.Calc(jnp.sqrt, self._variance_param), name=name)
+
+    def setup_gibbs_inference(self, coef: lsl.Var) -> ScaleIG:
+        self._variance_param.inference = gs.MCMCSpec(
+            init_star_ig_gibbs,
+            kernel_kwargs={"coef": coef, "scale": self},
+        )
+        return self
+
+
 class Term(UserVar):
     """
     General structured additive term.
@@ -151,13 +251,13 @@ class Term(UserVar):
         self,
         basis: Basis,
         penalty: lsl.Var | lsl.Value | Array | None,
-        scale: lsl.Var | Array | None,
-        name: str,
+        scale: ScaleIG | lsl.Var | Array | None,
+        name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         _update_on_init: bool = True,
     ):
-        coef_name = f"{name}_coef" if coef_name is None else coef_name
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
         if not jnp.asarray(basis.value).ndim == 2:
             raise ValueError(f"basis must have 2 dimensions, got {basis.value.ndim}.")
@@ -177,6 +277,7 @@ class Term(UserVar):
             coef=self.coef,
             _update_on_init=_update_on_init,
         )
+        self._scale = scale
 
         super().__init__(calc, name=name)
         if _update_on_init:
@@ -186,18 +287,12 @@ class Term(UserVar):
 
         self.is_noncentered = False
 
+        if hasattr(self.scale, "setup_gibbs_inference"):
+            self.scale.setup_gibbs_inference(self.coef)
+
     @property
     def scale(self) -> lsl.Var | lsl.Node | None:
-        prior = self.coef.dist_node
-        return prior["scale"] if prior is not None else None
-
-    @scale.setter
-    def scale(self, value: lsl.Var):
-        prior = self.coef.dist_node
-        if prior is None:
-            raise ValueError(f"{self.coef.dist_node=}, so scale cannot be set.")
-
-        prior["scale"] = value
+        return self._scale
 
     def reparam_noncentered(self) -> Self:
         """
@@ -218,13 +313,21 @@ class Term(UserVar):
 
         self.coef.dist_node["scale"] = lsl.Value(1.0)
 
-        def scaled_dot(basis, coef, scale):
-            return jnp.dot(basis, scale * coef)
+        scaled_coef = lsl.Var.new_calc(
+            lambda scale, coef: scale * coef,
+            self.scale,
+            self.coef,
+            name=_append_name(self.coef.name, "_scaled"),
+        )
 
-        self.value_node = lsl.Calc(scaled_dot, self.basis, self.coef, self.scale)
+        self.value_node["coef"] = scaled_coef
         self.coef.update()
         self.update()
         self.is_noncentered = True
+
+        if hasattr(self.scale, "setup_gibbs_inference"):
+            self.scale.setup_gibbs_inference(scaled_coef)
+
         return self
 
     @classmethod
@@ -232,7 +335,7 @@ class Term(UserVar):
         cls,
         basis: Basis,
         fname: str = "f",
-        scale: lsl.Var | Array | None = None,
+        scale: ScaleIG | lsl.Var | Array | None = None,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         noncentered: bool = False,
@@ -256,8 +359,7 @@ class Term(UserVar):
             is ``'f'`` which results in names like ``f(x)`` when the basis \
             input is named ``x``.
         scale
-            Scale parameter passed to the coefficient prior. \
-            Defaults to ``1000.0`` for a weakly-informative prior.
+            Scale parameter passed to the coefficient prior.
         inference
             Inference specification forwarded to the coefficient variable \
             creation, a :class:`liesel.goose.MCMCSpec`.
@@ -271,10 +373,14 @@ class Term(UserVar):
         Returns
         -------
         A :class:`.Term` instance configured with the given basis and prior settings.
-
         """
-        name = f"{fname}({basis.x.name})"
+        if not basis.x.name:
+            raise ValueError("basis.x must be named.")
 
+        if not basis.name:
+            raise ValueError("basis must be named.")
+
+        name = f"{fname}({basis.x.name})"
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
 
         term = cls(
@@ -284,100 +390,6 @@ class Term(UserVar):
             inference=inference,
             coef_name=coef_name,
             name=name,
-        )
-
-        if noncentered:
-            term.reparam_noncentered()
-
-        return term
-
-    @classmethod
-    def f_ig(
-        cls,
-        basis: Basis,
-        fname: str = "f",
-        ig_concentration: float = 1.0,
-        ig_scale: float = 0.005,
-        inference: InferenceTypes = None,
-        variance_value: float = 100.0,
-        variance_name: str | None = None,
-        coef_name: str | None = None,
-        noncentered: bool = False,
-    ) -> Term:
-        """
-        Construct a smooth term with an inverse-gamma prior on the variance.
-
-        This convenience constructor creates a term similar to :meth:`.f` but
-        sets up an explicit variance parameter with an Inverse-Gamma prior.
-        A scale variable is set up by taking the square-root, and the
-        coefficient prior uses the derived ``scale`` together with the basis
-        penalty. By default a Gibbs-style initialization is attached to the
-        variance inference via an internal kernel; an optional jitter
-        distribution can be provided for MCMC initialization.
-
-        Parameters
-        ----------
-        basis
-            Basis object providing the design matrix and penalty.
-        fname
-            Prefix used to build the term name (default: ``'f'``).
-        ig_concentration
-            Concentration (shape) parameter of the Inverse-Gamma prior for the \
-            variance.
-        ig_scale
-            Scale parameter of the Inverse-Gamma prior for the variance.
-        inference
-            Inference specification forwarded to the coefficient variable \
-            creation, a :class:`liesel.goose.MCMCSpec`.
-        variance_value
-            Initial value for the variance parameter.
-        variance_name
-            Variance parameter name. The default is a LaTeX-like representation \
-            ``"$\\tau^2_{...}$"`` for readability in summaries.
-        coef_name
-            Coefficient name. The default coefficient name is a LaTeX-like string \
-            ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
-        noncentered
-            If ``True``, reparameterize the term to non-centered form \
-            (see :meth:`.reparam_noncentered`).
-
-        Returns
-        -------
-        A :class:`.Term` instance configured with an inverse-gamma prior on
-        the variance and an appropriate inference specification for
-        variance updates.
-
-        """
-        name = f"{fname}({basis.x.name})"
-        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
-        variance_name = variance_name or "$\\tau^2_{" + f"{name}" + "}$"
-
-        variance = lsl.Var.new_param(
-            value=variance_value,
-            distribution=lsl.Dist(
-                tfd.InverseGamma,
-                concentration=ig_concentration,
-                scale=ig_scale,
-            ),
-            name=variance_name,
-        )
-        variance.role = Roles.variance_smooth
-
-        scale = lsl.Var.new_calc(jnp.sqrt, variance, name="$\\tau_{" + f"{name}" + "}$")
-        scale.role = Roles.scale_smooth
-
-        term = cls(
-            basis=basis,
-            scale=scale,
-            penalty=basis.penalty,
-            inference=inference,
-            name=name,
-            coef_name=coef_name,
-        )
-
-        variance.inference = gs.MCMCSpec(
-            init_star_ig_gibbs,
-            kernel_kwargs={"coef": term.coef, "scale": scale},
         )
 
         if noncentered:
@@ -394,8 +406,8 @@ class Term(UserVar):
         ig_concentration: float = 1.0,
         ig_scale: float = 0.005,
         inference: InferenceTypes = None,
-        variance_value: float = 100.0,
-        variance_name: str | None = None,
+        scale_value: float = 100.0,
+        scale_name: str | None = None,
         coef_name: str | None = None,
         noncentered: bool = False,
     ) -> Term:
@@ -447,21 +459,10 @@ class Term(UserVar):
 
         """
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
-        variance_name = variance_name or "$\\tau^2_{" + f"{name}" + "}$"
-
-        variance = lsl.Var.new_param(
-            value=variance_value,
-            distribution=lsl.Dist(
-                tfd.InverseGamma,
-                concentration=ig_concentration,
-                scale=ig_scale,
-            ),
-            name=variance_name,
+        scale_name = scale_name or "$\\tau$"
+        scale = ScaleIG(
+            scale_value, concentration=ig_concentration, scale=ig_scale, name=scale_name
         )
-        variance.role = Roles.variance_smooth
-
-        scale = lsl.Var.new_calc(jnp.sqrt, variance, name="$\\tau_{" + f"{name}" + "}$")
-        scale.role = Roles.scale_smooth
 
         term = cls(
             basis=basis,
@@ -470,11 +471,6 @@ class Term(UserVar):
             inference=inference,
             name=name,
             coef_name=coef_name,
-        )
-
-        variance.inference = gs.MCMCSpec(
-            init_star_ig_gibbs,
-            kernel_kwargs={"coef": term.coef, "scale": scale},
         )
 
         if noncentered:
@@ -610,28 +606,6 @@ def make_callback(function, output_shape, dtype, m: int = 0):
         return result
 
     return fn
-
-
-def _append_name(name: str, append: str) -> str:
-    if name == "":
-        return ""
-    else:
-        return name + append
-
-
-def _ensure_var_or_node(
-    x: lsl.Var | lsl.Node | ArrayLike, name: str | None
-) -> lsl.Var | lsl.Node:
-    if isinstance(x, lsl.Var | lsl.Node):
-        x_var = x
-    else:
-        name = name if name is not None else ""
-        x_var = lsl.Var.new_obs(jnp.asarray(x), name=name)
-
-    if name is not None and x_var.name != name:
-        raise ValueError(f"{x_var.name=} and {name=} are incompatible.")
-
-    return x_var
 
 
 class Basis(UserVar):

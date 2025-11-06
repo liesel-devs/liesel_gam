@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import liesel.goose as gs
 import liesel.model as lsl
 import pytest
 import scipy
@@ -308,6 +309,28 @@ class TestSmoothTerm:
         assert jnp.allclose(jnp.zeros(10), term.value)
         assert not jnp.isnan(term.coef.log_prob)
         assert term.coef.log_prob is not None
+
+    def test_no_name(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+        term = gam.SmoothTerm(
+            basis=gam.Basis(jnp.c_[x, x]),
+            penalty=jnp.eye(2),
+            scale=lsl.Var(1.0),
+        )
+
+        assert term.name == ""
+        assert term.basis.name == ""
+        assert term.coef.name == ""
+
+    def test_scale_ig(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+        term = gam.SmoothTerm(
+            basis=gam.Basis(jnp.c_[x, x]),
+            penalty=jnp.eye(2),
+            scale=gam.ScaleIG(10.0, 2.0, 0.005),
+        )
+
+        assert isinstance(term.scale.value_node[0].inference, gs.MCMCSpec)
 
     def test_scale_none(self) -> None:
         x = jnp.linspace(0, 1, 10)
