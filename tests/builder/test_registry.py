@@ -215,6 +215,22 @@ def test_get_categorical_var_success(registry: PandasRegistry):
     assert np.all(computed_labels == np.array([1, 2]))
 
 
+def test_get_obs_and_mapping(registry: PandasRegistry):
+    result = registry.get_obs_and_mapping("cat_str")
+    assert result.var.name == "cat_str"
+    assert result.mapping is not None
+    assert result.mapping.labels_to_integers_map == {"a": 0, "b": 1}
+    assert result.mapping.integers_to_labels_map == {0: "a", 1: "b"}
+
+    result = registry.get_obs_and_mapping("x1")
+    assert result.mapping is None
+    assert result.var.name == "x1"
+
+    result = registry.get_obs_and_mapping("bool_var")
+    assert result.mapping is None
+    assert result.var.name == "bool_var"
+
+
 def test_get_categorical_var_failure(registry: PandasRegistry):
     with pytest.raises(TypeError):
         registry.get_categorical_obs("x1")

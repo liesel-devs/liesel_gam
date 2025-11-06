@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import warnings
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any, Literal, assert_never
 
 import jax.numpy as jnp
@@ -116,6 +117,16 @@ def _series_is_categorical(series: pd.Series | pd.Categorical) -> bool:
     is_cat1 = series.dtype in ("str", "object")
     is_cat2 = isinstance(series.dtype, pd.CategoricalDtype)
     return is_cat1 or is_cat2
+
+
+@dataclass
+class VarAndMapping:
+    var: lsl.Var
+    mapping: CategoryMapping | None = None
+
+    @property
+    def is_categorical(self) -> bool:
+        return self.mapping is not None
 
 
 class PandasRegistry:
@@ -600,3 +611,17 @@ class PandasRegistry:
                 f"got {str(self.data[name].dtype)}"
             )
         return self.get_obs(name)
+
+    def get_obs_and_mapping(self, name: str) -> VarAndMapping:
+        """
+        Get an observed variable. Returns a wrapper that holds the variable and,
+        if the variable is categorical, the :class:`.CategoryMapping` between
+        labels and integer codes.
+        """
+        if self.is_categorical(name):
+            var, mapping = self.get_categorical_obs(name)
+        else:
+            var = self.get_obs(name)
+            mapping = None
+
+        return VarAndMapping(var, mapping)
