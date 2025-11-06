@@ -530,6 +530,34 @@ class LinearTerm2(UserVar):
         _update_on_init: bool = True,
     ):
         self.basis = Basis.new_linear(value=x, xname=xname, add_intercept=add_intercept)
+        self.nbases = self.basis.nbases
+        coef_name = _append_name(name, "_coef")
+
+        self.coef = lsl.Var.new_param(
+            jnp.zeros(self.basis.nbases), prior, inference=inference, name=coef_name
+        )
+        calc = lsl.Calc(
+            lambda basis, coef: jnp.dot(basis, coef),
+            basis=self.basis,
+            coef=self.coef,
+            _update_on_init=_update_on_init,
+        )
+
+        super().__init__(calc, name=name)
+
+
+class BasisDot(UserVar):
+    def __init__(
+        self,
+        basis: Basis,
+        prior: lsl.Dist | None = None,
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str = "",
+        _update_on_init: bool = True,
+    ):
+        self.basis = basis
+        self.nbases = self.basis.nbases
         coef_name = _append_name(name, "_coef")
 
         self.coef = lsl.Var.new_param(
