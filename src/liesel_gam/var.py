@@ -586,16 +586,16 @@ class Intercept(UserVar):
         self.role = Roles.intercept
 
 
-def make_callback(function, output_shape, dtype):
+def make_callback(function, output_shape, dtype, m: int = 0):
     if len(output_shape):
         k = output_shape[-1]
 
     def fn(x, **basis_kwargs):
         n = jnp.shape(jnp.atleast_1d(x))[0]
         if len(output_shape) == 2:
-            shape = (n, k)
+            shape = (n - m, k)
         elif len(output_shape) == 1:
-            shape = (n,)
+            shape = (n - m,)
         elif not len(output_shape):
             shape = ()
         else:
@@ -739,15 +739,27 @@ class Basis(UserVar):
         if use_callback:
             value_ar = jnp.asarray(value_var.value)
             basis_kwargs_arr = {}
-            for k, v in basis_kwargs.items():
-                if isinstance(v, lsl.Var | lsl.Node):
-                    basis_kwargs_arr[k] = v.value
+            for key, val in basis_kwargs.items():
+                if isinstance(val, lsl.Var | lsl.Node):
+                    basis_kwargs_arr[key] = val.value
                 else:
-                    basis_kwargs_arr[k] = v
+                    basis_kwargs_arr[key] = val
             basis_ar = basis_fn(value_ar, **basis_kwargs_arr)
             dtype = basis_ar.dtype
             input_shape = jnp.shape(basis_ar)
-            fn = make_callback(basis_fn, input_shape, dtype)
+
+            # This is special-case handling for compatibility with
+            # basis functions that remove cases. For example, if you have a formulaic
+            # formula "x + lag(x)", then the resulting basis will have one case less
+            # than the original x, because the first case is dropped.
+            if value_ar.shape:
+                p = value_ar.shape[0] if value_ar.shape else 0
+                k = input_shape[0] if input_shape else 0
+                m = p - k
+            else:
+                m = 0
+
+            fn = make_callback(basis_fn, input_shape, dtype, m)
         else:
             fn = basis_fn
 
