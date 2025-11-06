@@ -23,7 +23,7 @@ class AdditivePredictor(UserVar):
         if inv_link is None:
 
             def inv_link(x):
-                x
+                return x
 
         def _sum(*args, intercept, **kwargs):
             # the + 0. implicitly ensures correct dtype also for empty predictors
