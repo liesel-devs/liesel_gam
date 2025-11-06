@@ -525,29 +525,17 @@ class LinearTerm(Term):
 class LinearTerm2(UserVar):
     def __init__(
         self,
-        value: lsl.Var | Array,
-        name: str,
+        x: lsl.Var | Array,
         prior: lsl.Dist | None = None,
+        name: str = "",
         inference: InferenceTypes = None,
+        coef_name: str = "",
+        xname: str = "",
         add_intercept: bool = False,
-        coef_name: str | None = None,
-        basis_name: str | None = None,
         _update_on_init: bool = True,
     ):
-        if not isinstance(value, lsl.Var):
-            x: lsl.Var = lsl.Var.new_obs(value, name=f"{name}_input")
-        else:
-            x = value
-
-        if not x.name:
-            # to ensure sensible basis name
-            raise ValueError(f"{value=} must be named.")
-
-        coef_name = coef_name or f"{name}_coef"
-        basis_name = basis_name or f"B({name})"
-        self.basis = Basis.new_linear(
-            value=x, name=basis_name, add_intercept=add_intercept
-        )
+        self.basis = Basis.new_linear(value=x, xname=xname, add_intercept=add_intercept)
+        coef_name = _append_name(name, "_coef")
 
         self.coef = lsl.Var.new_param(
             jnp.zeros(self.basis.nbases), prior, inference=inference, name=coef_name
