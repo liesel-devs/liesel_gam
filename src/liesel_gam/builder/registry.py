@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, assert_never
 
 import jax.numpy as jnp
@@ -22,6 +22,100 @@ class CannotHashValueError(Exception):
     def __init__(self, value: Any):
         super().__init__(f"Cannot hash value of type '{type(value).__name__}'")
         self.value = value
+
+
+class CategoryMapping:
+    """Wraps a category mapping of labels to integers."""
+
+    def __init__(self, labels_to_integers_map: dict[Any, int]) -> None:
+        self._code_for_unknown_label = -1
+        self._label_for_unknown_code = None
+
+        self.labels_to_integers_map = labels_to_integers_map
+
+        def labels_to_integers_fun(
+            x: np.typing.ArrayLike,
+        ) -> np.typing.NDArray[np.int_]:
+            x = np.asarray(x)
+            x_flat = x.flatten()
+            codes_flat = np.zeros_like(x_flat, dtype=int)
+
+            for i, xi in enumerate(x_flat):
+                codes_flat[i] = self.labels_to_integers_map.get(
+                    xi, self._code_for_unknown_label
+                )
+
+            codes = np.reshape(codes_flat, shape=x.shape)
+
+            return codes
+
+        self._labels_to_integers_fun = labels_to_integers_fun
+
+        self.integers_to_labels_map = {
+            code: label for label, code in self.labels_to_integers_map.items()
+        }
+
+        def integers_to_labels_fun(
+            x: np.typing.ArrayLike,
+        ) -> np.typing.NDArray[np.int_]:
+            x = np.asarray(x)
+            x_flat = x.flatten()
+            labels_flat_list = []
+
+            for xi in x_flat:
+                label = self.integers_to_labels_map.get(
+                    xi, self._label_for_unknown_code
+                )
+                labels_flat_list.append(label)
+
+            labels_flat = np.asarray(labels_flat_list)
+            labels = np.reshape(labels_flat, shape=x.shape)
+            return labels
+
+        self._integers_to_labels_fun = integers_to_labels_fun
+
+    @classmethod
+    def from_series(cls, series: pd.Series | pd.Categorical) -> CategoryMapping:
+        x = series.to_numpy()
+        unique_labels = np.unique(x)
+        mapping = {val: i for i, val in enumerate(unique_labels)}
+        return cls(mapping)
+
+    def labels_to_integers(
+        self, labels: np.typing.ArrayLike
+    ) -> np.typing.NDArray[np.int_]:
+        """
+        A function of labels -> integers.
+
+        For unknown labels, returns -1.
+        """
+        return self._labels_to_integers_fun(labels)
+
+    def integers_to_labels(
+        self, integers: np.typing.NDArray[np.int_] | Sequence[int]
+    ) -> np.typing.NDArray[Any]:
+        """
+        A function of integers -> labels.
+
+        For integers without labels, returns
+        """
+        return self._integers_to_labels_fun(integers)
+
+
+def _series_is_categorical(series: pd.Series | pd.Categorical) -> bool:
+    """
+    Provides a liberal interpretation of when a series is categorical. The following
+    are treated as categorical:
+
+    - Series with dtype str
+    - Series with dtype object
+    - Series with dtype CategoricalDtype
+    """
+    # This corresponds to how formulaic determines categorical columns.
+    # See formulaic.materializers.pandas.PandasMaterializer._is_categorical
+    is_cat1 = series.dtype in ("str", "object")
+    is_cat2 = isinstance(series.dtype, pd.CategoricalDtype)
+    return is_cat1 or is_cat2
 
 
 class PandasRegistry:
@@ -342,8 +436,10 @@ class PandasRegistry:
             Dictionary mapping category names to liesel.Var objects
         """
 
-        base_var, codebook = self.get_categorical_obs(name)
+        base_var, mapping = self.get_categorical_obs(name)
         base_var.name = base_var.name = f"{name}_codes"
+
+        codebook = mapping.labels_to_integers_map
 
         if len(codebook) < 2:
             raise ValueError(
@@ -414,7 +510,7 @@ class PandasRegistry:
                 f"Available variables: {sorted(available)}"
             )
 
-        return isinstance(self.data[name].dtype, pd.CategoricalDtype)
+        return _series_is_categorical(self.data[name])
 
     def is_boolean(self, name: str) -> bool:
         """Check if a variable is boolean.
@@ -453,7 +549,7 @@ class PandasRegistry:
             )
         return self.get_obs(name)
 
-    def get_categorical_obs(self, name: str) -> tuple[lsl.Var, dict[int, Any]]:
+    def get_categorical_obs(self, name: str) -> tuple[lsl.Var, CategoryMapping]:
         """Get a variable and ensure it is categorical.
 
         Each variable is converted to integer codes.
@@ -462,36 +558,29 @@ class PandasRegistry:
             name: Variable name to retrieve
 
         Returns:
-            liesel.Var object for the categorical variable and a dictionary
-            mapping integer codes to category labels
+            liesel.Var object for the categorical variable and a CategoryMapping.
 
         Raises:
             TypeError: If any variable is not categorical
         """
+        series = self.data[name]
         if not self.is_categorical(name):
             raise TypeError(
                 f"Type mismatch for variable '{name}': expected categorical, "
-                f"got {str(self.data[name].dtype)}"
+                f"got {str(series.dtype)}"
             )
 
-        # convert categorical variables to integer codes
-        values = self.data[name]
-        category_codes = values.cat.codes.to_numpy().astype(int)
-        category_labels = values.cat.categories.tolist()
-
-        coding_dict = {
-            int(code): label for label, code in zip(category_labels, category_codes)
-        }
-
-        # check if already cached
+        mapping = CategoryMapping.from_series(series)
         if name in self._var_cache:
             var = self._var_cache[name]
         else:
+            # convert categorical variables to integer codes
+            category_codes = mapping.labels_to_integers(series)
             jax_codes = self._to_jax(category_codes, name)
             var = lsl.Var.new_obs(jax_codes, name=name)
             self._var_cache[name] = var
 
-        return var, coding_dict
+        return var, mapping
 
     def get_boolean_obs(self, name: str) -> lsl.Var:
         """Get a variable and ensure it is boolean.

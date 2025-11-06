@@ -194,14 +194,25 @@ def test_get_numeric_var_failure(registry: PandasRegistry):
 def test_get_categorical_var_success(registry: PandasRegistry):
     result, codes = registry.get_categorical_obs("cat_str")
     assert result.name == "cat_str"
-    assert codes == {
-        0: "a",
-        1: "b",
-    }
+    assert codes.labels_to_integers_map == {"a": 0, "b": 1}
+    assert codes.integers_to_labels_map == {0: "a", 1: "b"}
+
+    computed_codes = codes.labels_to_integers(["a", "b"])
+    assert np.all(computed_codes == np.array([0, 1]))
+
+    computed_labels = codes.integers_to_labels([0, 1])
+    assert np.all(computed_labels == np.array(["a", "b"]))
 
     result2, codes2 = registry.get_categorical_obs("cat_num")
     assert result2.name == "cat_num"
-    assert codes2 == {0: 1, 1: 2}
+    assert codes2.labels_to_integers_map == {1: 0, 2: 1}
+    assert codes2.integers_to_labels_map == {0: 1, 1: 2}
+
+    computed_codes = codes2.labels_to_integers([1, 2])
+    assert np.all(computed_codes == np.array([0, 1]))
+
+    computed_labels = codes2.integers_to_labels([0, 1])
+    assert np.all(computed_labels == np.array([1, 2]))
 
 
 def test_get_categorical_var_failure(registry: PandasRegistry):
