@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "formulaic>=1.2.1",
-    "liesel>=0.4",
+    "liesel>=0.4.1",
 ]
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]

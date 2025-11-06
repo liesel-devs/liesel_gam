@@ -648,7 +648,7 @@ wheels = [
 
 [[package]]
 name = "liesel"
-version = "0.4.0"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arviz" },
@@ -667,9 +667,9 @@ dependencies = [
     { name = "tensorflow-probability" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/79/8a8ca3adca80cb738ef349727a09493fb964e506f52959f82e0a742311c0/liesel-0.4.0.tar.gz", hash = "sha256:6ad954ee3c867aacd09ed1ffcd3059d33eff87349258ac3fb23a0b0db8958a69", size = 4235727, upload-time = "2025-05-01T21:59:22.128Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/17/ca/4f439f411caddca16a5849b9b428f935cef0c9aab722bfa65b52ac732c03/liesel-0.4.1.tar.gz", hash = "sha256:6eaffdfa84a57554f06cbdbb4fb16ad938bf240086cf34d50fbf52241e035731", size = 7378521, upload-time = "2025-07-25T09:52:51.493Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/a0/fd7599bd0cbdff48ab21ad1d9a5680ffb3e886b63b1c5c1db48be5c64d5d/liesel-0.4.0-py3-none-any.whl", hash = "sha256:83f8ead8c337821682c4768ed326a79d86e8b224365bef7c0a5cb8b7dc34fb22", size = 124126, upload-time = "2025-05-01T21:59:20.283Z" },
+    { url = "https://files.pythonhosted.org/packages/21/52/793fea8bd669965fc10b71effeff6d3b9ecf2d14eec09ab66ce732083d4f/liesel-0.4.1-py3-none-any.whl", hash = "sha256:ee345f983b33efae58374c6e123b8746add897b68be0515e8eaa60b1099727fa", size = 125090, upload-time = "2025-07-25T09:52:49.136Z" },
 ]
 
 [[package]]
@@ -695,7 +695,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "formulaic", specifier = ">=1.2.1" },
-    { name = "liesel", specifier = ">=0.4" },
+    { name = "liesel", specifier = ">=0.4.1" },
 ]
 
 [package.metadata.requires-dev]
