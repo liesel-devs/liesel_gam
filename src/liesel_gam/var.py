@@ -286,7 +286,10 @@ class Term(UserVar):
         self.is_noncentered = False
 
         if hasattr(self.scale, "setup_gibbs_inference"):
-            self.scale.setup_gibbs_inference(self.coef)
+            try:
+                self.scale.setup_gibbs_inference(self.coef)  # type: ignore
+            except Exception as e:
+                raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
     @property
     def scale(self) -> lsl.Var | lsl.Node | None:
@@ -324,7 +327,10 @@ class Term(UserVar):
         self.is_noncentered = True
 
         if hasattr(self.scale, "setup_gibbs_inference"):
-            self.scale.setup_gibbs_inference(scaled_coef)
+            try:
+                self.scale.setup_gibbs_inference(scaled_coef)  # type: ignore
+            except Exception as e:
+                raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
         return self
 
