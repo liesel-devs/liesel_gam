@@ -380,7 +380,7 @@ class Term(UserVar):
 
         term = cls(
             basis=basis,
-            penalty=basis.penalty,
+            penalty=basis.penalty if scale is not None else None,
             scale=scale,
             inference=inference,
             coef_name=coef_name,
