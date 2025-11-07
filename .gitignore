@@ -176,3 +176,4 @@ cython_debug/
 /.vscode
 /tests/data
 .DS_Store
+notebooks/test_ti_smooth.ipynb
