@@ -548,3 +548,54 @@ class TestMRFBasis:
             labels7,
         ]:
             assert lab == labels
+
+    def test_initialization_consistency_low_rank(self, columb, columb_polys):
+        """
+        Low-rank approximations only work if the penalty is *not* supplied.
+        """
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        basis, neighbors, labels = bases.mrf("district", k=20, polys=columb_polys)
+
+        basis2, neighbors2, labels2 = bases.mrf("district", k=20, nb=neighbors)
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", k=20, penalty=basis.penalty.value)
+
+        basis4, neighbors4, labels4 = bases.mrf(
+            "district", k=20, polys=columb_polys, nb=neighbors
+        )
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", k=20, polys=columb_polys, penalty=basis.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", k=20, nb=neighbors, penalty=basis.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.mrf(
+                "district",
+                k=20,
+                polys=columb_polys,
+                nb=neighbors,
+                penalty=basis.penalty.value,
+            )
+
+        for b in [basis2, basis4]:
+            assert jnp.allclose(b.value, basis.value)
+            assert jnp.allclose(b.penalty.value, basis.penalty.value)
+
+        nb_list = [
+            neighbors2,
+            neighbors4,
+        ]
+        for i, nb in enumerate(nb_list):
+            for key, nb_arr in nb.items():
+                assert np.allclose(nb_arr, neighbors[key])
+
+        for lab in [
+            labels2,
+            labels4,
+        ]:
+            assert lab == labels
