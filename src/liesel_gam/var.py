@@ -343,7 +343,7 @@ class Term(UserVar):
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> Self:
         """
         Construct a smooth term from a :class:`.Basis`.
 
@@ -484,6 +484,45 @@ class Term(UserVar):
 
 
 SmoothTerm = Term
+
+
+class IndexingTerm(Term):
+    def __init__(
+        self,
+        basis: Basis,
+        penalty: lsl.Var | lsl.Value | Array | None,
+        scale: ScaleIG | lsl.Var | Array | None,
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        _update_on_init: bool = True,
+    ):
+        if not basis.value.ndim == 1:
+            raise ValueError(f"IndexingTerm requires 1d basis, got {basis.value.ndim=}")
+
+        if not jnp.isdtype(jnp.dtype(basis.value), jnp.int_):
+            raise TypeError(
+                f"IndexingTerm requires integer basis, got {jnp.dtype(basis.value)=}."
+            )
+
+        super().__init__(
+            basis=basis,
+            penalty=penalty,
+            scale=scale,
+            name=name,
+            inference=inference,
+            coef_name=coef_name,
+            _update_on_init=False,
+        )
+
+        # mypy warns that self.value_node might be a lsl.Node, which does not have the
+        # attribute "function".
+        # But we can assume safely that self.value_node is a lsl.Calc, which does have
+        # one.
+        self.value_node.function = jnp.take  # type: ignore
+        if _update_on_init:
+            self.coef.update()
+            self.update()
 
 
 class LinearTerm(Term):

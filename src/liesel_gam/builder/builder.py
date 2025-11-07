@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Literal
 
 import formulaic as fo
+import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
@@ -11,10 +13,12 @@ import pandas as pd
 import smoothcon as scon
 from ryp import r, to_py
 
-from ..var import Basis, BasisDot, ScaleIG, Term
+from ..var import Basis, BasisDot, IndexingTerm, ScaleIG, Term
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
+
+Array = jax.Array
 
 
 def _margin_penalties(smooth: scon.SmoothCon):
@@ -85,6 +89,39 @@ class BasisBuilder:
     @property
     def data(self) -> pd.DataFrame:
         return self.registry.data
+
+    def basis(
+        self,
+        *x: str,
+        basis_fn: Callable[[Array], Array] = lambda x: x,
+        use_callback: bool = True,
+        cache_basis: bool = True,
+        penalty: np.typing.ArrayLike | lsl.Value | None = None,
+        Bname: str = "B",
+    ) -> Basis:
+        x_vars = []
+        for x_name in x:
+            x_var = self.registry.get_numeric_obs(x_name)
+            x_vars.append(x_var)
+
+        Xname = ",".join(x)
+
+        Xvar = lsl.TransientCalc(
+            lambda *x: jnp.column_stack(x),
+            *x_vars,
+            _name=Xname,
+        )
+
+        basis = Basis(
+            value=Xvar,
+            basis_fn=basis_fn,
+            name=Bname + "(" + Xname + ")",
+            use_callback=use_callback,
+            cache_basis=cache_basis,
+            penalty=jnp.asarray(penalty),
+        )
+
+        return basis
 
     def te(
         self,
@@ -253,6 +290,41 @@ class BasisBuilder:
         )
         return basis
 
+    def s(
+        self,
+        x: str,
+        k: int = 8,
+        bs: BasisTypes = "tp",
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        Bname: str = "B",
+    ) -> Basis:
+        bs_arg = f"'{bs}'"
+        spec = f"s({x}, bs={bs_arg}, k={k}, m={m})"
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=Bname + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+        return basis
+
     def fo(
         self,
         formula: str,
@@ -343,6 +415,26 @@ class BasisBuilder:
             name=None,  # to use automatic naming based on xvar.name.
             use_callback=True,
             cache_basis=True,
+        )
+
+        return basis
+
+    def ri(
+        self, cluster: str, Bname: str = "B", penalty: np.typing.ArrayLike | None = None
+    ) -> Basis:
+        result = self.registry.get_obs_and_mapping(cluster)
+        if result.mapping is None:
+            raise TypeError(f"{cluster=} must be categorical.")
+
+        self.mappings[cluster] = result.mapping
+
+        basis = Basis(
+            value=result.var,
+            basis_fn=lambda x: x,
+            name=Bname,
+            use_callback=False,
+            cache_basis=False,
+            penalty=jnp.asarray(penalty) if penalty is not None else penalty,
         )
 
         return basis
@@ -539,12 +631,131 @@ class TermBuilder:
         )
         return term
 
-    def ri(self): ...
+    def ri(
+        self,
+        cluster: str,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty: np.typing.ArrayLike | None = None,
+        noncentered: bool = False,
+    ) -> IndexingTerm:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+        basis = self.bases.ri(
+            cluster=cluster, Bname=self._auto_fname(fname="RI"), penalty=penalty
+        )
 
-    def rs(self): ...
+        fname = self._auto_fname(fname="ri")
+        term = IndexingTerm.f(
+            basis=basis,
+            scale=scale,
+            inference=inference,
+            noncentered=noncentered,
+            fname=fname,
+        )
 
-    def s(self): ...
+        return term
+
+    def rs(
+        self,
+        x: str,
+        cluster: str,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty: np.typing.ArrayLike | None = None,
+        noncentered: bool = False,
+    ) -> lsl.Var:
+        ri = self.ri(
+            cluster=cluster,
+            scale=scale,
+            inference=inference,
+            penalty=penalty,
+            noncentered=noncentered,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+
+        fname = self._auto_fname(fname="rs")
+        term = lsl.Var.new_calc(
+            lambda x, ri: x * ri,
+            x=x_var,
+            ri=ri,
+            name=fname + "(" + x + "|" + cluster + ")",
+        )
+        return term
+
+    def s(
+        self,
+        x: str,
+        k: int = 8,
+        bs: BasisTypes = "tp",
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+
+        basis = self.bases.s(
+            x=x,
+            k=k,
+            bs=bs,
+            m=m,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="ps")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
 
     def mrf(self): ...
 
-    def term_1d(self): ...
+    def f(
+        self,
+        *x: str,
+        basis_fn: Callable[[Array], Array] = lambda x: x,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        use_callback: bool = True,
+        cache_basis: bool = True,
+        penalty: np.typing.ArrayLike | None = None,
+        noncentered: bool = False,
+    ) -> Term:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+
+        basis = self.bases.basis(
+            *x,
+            basis_fn=basis_fn,
+            use_callback=use_callback,
+            cache_basis=cache_basis,
+            penalty=penalty,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="f")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
