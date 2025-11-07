@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
+import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
 
@@ -487,6 +488,36 @@ class Term(UserVar):
 
 
 SmoothTerm = Term
+
+
+class MRFTerm(Term):
+    _neighbors = None
+    _polygons = None
+    _labels = None
+
+    @property
+    def neighbors(self) -> dict[str, np.typing.NDArray[np.int_]] | None:
+        return self._neighbors
+
+    @neighbors.setter
+    def neighbors(self, value: dict[str, np.typing.NDArray[np.int_]] | None) -> None:
+        self._neighbors = value
+
+    @property
+    def polygons(self) -> dict[str, np.typing.ArrayLike] | None:
+        return self._polygons
+
+    @polygons.setter
+    def polygons(self, value: dict[str, np.typing.ArrayLike] | None) -> None:
+        self._polygons = value
+
+    @property
+    def labels(self) -> list[str] | None:
+        return self._labels
+
+    @labels.setter
+    def labels(self, value: list[str]) -> None:
+        self._labels = value
 
 
 class IndexingTerm(Term):
