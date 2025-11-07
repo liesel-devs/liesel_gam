@@ -161,6 +161,7 @@ class ScaleIG(UserVar):
         concentration: float | lsl.Var | lsl.Node,
         scale: float | lsl.Var | lsl.Node,
         name: str = "",
+        variance_name: str = "",
         inference: InferenceTypes = None,
     ):
         value = jnp.asarray(value)
@@ -173,8 +174,10 @@ class ScaleIG(UserVar):
             tfd.InverseGamma, concentration=concentration_node, scale=scale_node
         )
 
+        variance_name = variance_name or _append_name(name, "_square")
+
         self._variance_param = lsl.Var.new_param(
-            value, prior, inference=inference, name=_append_name(name, "_square")
+            value, prior, inference=inference, name=variance_name
         )
         super().__init__(lsl.Calc(jnp.sqrt, self._variance_param), name=name)
 
