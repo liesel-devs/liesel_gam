@@ -411,7 +411,7 @@ class TestFoBasisTransforms:
 
 
 class TestFoBasisLinearCategorical:
-    def test_simple_categorical_unordered(self, data) -> data:
+    def test_simple_categorical_unordered(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         basis = bases.fo("C(cat_unordered)", name="X")
@@ -436,7 +436,7 @@ class TestFoBasisLinearCategorical:
         cat3 = bases.data[bool_cat3]["cat_unordered"].to_numpy()
         assert np.all(cat3 == "C")
 
-    def test_simple_categorical_ordered(self, data) -> data:
+    def test_simple_categorical_ordered(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         basis = bases.fo("C(cat_ordered)", name="X")
