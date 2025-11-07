@@ -181,10 +181,12 @@ class ScaleIG(UserVar):
         )
         super().__init__(lsl.Calc(jnp.sqrt, self._variance_param), name=name)
 
-    def setup_gibbs_inference(self, coef: lsl.Var) -> ScaleIG:
+    def setup_gibbs_inference(
+        self, coef: lsl.Var, penalty: jax.typing.ArrayLike | None = None
+    ) -> ScaleIG:
         self._variance_param.inference = gs.MCMCSpec(
             init_star_ig_gibbs,
-            kernel_kwargs={"coef": coef, "scale": self},
+            kernel_kwargs={"coef": coef, "scale": self, "penalty": penalty},
         )
         return self
 
@@ -328,7 +330,8 @@ class Term(UserVar):
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
-                self.scale.setup_gibbs_inference(scaled_coef)  # type: ignore
+                pen = self.coef.dist_node["penalty"].value
+                self.scale.setup_gibbs_inference(scaled_coef, penalty=pen)  # type: ignore
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
