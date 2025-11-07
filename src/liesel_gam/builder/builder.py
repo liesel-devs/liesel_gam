@@ -13,7 +13,7 @@ import pandas as pd
 import smoothcon as scon
 from ryp import r, to_py
 
-from ..var import Basis, BasisDot, IndexingTerm, ScaleIG, Term
+from ..var import Basis, BasisDot, IndexingTerm, MRFTerm, ScaleIG, Term
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
@@ -455,6 +455,7 @@ class BasisBuilder:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
 
         var, mapping = self.registry.get_categorical_obs(x)
+        self.mappings[x] = mapping
 
         labels = set(list(mapping.labels_to_integers_map))
 
@@ -603,6 +604,9 @@ class TermBuilder:
     def from_df(cls, data: pd.DataFrame) -> TermBuilder:
         registry = PandasRegistry(data, na_action="drop")
         return cls(registry)
+
+    def labels_to_integers(self, newdata: dict) -> dict:
+        return labels_to_integers(newdata, self.bases.mappings)
 
     def fo(
         self,
@@ -836,7 +840,50 @@ class TermBuilder:
         )
         return term
 
-    def mrf(self): ...
+    def mrf(
+        self,
+        x: str,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        k: int = -1,
+        polys: dict[str, np.typing.ArrayLike] | None = None,
+        nb: dict[str, np.typing.ArrayLike | list[str] | list[int]] | None = None,
+        penalty: np.typing.ArrayLike | None = None,
+        absorb_cons: bool = False,
+        diagonal_penalty: bool = False,
+        scale_penalty: bool = False,
+        noncentered: bool = False,
+    ) -> MRFTerm:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+
+        basis, neighbors, labels = self.bases.mrf(
+            x=x,
+            k=k,
+            polys=polys,
+            nb=nb,
+            penalty=penalty,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="mrf")
+        term = MRFTerm.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+
+        term.polygons = polys
+        term.neighbors = neighbors
+        term.labels = labels
+
+        return term
 
     def f(
         self,
