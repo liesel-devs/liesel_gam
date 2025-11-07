@@ -330,7 +330,9 @@ class TestSmoothTerm:
             scale=gam.ScaleIG(10.0, 2.0, 0.005),
         )
 
-        assert isinstance(term.scale.value_node[0].inference, gs.MCMCSpec)
+        assert term.scale is not None
+        var = term.scale.value_node[0]  # type: ignore
+        assert isinstance(var.inference, gs.MCMCSpec)  # type: ignore
 
     def test_scale_none(self) -> None:
         x = jnp.linspace(0, 1, 10)

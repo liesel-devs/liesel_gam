@@ -63,7 +63,8 @@ class TestPredictor:
     def test_intercept(self) -> None:
         pred = gam.AdditivePredictor("loc")
         assert pred.intercept.name == "loc_intercept"
-        assert pred.intercept.parameter
+        assert pred.intercept is not None
+        assert pred.intercept.parameter  # type: ignore
 
         pred = gam.AdditivePredictor("loc", intercept=False)
         assert isinstance(pred.intercept, lsl.Value)
