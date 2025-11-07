@@ -48,7 +48,7 @@ class CategoryMapping:
 
             codes = np.reshape(codes_flat, shape=x.shape)
 
-            return codes
+            return np.astype(codes, np.int_)
 
         self._labels_to_integers_fun = labels_to_integers_fun
 
