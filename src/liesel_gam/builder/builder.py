@@ -431,13 +431,125 @@ class BasisBuilder:
         basis = Basis(
             value=result.var,
             basis_fn=lambda x: x,
-            name=Bname,
+            name=Bname + "(" + cluster + ")",
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
         )
 
         return basis
+
+    def mrf(
+        self,
+        x: str,
+        k: int = -1,
+        polys: dict[str, np.typing.ArrayLike] | None = None,
+        nb: dict[str, np.typing.ArrayLike | list[str] | list[int]] | None = None,
+        penalty: np.typing.ArrayLike | None = None,
+        absorb_cons: bool = False,
+        diagonal_penalty: bool = False,
+        scale_penalty: bool = False,
+        Bname: str = "B",
+    ) -> tuple[Basis, dict[str, np.typing.NDArray[np.int_]] | None, list[str]]:
+        if polys is None and nb is None and penalty is None:
+            raise ValueError("At least one of polys, nb, or penalty must be provided.")
+
+        var, mapping = self.registry.get_categorical_obs(x)
+
+        labels = set(list(mapping.labels_to_integers_map))
+
+        xt_args = []
+        pass_to_r: dict[str, np.typing.NDArray | dict[str, np.typing.NDArray]] = {}
+        if polys is not None:
+            xt_args.append("polys=polys")
+            if not labels == set(list(polys)):
+                raise ValueError(
+                    "Names in 'poly' must correspond to the levels of 'x'."
+                )
+            pass_to_r["polys"] = {key: np.asarray(val) for key, val in polys.items()}
+
+        if nb is not None:
+            xt_args.append("nb=nb")
+            if not labels == set(list(nb)):
+                raise ValueError("Names in 'nb' must correspond to the levels of 'x'.")
+            pass_to_r["nb"] = {key: np.asarray(val) for key, val in nb.items()}
+
+        if penalty is not None:
+            penalty = np.asarray(penalty)
+            xt_args.append("penalty=penalty")
+            if not np.shape(penalty)[0] == np.shape(penalty)[1]:
+                raise ValueError(f"Penalty must be square, got {np.shape(penalty)=}")
+
+            if not np.shape(penalty)[1] == len(labels):
+                raise ValueError(
+                    "Dimensions of 'penalty' must correspond to the levels of 'x'."
+                )
+            pass_to_r["penalty"] = penalty
+
+        xt = "list("
+        xt += ",".join(xt_args)
+        xt += ")"
+
+        spec = f"s({x}, k={k}, bs='mrf', xt={xt})"
+
+        x_array = np.asarray(var.value)
+
+        # disabling warnings about "mrf should be a factor"
+        # since even turning data into a pandas df and x_array into
+        # a categorical series did not satisfy mgcv in that regard.
+        # Things still seem to work, and we ensure further above
+        # that we are actually dealing with a categorical variable
+        # so I think turning the warnings off temporarily here is fine
+        r("old_warn <- getOption('warn')")
+        r("options(warn = -1)")
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            diagonal_penalty=diagonal_penalty,
+            absorb_cons=absorb_cons,
+            scale_penalty=scale_penalty,
+            pass_to_r=pass_to_r,
+        )
+        r("options(warn = old_warn)")
+
+        def basis_fun(x):
+            """
+            The array outputted by this smooth contains column names.
+            Here, we remove these column names and convert to jax.
+            """
+            # disabling warnings about "mrf should be a factor"
+            r("old_warn <- getOption('warn')")
+            r("options(warn = -1)")
+            basis = jnp.asarray(np.astype(smooth(x)[:, 1:], "float"))
+            r("options(warn = old_warn)")
+            return basis
+
+        smooth_penalty = smooth.penalty
+        if np.shape(smooth_penalty)[1] > len(labels):
+            smooth_penalty = smooth_penalty[:, 1:]
+
+        penalty_arr = jnp.asarray(np.astype(smooth_penalty, "float"))
+
+        basis = Basis(
+            value=var,
+            basis_fn=basis_fun,
+            name=Bname + "(" + x + ")",
+            cache_basis=True,
+            use_callback=True,
+            penalty=penalty_arr,
+        )
+
+        try:
+            nb_out = to_py(f"{smooth._smooth_r_name}[[1]]$xt$nb", format="numpy")
+        except TypeError:
+            nb_out = None
+        # nb_out = {key: np.astype(val, "int") for key, val in nb_out.items()}
+
+        label_order = list(
+            to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
+        )
+
+        return basis, nb_out, label_order
 
 
 BasisTypes = Literal["ps", "cr", "cc", "tp", "ts"]

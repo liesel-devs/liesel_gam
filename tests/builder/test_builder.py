@@ -8,9 +8,11 @@ from formulaic.errors import (
     FormulaParsingError,
     FormulaSyntaxError,
 )
+from ryp import r, to_py
 
 import liesel_gam.builder as gb
 from liesel_gam.builder.builder import BasisBuilder
+from liesel_gam.builder.registry import PandasRegistry
 from liesel_gam.testing_df import make_test_df
 
 
@@ -460,3 +462,89 @@ class TestFoBasisLinearCategorical:
         bool_cat3 = np.asarray(basis.value[:, 1] == 1)
         cat3 = bases.data[bool_cat3]["cat_ordered"].to_numpy()
         assert np.all(cat3 == "high")
+
+
+@pytest.fixture(scope="module")
+def columb():
+    r("library(mgcv)")
+    r("data(columb)")
+    columb = to_py("columb", format="pandas")
+    return columb
+
+
+@pytest.fixture(scope="module")
+def columb_polys():
+    r("library(mgcv)")
+    r("data(columb.polys)")
+    polys = to_py("columb.polys", format="numpy")
+    return polys
+
+
+class TestMRFBasis:
+    def test_initialization_consistency(self, columb, columb_polys):
+        """
+        There are quite a few ways to initialize the MRF basis.
+        This test ensures that they all run and lead to consistent results, with
+        some hand-selected expected exceptions.
+        """
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        basis, neighbors, labels = bases.mrf("district", polys=columb_polys)
+
+        basis2, neighbors2, labels2 = bases.mrf("district", nb=neighbors)
+
+        basis3, neighbors3, labels3 = bases.mrf("district", penalty=basis.penalty.value)
+
+        basis4, neighbors4, labels4 = bases.mrf(
+            "district", polys=columb_polys, nb=neighbors
+        )
+
+        basis5, neighbors5, labels5 = bases.mrf(
+            "district", polys=columb_polys, penalty=basis.penalty.value
+        )
+
+        basis6, neighbors6, labels6 = bases.mrf(
+            "district", nb=neighbors, penalty=basis.penalty.value
+        )
+
+        basis7, neighbors7, labels7 = bases.mrf(
+            "district", polys=columb_polys, nb=neighbors, penalty=basis.penalty.value
+        )
+
+        for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
+            assert jnp.allclose(b.value, basis.value)
+            assert jnp.allclose(b.penalty.value, basis.penalty.value)
+
+        nb_list = [
+            neighbors2,
+            neighbors3,
+            neighbors4,
+            neighbors5,
+            neighbors6,
+            neighbors7,
+        ]
+        for i, nb in enumerate(nb_list):
+            # nb_list[0]  # not none (has neighbors)
+            # nb_list[1]  # none (only penalty)
+            # nb_list[2]  # not none (polys and neighbors)
+            # nb_list[3]  # none (polys and penalty)
+            # nb_list[4]  # not none (neighbors and penalty)
+            # nb_list[5]  # not none (polys, neighbors and penalty)
+
+            if i in [1, 3]:
+                # because in these cases, the smooth does not compute the neighbor list
+                assert nb is None
+            else:
+                for key, nb_arr in nb.items():
+                    assert np.allclose(nb_arr, neighbors[key])
+
+        for lab in [
+            labels2,
+            labels3,
+            labels4,
+            labels5,
+            labels6,
+            labels7,
+        ]:
+            assert lab == labels
