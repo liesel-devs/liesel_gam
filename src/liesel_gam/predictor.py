@@ -30,26 +30,26 @@ class AdditivePredictor(UserVar):
             return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
 
         if intercept and not isinstance(intercept, lsl.Var):
-            intercept = lsl.Var.new_param(
+            intercept_: lsl.Var | float = lsl.Var.new_param(
                 name=f"{name}_intercept",
                 value=0.0,
                 distribution=None,
                 inference=gs.MCMCSpec(gs.IWLSKernel),
             )
         else:
-            intercept = 0.0
+            intercept_ = 0.0
 
-        super().__init__(lsl.Calc(_sum, intercept=intercept), name=name)
+        super().__init__(lsl.Calc(_sum, intercept=intercept_), name=name)
         self.update()
         self.terms: dict[str, term_types] = {}
         """Dictionary of terms in this predictor."""
 
     @property
-    def intercept(self) -> lsl.Var | float:
+    def intercept(self) -> lsl.Var | lsl.Node:
         return self.value_node["intercept"]
 
     @intercept.setter
-    def intercept(self, value: lsl.Var):
+    def intercept(self, value: lsl.Var | lsl.Node):
         self.value_node["intercept"] = value
 
     def update(self) -> Self:
