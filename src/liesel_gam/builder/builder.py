@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import formulaic as fo
 import jax.numpy as jnp
@@ -8,11 +8,35 @@ import liesel.goose as gs
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
+import smoothcon as scon
+from ryp import r, to_py
 
-from ..var import Basis, BasisDot
+from ..var import Basis, BasisDot, ScaleIG, Term
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
+
+
+def _margin_penalties(smooth: scon.SmoothCon):
+    """Extracts the marginal penalty matrices from a ti() smooth."""
+    # this should go into smoothcon, but it works here for now
+    r(
+        f"penalties_list <- lapply({smooth._smooth_r_name}"
+        "[[1]]$margin, function(x) x$S[[1]])"
+    )
+    pens = to_py("penalties_list")
+    return [pen.to_numpy() for pen in pens]
+
+
+def _tp_penalty(K1, K2) -> np.typing.NDArray:
+    """Computes the full tensor product penalty from the marginals."""
+    # this should go into smoothcon, but it works here for now
+    D1 = np.shape(K1)[1]
+    D2 = np.shape(K2)[1]
+    I1 = np.eye(D1)
+    I2 = np.eye(D2)
+
+    return np.kron(K1, I2) + np.kron(I1, K2)
 
 
 def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> dict:
@@ -61,6 +85,173 @@ class BasisBuilder:
     @property
     def data(self) -> pd.DataFrame:
         return self.registry.data
+
+    def te(
+        self,
+        x1: str,
+        x2: str,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
+        k: int | tuple[int, int] = 8,
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        Bname: str = "B",
+    ) -> Basis:
+        absorb_cons: bool = True
+        diagonal_penalty: bool = True
+        scale_penalty: bool = True
+
+        x1_array = jnp.asarray(self.registry.data[x1].to_numpy())
+        x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
+
+        if isinstance(k, int):
+            k1 = k
+            k2 = k
+        elif len(k) == 2:
+            k1, k2 = k
+        else:
+            raise ValueError(f"{k=} not supported.")
+
+        if isinstance(bs, str):
+            bs_arg = f"'{bs}'"
+        elif len(bs) == 2:
+            bs_arg = f"c('{bs[0]}', '{bs[1]}')"
+        else:
+            raise ValueError(f"{bs=} not supported.")
+
+        spec = f"te({x1}, {x2}, bs={bs_arg}, k=c({k1}, {k2}), m={m})"
+
+        smooth = scon.SmoothCon(
+            spec,
+            data={x1: x1_array, x2: x2_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x1_var = self.registry.get_numeric_obs(x1)
+        x2_var = self.registry.get_numeric_obs(x2)
+        x1x2_name = f"{x1},{x2}"
+        x1_x2_var = lsl.TransientCalc(
+            lambda x1, x2: jnp.c_[x1, x2],
+            x1=x1_var,
+            x2=x2_var,
+            _name=x1x2_name,
+        )
+
+        K1 = smooth.single_penalty(0, 0)
+        K2 = smooth.single_penalty(0, 1)
+
+        basis = Basis(
+            x1_x2_var,
+            name=Bname + "(" + x1 + "," + x2 + ")",
+            basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
+            penalty=K1 + K2,
+            use_callback=True,
+            cache_basis=True,
+        )
+        return basis
+
+    def ti(
+        self,
+        x1: str,
+        x2: str,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
+        k: int | tuple[int, int] = 8,
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        Bname: str = "B",
+    ) -> Basis:
+        absorb_cons: bool = True
+        diagonal_penalty: bool = True
+        scale_penalty: bool = True
+
+        x1_array = jnp.asarray(self.registry.data[x1].to_numpy())
+        x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
+
+        if isinstance(k, int):
+            k1 = k
+            k2 = k
+        elif len(k) == 2:
+            k1, k2 = k
+        else:
+            raise ValueError(f"{k=} not supported.")
+
+        if isinstance(bs, str):
+            bs_arg = f"'{bs}'"
+        elif len(bs) == 2:
+            bs_arg = f"c('{bs[0]}', '{bs[1]}')"
+        else:
+            raise ValueError(f"{bs=} not supported.")
+
+        spec = f"ti({x1}, {x2}, bs={bs_arg}, k=c({k1}, {k2}), m={m})"
+
+        smooth = scon.SmoothCon(
+            spec,
+            data={x1: x1_array, x2: x2_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x1_var = self.registry.get_numeric_obs(x1)
+        x2_var = self.registry.get_numeric_obs(x2)
+
+        x1x2_name = f"{x1},{x2}"
+
+        x1_x2_var = lsl.TransientCalc(
+            lambda x1, x2: jnp.c_[x1, x2],
+            x1=x1_var,
+            x2=x2_var,
+            _name=x1x2_name,
+        )
+
+        penalty = _tp_penalty(*_margin_penalties(smooth))
+
+        basis = Basis(
+            x1_x2_var,
+            name=Bname + "(" + x1 + "," + x2 + ")",
+            basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
+            penalty=penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+        return basis
+
+    def ps(
+        self,
+        x: str,
+        k: int = 20,
+        basis_degree: int = 3,
+        penalty_order: int = 2,
+        knots: np.typing.ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        Bname: str = "B",
+    ) -> Basis:
+        spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree}, {penalty_order}))"
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=Bname + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+        return basis
 
     def fo(
         self,
@@ -157,17 +348,48 @@ class BasisBuilder:
         return basis
 
 
+BasisTypes = Literal["ps", "cr", "cc", "tp", "ts"]
+
+
 class TermBuilder:
     def __init__(self, registry: PandasRegistry) -> None:
         self.registry = registry
         self.bases = BasisBuilder(registry)
 
         self._automatically_assigned_xnames: list[str] = []
+        self._automatically_assigned_fnames: list[str] = []
+        self._automatically_assigned_names: list[str] = []
 
     def _auto_xname(self) -> str:
         name = "x" + str(len(self._automatically_assigned_xnames) + 1)
         self._automatically_assigned_xnames.append(name)
         return name
+
+    def _auto_fname(self, fname: str) -> str:
+        max_i = 10_000
+        i = 1
+        fname_indexed = fname + str(i)
+        while fname_indexed in self._automatically_assigned_fnames:
+            i += 1
+            fname_indexed = fname + str(i)
+            if i > max_i:
+                raise RuntimeError("Maximum number of iterations reached.")
+
+        self._automatically_assigned_fnames.append(fname_indexed)
+        return fname_indexed
+
+    def _auto_name(self, fname: str) -> str:
+        max_i = 10_000
+        i = 1
+        fname_indexed = fname
+        while fname_indexed in self._automatically_assigned_fnames:
+            i += 1
+            fname_indexed = fname + str(i)
+            if i > max_i:
+                raise RuntimeError("Maximum number of iterations reached.")
+
+        self._automatically_assigned_names.append(fname_indexed)
+        return fname_indexed
 
     @classmethod
     def from_dict(cls, data: dict[str, np.typing.ArrayLike]) -> TermBuilder:
@@ -204,3 +426,125 @@ class TermBuilder:
         )
 
         return term
+
+    def ps(
+        self,
+        x: str,
+        k: int = 20,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        basis_degree: int = 3,
+        penalty_order: int = 2,
+        knots: np.typing.ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+
+        basis = self.bases.ps(
+            x=x,
+            k=k,
+            basis_degree=basis_degree,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="ps")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def ti(
+        self,
+        x1: str,
+        x2: str,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
+        k: int | tuple[int, int] = 8,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        noncentered: bool = False,
+    ) -> Term:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+
+        basis = self.bases.ti(
+            x1=x1,
+            x2=x2,
+            bs=bs,
+            k=k,
+            m=m,
+            knots=knots,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="ti")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def te(
+        self,
+        x1: str,
+        x2: str,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
+        k: int | tuple[int, int] = 8,
+        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        noncentered: bool = False,
+    ) -> Term:
+        if scale == "IG(1.0, 0.005)":
+            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+
+        basis = self.bases.te(
+            x1=x1,
+            x2=x2,
+            bs=bs,
+            k=k,
+            m=m,
+            knots=knots,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="te")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def ri(self): ...
+
+    def rs(self): ...
+
+    def s(self): ...
+
+    def mrf(self): ...
+
+    def term_1d(self): ...
