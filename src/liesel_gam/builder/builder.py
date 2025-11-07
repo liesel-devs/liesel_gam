@@ -583,19 +583,6 @@ class TermBuilder:
         self._automatically_assigned_fnames.append(fname_indexed)
         return fname_indexed
 
-    def _auto_name(self, fname: str) -> str:
-        max_i = 10_000
-        i = 1
-        fname_indexed = fname
-        while fname_indexed in self._automatically_assigned_fnames:
-            i += 1
-            fname_indexed = fname + str(i)
-            if i > max_i:
-                raise RuntimeError("Maximum number of iterations reached.")
-
-        self._automatically_assigned_names.append(fname_indexed)
-        return fname_indexed
-
     @classmethod
     def from_dict(cls, data: dict[str, np.typing.ArrayLike]) -> TermBuilder:
         return cls.from_df(pd.DataFrame(data))
