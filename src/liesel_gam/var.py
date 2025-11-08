@@ -314,11 +314,16 @@ class Term(UserVar):
 
         self.coef.dist_node["scale"] = lsl.Value(1.0)
 
+        if self.scale.name and self.coef.name:
+            scaled_name = self.scale.name + "*" + self.coef.name
+        else:
+            scaled_name = _append_name(self.coef.name, "_scaled")
+
         scaled_coef = lsl.Var.new_calc(
             lambda scale, coef: scale * coef,
             self.scale,
             self.coef,
-            name=_append_name(self.coef.name, "_scaled"),
+            name=scaled_name,
         )
 
         self.value_node["coef"] = scaled_coef

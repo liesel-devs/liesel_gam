@@ -609,6 +609,18 @@ class TermBuilder:
         self._automatically_assigned_fnames[fname].append(fname_indexed)
         return fname_indexed
 
+    def _init_default_scale(self) -> ScaleIG:
+        scale_name = self._auto_fname("$\\tau$")
+        variance_name = self._auto_fname("$\\tau^2$")
+        scale = ScaleIG(
+            1.0,
+            concentration=1.0,
+            scale=0.005,
+            name=scale_name,
+            variance_name=variance_name,
+        )
+        return scale
+
     @classmethod
     def from_dict(cls, data: dict[str, np.typing.ArrayLike]) -> TermBuilder:
         return cls.from_df(pd.DataFrame(data))
@@ -663,7 +675,7 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> Term:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
 
         basis = self.bases.ps(
             x=x,
@@ -701,7 +713,7 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> Term:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
 
         basis = self.bases.ti(
             x1=x1,
@@ -737,7 +749,7 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> Term:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
 
         basis = self.bases.te(
             x1=x1,
@@ -769,7 +781,8 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> IndexingTerm:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
+
         basis = self.bases.ri(
             cluster=cluster, Bname=self._auto_fname(fname="RI"), penalty=penalty
         )
@@ -849,7 +862,7 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> Term:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
 
         basis = self.bases.s(
             x=x,
@@ -889,7 +902,7 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> MRFTerm:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
 
         basis, neighbors, labels = self.bases.mrf(
             x=x,
@@ -932,7 +945,7 @@ class TermBuilder:
         noncentered: bool = False,
     ) -> Term:
         if scale == "IG(1.0, 0.005)":
-            scale = ScaleIG(1.0, concentration=1.0, scale=0.005)
+            scale = self._init_default_scale()
 
         basis = self.bases.basis(
             *x,
