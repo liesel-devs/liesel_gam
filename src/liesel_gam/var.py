@@ -262,9 +262,6 @@ class Term(UserVar):
     ):
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
-        if not jnp.asarray(basis.value).ndim == 2:
-            raise ValueError(f"basis must have 2 dimensions, got {basis.value.ndim}.")
-
         nbases = jnp.shape(basis.value)[-1]
 
         prior = term_prior(scale, penalty)
@@ -534,7 +531,7 @@ class IndexingTerm(Term):
         if not basis.value.ndim == 1:
             raise ValueError(f"IndexingTerm requires 1d basis, got {basis.value.ndim=}")
 
-        if not jnp.isdtype(jnp.dtype(basis.value), jnp.int_):
+        if not jnp.issubdtype(jnp.dtype(basis.value), jnp.integer):
             raise TypeError(
                 f"IndexingTerm requires integer basis, got {jnp.dtype(basis.value)=}."
             )
@@ -553,7 +550,7 @@ class IndexingTerm(Term):
         # attribute "function".
         # But we can assume safely that self.value_node is a lsl.Calc, which does have
         # one.
-        self.value_node.function = jnp.take  # type: ignore
+        self.value_node.function = lambda basis, coef: jnp.take(coef, basis)  # type: ignore
         if _update_on_init:
             self.coef.update()
             self.update()
