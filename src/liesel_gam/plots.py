@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 import jax
@@ -11,13 +11,13 @@ import plotnine as p9
 from jax import Array
 from jax.typing import ArrayLike
 
-from .var import Term
+from .var import MRFTerm, Term
 
 KeyArray = Any
 
 
 def summarise_by_samples(
-    key: KeyArray, a: Array, name: str, n: int = 100
+    key: KeyArray, a: Any, name: str, n: int = 100
 ) -> pd.DataFrame:
     """
     - index: index of the flattened array
@@ -49,18 +49,22 @@ def summarise_by_samples(
 def plot_1d_smooth(
     term: Term,
     samples: dict[str, Array],
-    grid: ArrayLike | None = None,
+    newdata: gs.Position | None = None,
     ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
     hdi_prob: float | None = None,
     show_n_samples: int | None = 50,
     seed: int | KeyArray = 1,
 ):
-    if grid is None:
+    if newdata is None:
+        # TODO: Currently, this branch of the function assumes that term.basis.x is
+        # a strong node.
+        # That is not necessarily always the case.
         xgrid = jnp.linspace(term.basis.x.value.min(), term.basis.x.value.max(), 150)
+        newdata_x = {term.basis.x.name: xgrid}
     else:
-        xgrid = jnp.asarray(grid)
+        newdata_x = newdata
 
-    term_samples = term.predict(samples, newdata={term.basis.x.name: xgrid})
+    term_samples = term.predict(samples, newdata=newdata_x)
     ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
     term_summary = (
@@ -129,9 +133,7 @@ def plot_1d_smooth(
     return p
 
 
-def grid_2d(
-    inputs: dict[str, jax.typing.ArrayLike], ngrid: int
-) -> dict[str, jax.typing.ArrayLike]:
+def grid_2d(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, Any]:
     mins = {k: jnp.min(v) for k, v in inputs.items()}
     maxs = {k: jnp.max(v) for k, v in inputs.items()}
     grids = {k: np.linspace(mins[k], maxs[k], ngrid) for k in inputs}
@@ -146,7 +148,7 @@ def input_grid_2d_smooth(term: Term, ngrid: int) -> dict[str, jax.typing.ArrayLi
             "Function not implemented for bases with inputs of "
             f"type {type(term.basis.x)}."
         )
-    inputs = {n.var.name: n.var.value for n in term.basis.x.all_input_nodes()}
+    inputs = {n.var.name: n.var.value for n in term.basis.x.all_input_nodes()}  # type: ignore
     return grid_2d(inputs, ngrid)
 
 
@@ -161,7 +163,7 @@ PlotVars = Literal[
 def plot_2d_smooth(
     term: Term,
     samples: dict[str, Array],
-    grid: dict[str, ArrayLike] | None = None,
+    newdata: gs.Position | None = None,
     ngrid: int = 20,
     plot_vars: PlotVars | Sequence[PlotVars] = "mean",
     ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
@@ -170,13 +172,15 @@ def plot_2d_smooth(
     if isinstance(plot_vars, str):
         plot_vars = [plot_vars]
 
-    if grid is None:
-        xgrid = input_grid_2d_smooth(term, ngrid=ngrid)
+    if newdata is None:
+        # TODO: Currently, this branch of the function assumes that Basis.x is a
+        # Calc or TransientCalc. That is not necessarily always the case.
+        newdata_x = input_grid_2d_smooth(term, ngrid=ngrid)
     else:
-        full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
-        xgrid = dict(zip(grid.keys(), full_grid_arrays))
+        full_grid_arrays = [v.flatten() for v in np.meshgrid(*newdata.values())]
+        newdata_x = dict(zip(newdata.keys(), full_grid_arrays))
 
-    term_samples = term.predict(samples, newdata=xgrid)
+    term_samples = term.predict(samples, newdata=newdata_x)
     ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
     term_summary = (
@@ -187,12 +191,12 @@ def plot_2d_smooth(
         .reset_index()
     )
 
-    for k, v in xgrid.items():
+    for k, v in newdata_x.items():
         term_summary[k] = np.asarray(v)
 
     term_summary.reset_index(inplace=True)
     term_summary = term_summary.melt(
-        id_vars=["index"] + list(xgrid.keys()),
+        id_vars=["index"] + list(newdata_x.keys()),
         value_vars=plot_vars,
         var_name="variable",
         value_name="value",
@@ -209,7 +213,7 @@ def plot_2d_smooth(
             x=term.basis.x.name,
             y=term.name,
         )
-        + p9.aes(*list(xgrid.keys()), fill="value")
+        + p9.aes(*list(newdata_x.keys()), fill="value")
         + p9.facet_wrap("~variable", labeller="label_both")
     )
 
@@ -218,7 +222,218 @@ def plot_2d_smooth(
     return p
 
 
-def plot_regions(): ...
+def polys_to_df(polys: Mapping[str, ArrayLike]):
+    poly_labels = list(polys)
+    poly_coords = list(polys.values())
+    poly_coord_dim = np.shape(poly_coords[0])[-1]
+    poly_df = pd.concat(
+        [
+            pd.DataFrame(
+                poly_coords[i], columns=[f"V{i}" for i in range(poly_coord_dim)]
+            ).assign(vertex=lambda df: df.index + 1, id=i, label=poly_labels[i])
+            for i in range(len(polys))
+        ],
+        ignore_index=True,
+    )
+    return poly_df
 
 
-def plot_forest(): ...
+def plot_polys(
+    region: str,
+    plot_vars: str | Sequence[str],
+    df: pd.DataFrame,
+    polys: Mapping[str, ArrayLike],
+) -> p9.ggplot:
+    if isinstance(plot_vars, str):
+        plot_vars = [plot_vars]
+
+    poly_df = polys_to_df(polys)
+
+    df["label"] = df[region].astype(str)
+    plot_df = df.merge(poly_df, on="label")
+
+    plot_df = plot_df.melt(
+        id_vars=["label", "V0", "V1"],
+        value_vars=plot_vars,
+        var_name="variable",
+        value_name="value",
+    )
+
+    plot_df["variable"] = pd.Categorical(plot_df["variable"], categories=plot_vars)
+
+    p = (
+        p9.ggplot(plot_df)
+        + p9.aes("V0", "V1", group="label", fill="value")
+        + p9.geom_polygon()
+        + p9.facet_wrap("~variable", labeller="label_both")
+    )
+    return p
+
+
+def ri_summary(
+    term: MRFTerm | Term,
+    samples,
+    newdata: gs.Position | None = None,
+    labels: Sequence[str] | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+) -> p9.ggplot:
+    if newdata is None:
+        newdata_x = {term.basis.x.name: np.unique(term.basis.x.value)}
+    else:
+        newdata_x = newdata
+
+    predictions = term.predict(samples=samples, newdata=newdata_x)
+    predictions_summary = (
+        gs.SamplesSummary.from_array(
+            predictions,
+            quantiles=ci_quantiles,
+            hdi_prob=0.9 if hdi_prob is None else hdi_prob,
+        )
+        .to_dataframe()
+        .reset_index()
+    )
+
+    if labels is not None:
+        predictions_summary[term.basis.x.name] = labels
+    else:
+        nrow = predictions_summary.shape[0]
+        predictions_summary[term.basis.x.name] = np.arange(nrow)
+
+    return predictions_summary
+
+
+def plot_regions(
+    term: MRFTerm | Term,
+    samples,
+    newdata: gs.Position | None = None,
+    plot_vars: PlotVars | Sequence[PlotVars] = "mean",
+    polys: Mapping[str, ArrayLike] | None = None,
+    labels: Sequence[str] | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+) -> p9.ggplot:
+    polygons = None
+    if polys is not None:
+        polygons = polys
+    else:
+        try:
+            # using type ignore here, since the case of term not having the attribute
+            # polygons is handle by the try except
+            polygons = term.polygons  # type: ignore
+        except AttributeError:
+            pass
+
+    if not polygons:
+        raise ValueError(
+            "When passing a term with term.polygons=None, polygons must "
+            "be supplied manually."
+        )
+
+    df = ri_summary(
+        term=term,
+        samples=samples,
+        newdata=newdata,
+        labels=labels,
+        ci_quantiles=ci_quantiles,
+        hdi_prob=hdi_prob,
+    )
+    region = term.basis.x.name
+    return plot_polys(region=region, plot_vars=plot_vars, df=df, polys=polygons)
+
+
+def plot_forest(
+    term: MRFTerm | Term,
+    samples,
+    newdata: gs.Position | None = None,
+    labels: Sequence[str] | None = None,
+    ymin: str = "hdi_low",
+    ymax: str = "hdi_high",
+    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+) -> p9.ggplot:
+    df = ri_summary(
+        term=term,
+        samples=samples,
+        newdata=newdata,
+        labels=labels,
+        ci_quantiles=ci_quantiles,
+        hdi_prob=hdi_prob,
+    )
+    cluster = term.basis.x.name
+
+    if labels is None:
+        xlab = cluster + " (indices)"
+    else:
+        xlab = cluster + " (labels)"
+
+    p = (
+        p9.ggplot(df)
+        + p9.aes(cluster, "mean", color="mean")
+        + p9.geom_hline(yintercept=0, color="grey")
+        + p9.geom_pointrange(p9.aes(ymin=ymin, ymax=ymax))
+        + p9.coord_flip()
+        + p9.labs(x=xlab)
+    )
+    return p
+
+
+def plot_1d_smooth_clustered(
+    term: lsl.Var,
+    x: lsl.Var,
+    cluster: lsl.Var,
+    samples: dict[str, Array],
+    ngrid: int = 150,
+    newdata: gs.Position | None = None,
+    plot_vars: PlotVars | Sequence[PlotVars] = "mean",
+    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
+    hdi_prob: float | None = None,
+    labels: Sequence[str] | None = None,
+):
+    if isinstance(plot_vars, str):
+        plot_vars = [plot_vars]
+
+    if newdata is None:
+        xgrid = jnp.linspace(x.value.min(), x.value.max(), ngrid)
+        cluster_grid = jnp.unique(cluster.value)
+        grid = {x.name: xgrid, cluster.name: cluster_grid}
+    else:
+        grid = newdata
+
+    full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
+    newdata_x = dict(zip(grid.keys(), full_grid_arrays))
+
+    term_samples = term.predict(samples, newdata=newdata_x)
+    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
+    hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
+    term_summary = (
+        gs.SamplesSummary.from_array(
+            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
+        )
+        .to_dataframe()
+        .reset_index()
+    )
+
+    for k, v in newdata_x.items():
+        term_summary[k] = np.asarray(v)
+
+    if labels is not None:
+        term_summary[cluster.name] = np.repeat(labels, ngrid)
+
+    term_summary.reset_index(inplace=True)
+
+    if labels is None:
+        clab = cluster.name + " (indices)"
+    else:
+        clab = cluster.name + " (labels)"
+
+    p = (
+        p9.ggplot(term_summary)
+        + p9.aes(x.name, "mean", group=cluster.name)
+        + p9.aes(color=cluster.name)
+        + p9.labs(title=f"Posterior summary of {term.name}", x=x.name, color=clab)
+        + p9.facet_wrap("~variable", labeller="label_both")
+        + p9.geom_line()
+    )
+
+    return p
