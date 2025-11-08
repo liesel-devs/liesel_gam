@@ -899,7 +899,8 @@ class TermBuilder:
 
         term.polygons = polys
         term.neighbors = neighbors
-        term.labels = labels
+        if labels is not None:
+            term.labels = labels
 
         return term
 
