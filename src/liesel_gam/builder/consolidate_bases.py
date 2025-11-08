@@ -51,15 +51,24 @@ def _remove_singleton_vars(gb: lsl.GraphBuilder) -> lsl.GraphBuilder:
     return gb
 
 
-def consolidate_bases(model: lsl.Model) -> tuple[lsl.Model, lsl.Model]:
+def consolidate_bases(
+    model: lsl.Model, copy: bool = True
+) -> tuple[lsl.Model, lsl.Model]:
     """
     Turns all :class:`.Basis` variables in the provided model into strong,
     observed :class:`liesel.model.Var` variables.
 
     Returns a new model that depends only on the strong bases, and a model that
     holds the original bases and their input data.
+
+    If ``copy=False``, all data will be extracted from the original model, instead
+    of creating copies. This saves memory, but renders the original model empty.
     """
-    nodes, vars_ = model.pop_nodes_and_vars()
+    if copy:
+        nodes, vars_ = model.copy_nodes_and_vars()
+    else:
+        nodes, vars_ = model.pop_nodes_and_vars()
+
     gb = lsl.GraphBuilder(to_float32=model._to_float32)
     gb.add(*nodes.values(), *vars_.values())
 
