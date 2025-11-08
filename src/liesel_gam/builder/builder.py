@@ -450,7 +450,7 @@ class BasisBuilder:
         diagonal_penalty: bool = False,
         scale_penalty: bool = False,
         Bname: str = "B",
-    ) -> tuple[Basis, dict[str, np.typing.NDArray[np.int_]] | None, list[str]]:
+    ) -> tuple[Basis, dict[str, np.typing.NDArray[np.int_]] | None, list[str] | None]:
         if polys is None and nb is None and penalty is None:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
 
@@ -562,10 +562,13 @@ class BasisBuilder:
             nb_out = None
         # nb_out = {key: np.astype(val, "int") for key, val in nb_out.items()}
 
-        label_order = list(
-            to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
-        )
-        label_order = [lab[1:] for lab in label_order]  # removes leading x from R
+        if absorb_cons:
+            label_order = None
+        else:
+            label_order = list(
+                to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
+            )
+            label_order = [lab[1:] for lab in label_order]  # removes leading x from R
 
         if nb_out is not None:
             # switch to zero-based indexing as expected in Python
