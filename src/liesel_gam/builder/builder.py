@@ -586,8 +586,7 @@ class TermBuilder:
         self.bases = BasisBuilder(registry)
 
         self._automatically_assigned_xnames: list[str] = []
-        self._automatically_assigned_fnames: list[str] = []
-        self._automatically_assigned_names: list[str] = []
+        self._automatically_assigned_fnames: dict[str, list[str]] = dict()
 
     def _auto_xname(self) -> str:
         name = "x" + str(len(self._automatically_assigned_xnames) + 1)
@@ -598,13 +597,16 @@ class TermBuilder:
         max_i = 10_000
         i = 1
         fname_indexed = fname + str(i)
-        while fname_indexed in self._automatically_assigned_fnames:
+        if fname not in self._automatically_assigned_fnames:
+            self._automatically_assigned_fnames[fname] = []
+        names_with_this_prefix = self._automatically_assigned_fnames[fname]
+        while fname_indexed in names_with_this_prefix:
             i += 1
             fname_indexed = fname + str(i)
             if i > max_i:
                 raise RuntimeError("Maximum number of iterations reached.")
 
-        self._automatically_assigned_fnames.append(fname_indexed)
+        self._automatically_assigned_fnames[fname].append(fname_indexed)
         return fname_indexed
 
     @classmethod
