@@ -787,7 +787,7 @@ class TermBuilder:
 
     def rs(
         self,
-        x: str,
+        x: str | Term,
         cluster: str,
         scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
@@ -802,14 +802,19 @@ class TermBuilder:
             noncentered=noncentered,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
+        if isinstance(x, str):
+            x_var = self.registry.get_numeric_obs(x)
+            xname = x
+        else:
+            x_var = x
+            xname = x_var.basis.x.name
 
         fname = self._auto_fname(fname="rs")
         term = lsl.Var.new_calc(
             lambda x, ri: x * ri,
             x=x_var,
             ri=ri,
-            name=fname + "(" + x + "|" + cluster + ")",
+            name=fname + "(" + xname + "|" + cluster + ")",
         )
         return term
 
