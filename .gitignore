@@ -177,3 +177,4 @@ cython_debug/
 /tests/data
 .DS_Store
 notebooks/test_ti_smooth.ipynb
+notebooks/test_mrf.R
