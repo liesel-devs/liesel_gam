@@ -818,6 +818,22 @@ class TermBuilder:
         )
         return term
 
+    def vc(
+        self,
+        x: str,
+        by: Term,
+    ) -> lsl.Var:
+        fname = self._auto_fname(fname="rs")
+        x_var = self.registry.get_obs(x)
+
+        term = lsl.Var.new_calc(
+            lambda x, by: x * by,
+            x=x_var,
+            by=by,
+            name=fname + "(" + x + "*" + by.name + ")",
+        )
+        return term
+
     def s(
         self,
         x: str,
