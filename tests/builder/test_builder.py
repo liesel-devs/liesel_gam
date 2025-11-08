@@ -477,10 +477,78 @@ def columb_polys():
     r("library(mgcv)")
     r("data(columb.polys)")
     polys = to_py("columb.polys", format="numpy")
+    # turn to zero-based indecing
+    polys = {k: v - 1 for k, v in polys.items()}
     return polys
 
 
 class TestMRFBasis:
+    def test_initialization_nb_strings(self, columb, columb_polys):
+        """
+        There are quite a few ways to initialize the MRF basis.
+        This test ensures that they all run and lead to consistent results, with
+        some hand-selected expected exceptions.
+        """
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        columb_polys
+        basis, neighbors, labels = bases.mrf("district", polys=columb_polys)
+
+        label_arr = np.asarray(list(columb_polys))
+        # label_arr = np.asarray(labels)
+        nb_int = {k: np.astype(v, int) for k, v in neighbors.items()}
+
+        neighbor_labels = {k: label_arr[v] for k, v in nb_int.items()}
+
+        # string numpy array
+        basis2, neighbors2, labels2 = bases.mrf("district", nb=neighbor_labels)
+
+        # list of strings
+        neighbor_labels = {k: v.tolist() for k, v in neighbor_labels.items()}
+        basis3, neighbors3, labels3 = bases.mrf("district", nb=neighbor_labels)
+
+        # integer numpy array
+        basis4, neighbors4, labels4 = bases.mrf("district", nb=nb_int)
+
+        # list of integers
+        nb_intlist = {k: v.tolist() for k, v in nb_int.items()}
+        basis5, neighbors5, labels5 = bases.mrf("district", nb=nb_intlist)
+
+        # float numpy array
+        nb_float = {k: np.astype(v, float) for k, v in nb_int.items()}
+        basis6, neighbors6, labels6 = bases.mrf("district", nb=nb_float)
+
+        # list of floats
+        nb_floatlist = {k: v.tolist() for k, v in nb_float.items()}
+        basis7, neighbors7, labels7 = bases.mrf("district", nb=nb_floatlist)
+
+        for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
+            assert jnp.allclose(b.value, basis.value)
+            assert jnp.allclose(b.penalty.value, basis.penalty.value)
+
+        nb_list = [
+            neighbors2,
+            neighbors3,
+            neighbors4,
+            neighbors5,
+            neighbors6,
+            neighbors7,
+        ]
+        for nb in nb_list:
+            for key, nb_arr in nb.items():
+                assert np.allclose(nb_arr, neighbors[key])
+
+        for lab in [
+            labels2,
+            labels3,
+            labels4,
+            labels5,
+            labels6,
+            labels7,
+        ]:
+            assert lab == labels
+
     def test_initialization_consistency(self, columb, columb_polys):
         """
         There are quite a few ways to initialize the MRF basis.

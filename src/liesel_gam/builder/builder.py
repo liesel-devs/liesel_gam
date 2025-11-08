@@ -473,7 +473,23 @@ class BasisBuilder:
             xt_args.append("nb=nb")
             if not labels == set(list(nb)):
                 raise ValueError("Names in 'nb' must correspond to the levels of 'x'.")
-            pass_to_r["nb"] = {key: np.asarray(val) for key, val in nb.items()}
+
+            nb_processed = {}
+            for key, val in nb.items():
+                val_arr = np.asarray(val)
+                if np.isdtype(val_arr.dtype, np.dtype("int")):
+                    # add one to convert to 1-based indexing for R
+                    # and cast to float for R
+                    val_arr = np.astype(val_arr + 1, float)
+                    # val_arr = np.astype(val_arr, float)
+                elif np.isdtype(val_arr.dtype, np.dtype("float")):
+                    # add one to convert to 1-based indexing for R
+                    val_arr = np.astype(np.astype(val_arr, int) + 1, float)
+                else:  # must be strings then
+                    pass
+                nb_processed[key] = val_arr
+
+            pass_to_r["nb"] = nb_processed
 
         if penalty is not None:
             penalty = np.asarray(penalty)
@@ -549,6 +565,11 @@ class BasisBuilder:
         label_order = list(
             to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
         )
+        label_order = [lab[1:] for lab in label_order]  # removes leading x from R
+
+        if nb_out is not None:
+            # switch to zero-based indexing as expected in Python
+            nb_out = {k: np.astype(v - 1, int) for k, v in nb_out.items()}
 
         return basis, nb_out, label_order
 
