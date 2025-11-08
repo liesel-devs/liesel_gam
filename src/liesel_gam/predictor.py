@@ -10,7 +10,7 @@ from .var import BasisDot, Term, UserVar
 
 Array = Any
 
-term_types = Term | BasisDot
+term_types = Term | BasisDot | lsl.Var
 
 
 class AdditivePredictor(UserVar):
