@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import formulaic as fo
 import jax
@@ -19,6 +19,14 @@ from .registry import CategoryMapping, PandasRegistry
 InferenceTypes = Any
 
 Array = jax.Array
+
+BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
+
+
+def _validate_bs(bs):
+    allowed = get_args(BasisTypes)
+    if bs not in allowed:
+        raise ValueError(f"Allowed values for 'bs' are: {allowed}; got {bs=}.")
 
 
 def _margin_penalties(smooth: scon.SmoothCon):
@@ -133,6 +141,7 @@ class BasisBuilder:
         knots: np.typing.ArrayLike | None = None,
         Bname: str = "B",
     ) -> Basis:
+        _validate_bs(bs)
         absorb_cons: bool = True
         diagonal_penalty: bool = True
         scale_penalty: bool = True
@@ -199,6 +208,7 @@ class BasisBuilder:
         knots: np.typing.ArrayLike | None = None,
         Bname: str = "B",
     ) -> Basis:
+        _validate_bs(bs)
         absorb_cons: bool = True
         diagonal_penalty: bool = True
         scale_penalty: bool = True
@@ -302,6 +312,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         Bname: str = "B",
     ) -> Basis:
+        _validate_bs(bs)
         bs_arg = f"'{bs}'"
         spec = f"s({x}, bs={bs_arg}, k={k}, m={m})"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
@@ -575,9 +586,6 @@ class BasisBuilder:
             nb_out = {k: np.astype(v - 1, int) for k, v in nb_out.items()}
 
         return basis, nb_out, label_order
-
-
-BasisTypes = Literal["ps", "cr", "cc", "tp", "ts"]
 
 
 class TermBuilder:
@@ -861,6 +869,36 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
+        """
+        Works:
+        - tp (thin plate splines)
+        - ts (thin plate splines with slight null space penalty)
+
+        - cr (cubic regression splines)
+        - cs (shrinked cubic regression splines)
+        - cc (cyclic cubic regression splines)
+
+        - bs (B-splines)
+        - ps (P-splines)
+        - cp (cyclic P-splines)
+
+        Works, but not here:
+        - re (use .ri instead)
+        - mrf (used .mrf instead)
+        - te (use .te instead) (with the bases above)
+        - ti (use .ti instead) (with the bases above)
+
+        Does not work:
+        - ds (Duchon splines)
+        - sos (splines on the sphere)
+        - gp (gaussian process)
+        - so (soap film smooths)
+        - ad (adaptive smooths)
+
+        Probably disallow manually:
+        - fz (factor smooth interaction)
+        - fs (random factor smooth interaction)
+        """
         if scale == "IG(1.0, 0.005)":
             scale = self._init_default_scale()
 
