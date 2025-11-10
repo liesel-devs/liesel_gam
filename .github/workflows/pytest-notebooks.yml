@@ -34,11 +34,11 @@ jobs:
       - name: Fix R library path
         run: |
           echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-      
+
       - name: Install R dependencies
         run: |
           Rscript -e "install.packages('arrow')"
-      
+
       - name: Install Package
         run: uv sync --locked --group dev
 
