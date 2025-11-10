@@ -24,9 +24,12 @@ BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
 
 
 def _validate_bs(bs):
+    if isinstance(bs, str):
+        bs = [bs]
     allowed = get_args(BasisTypes)
-    if bs not in allowed:
-        raise ValueError(f"Allowed values for 'bs' are: {allowed}; got {bs=}.")
+    for bs_str in bs:
+        if bs_str not in allowed:
+            raise ValueError(f"Allowed values for 'bs' are: {allowed}; got {bs=}.")
 
 
 def _margin_penalties(smooth: scon.SmoothCon):
