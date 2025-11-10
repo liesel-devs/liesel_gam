@@ -138,8 +138,8 @@ class BasisBuilder:
         self,
         x1: str,
         x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = 8,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
+        k: int | tuple[int, int] = -1,
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
         Bname: str = "B",
@@ -153,6 +153,8 @@ class BasisBuilder:
         x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
 
         if isinstance(k, int):
+            if k == -1:
+                k = "NA"
             k1 = k
             k2 = k
         elif len(k) == 2:
@@ -205,8 +207,8 @@ class BasisBuilder:
         self,
         x1: str,
         x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = 8,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
+        k: int | tuple[int, int] = -1,
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
         Bname: str = "B",
@@ -220,6 +222,8 @@ class BasisBuilder:
         x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
 
         if isinstance(k, int):
+            if k == -1:
+                k = "NA"
             k1 = k
             k2 = k
         elif len(k) == 2:
@@ -306,7 +310,7 @@ class BasisBuilder:
     def s(
         self,
         x: str,
-        k: int = 8,
+        k: int = -1,
         bs: BasisTypes = "tp",
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
@@ -725,8 +729,8 @@ class TermBuilder:
         self,
         x1: str,
         x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = 8,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
+        k: int | tuple[int, int] = -1,
         scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
@@ -761,8 +765,8 @@ class TermBuilder:
         self,
         x1: str,
         x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = 8,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
+        k: int | tuple[int, int] = -1,
         scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
@@ -871,7 +875,7 @@ class TermBuilder:
     def s(
         self,
         x: str,
-        k: int = 8,
+        k: int = -1,
         bs: BasisTypes = "tp",
         scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
