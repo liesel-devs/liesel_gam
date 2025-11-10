@@ -154,9 +154,11 @@ class BasisBuilder:
 
         if isinstance(k, int):
             if k == -1:
-                k = "NA"
-            k1 = k
-            k2 = k
+                k1: str | int = "NA"
+                k2: str | int = "NA"
+            else:
+                k1 = k
+                k2 = k
         elif len(k) == 2:
             k1, k2 = k
         else:
@@ -223,9 +225,11 @@ class BasisBuilder:
 
         if isinstance(k, int):
             if k == -1:
-                k = "NA"
-            k1 = k
-            k2 = k
+                k1: str | int = "NA"
+                k2: str | int = "NA"
+            else:
+                k1 = k
+                k2 = k
         elif len(k) == 2:
             k1, k2 = k
         else:
