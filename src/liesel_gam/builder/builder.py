@@ -462,6 +462,16 @@ class BasisBuilder:
         scale_penalty: bool = False,
         Bname: str = "B",
     ) -> tuple[Basis, dict[str, np.typing.NDArray[np.int_]] | None, list[str] | None]:
+        """
+        Polys: Dictionary of arrays. The keys of the dict are the region labels.
+            The corresponding values define the region by defining polygons.
+        nb: Dictionary of array. The keys of the dict are the region labels.
+            The corresponding values indicate the neighbors of the region.
+            If it is a list or array of strings, the values are the labels of the
+            neighbors.
+            If it is a list or array of integers, the values are the indices of the
+            neighbors.
+        """
         if polys is None and nb is None and penalty is None:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
 
