@@ -360,7 +360,7 @@ class BasisBuilder:
         - `weird name` backtick-strings for weird names
         - (a + b)**n for n-th order interactions
         - a:b for simple interactions
-        - a*b for expanding to a + b + a*b
+        - a*b for expanding to a + b + a:b
         - a / b for nesting
         - b %in% a for inverted nesting
         - Python functions
