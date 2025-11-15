@@ -186,7 +186,7 @@ class BasisBuilder:
         x2_var = self.registry.get_numeric_obs(x2)
         x1x2_name = f"{x1},{x2}"
         x1_x2_var = lsl.TransientCalc(
-            lambda x1, x2: jnp.c_[x1, x2],
+            lambda x1, x2: jnp.stack((x1, x2), axis=1),
             x1=x1_var,
             x2=x2_var,
             _name=x1x2_name,
