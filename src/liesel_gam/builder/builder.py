@@ -517,8 +517,11 @@ class BasisBuilder:
                 elif np.isdtype(val_arr.dtype, np.dtype("float")):
                     # add one to convert to 1-based indexing for R
                     val_arr = np.astype(np.astype(val_arr, int) + 1, float)
-                else:  # must be strings then
+                elif val_arr.dtype.kind == "U":  # must be unicode strings then
                     pass
+                else:
+                    raise TypeError(f"Unsupported dtype: {val_arr.dtype!r}")
+
                 nb_processed[key] = val_arr
 
             pass_to_r["nb"] = nb_processed
