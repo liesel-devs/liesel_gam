@@ -935,7 +935,7 @@ class TermBuilder:
             Bname=self._auto_fname(fname="B"),
         )
 
-        fname = self._auto_fname(fname="ps")
+        fname = self._auto_fname(fname="s")
         term = Term.f(
             basis,
             fname=fname,
