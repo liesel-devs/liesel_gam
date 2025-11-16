@@ -428,7 +428,7 @@ class StructuredPenaltyOperator:
             raise ValueError(msg1 + msg2 + msg3 + msg4)
 
 
-class MultivariateNormalStructuredSingular(tfd.Distribution):
+class MultivariateNormalStructured(tfd.Distribution):
     """
     - loc is an array with shape (B, N), where B is the batch shape and N is the
       event shape.
@@ -541,7 +541,7 @@ class MultivariateNormalStructuredSingular(tfd.Distribution):
         validate_args: bool = False,
         allow_nan_stats: bool = True,
         include_normalizing_constant: bool = True,
-    ) -> Callable[[Array, Array], "MultivariateNormalStructuredSingular"]:
+    ) -> Callable[[Array, Array], "MultivariateNormalStructured"]:
         penalties_ = [jnp.asarray(p) for p in penalties]
         evs = [jnp.linalg.eigh(K) for K in penalties]
         evals = [ev.eigenvalues for ev in evs]
@@ -553,9 +553,7 @@ class MultivariateNormalStructuredSingular(tfd.Distribution):
         else:
             masks = None
 
-        def construct_dist(
-            loc: Array, scales: Array
-        ) -> "MultivariateNormalStructuredSingular":
+        def construct_dist(loc: Array, scales: Array) -> "MultivariateNormalStructured":
             loc = jnp.asarray(loc)
             scales = jnp.asarray(scales)
             op = StructuredPenaltyOperator(

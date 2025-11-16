@@ -339,7 +339,7 @@ class TestMultivariateNormalStructuredSingular:
         K1 = pspline_penalty(6)[:-2, :-2]
         K2 = pspline_penalty(8)[:-2, :-2]
 
-        fn = gd.MultivariateNormalStructuredSingular.get_locscale_constructor
+        fn = gd.MultivariateNormalStructured.get_locscale_constructor
         dist_constr = fn((K1, K2))
 
         n = K1.shape[-1] * K2.shape[-1]
