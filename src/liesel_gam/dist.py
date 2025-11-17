@@ -218,7 +218,7 @@ def _kron_sum_quadratic(x: jax.Array, Ks: Sequence[jax.Array]) -> jax.Array:
     # Basic sanity checks (cheap, can remove if you like)
     for K, d in zip(Ks, dims):
         assert K.shape == (d, d)
-    total_size = int(jnp.prod(jnp.array(dims)))
+    total_size = prod(dims)
     assert x.size == total_size
 
     # Reshape x into m-dimensional tensor
