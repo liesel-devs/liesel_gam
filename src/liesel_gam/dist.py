@@ -290,6 +290,7 @@ class StructuredPenaltyOperator:
         return jnp.square(self._scales)
 
     def materialize_precision(self) -> jax.Array:
+        """This is inefficient, should be used for testing only."""
         p = len(self._penalties)
 
         dims = [self._penalties[j].shape[-1] for j in range(p)]
