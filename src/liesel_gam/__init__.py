@@ -4,6 +4,13 @@ from .builder import TermBuilder as TermBuilder
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs
+from .plots import plot_1d_smooth as plot_1d_smooth
+from .plots import plot_1d_smooth_clustered as plot_1d_smooth_clustered
+from .plots import plot_2d_smooth as plot_2d_smooth
+from .plots import plot_forest as plot_forest
+from .plots import plot_polys as plot_polys
+from .plots import plot_regions as plot_regions
+from .plots import polys_to_df as polys_to_df
 from .predictor import AdditivePredictor as AdditivePredictor
 from .var import Basis as Basis
 from .var import Intercept as Intercept

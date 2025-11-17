@@ -79,9 +79,13 @@ class CategoryMapping:
     def from_series(cls, series: pd.Series | pd.Categorical) -> CategoryMapping:
         if isinstance(series.dtype, pd.CategoricalDtype):
             unique_labels = np.asarray(series.cat.categories)
+        elif isinstance(series, pd.Series):
+            cat = pd.Categorical(series)
+            unique_labels = np.asarray(cat.categories)
         else:
-            x = series.to_numpy()
-            unique_labels = np.unique(x)
+            raise TypeError(
+                f"series must be a pd.Series or pd.Categorical, got {type(series)}."
+            )
 
         mapping = {val: i for i, val in enumerate(unique_labels)}
         return cls(mapping)
