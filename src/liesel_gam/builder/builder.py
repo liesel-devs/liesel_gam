@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, get_args
 
 import formulaic as fo
@@ -11,9 +11,10 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import smoothcon as scon
+import tensorflow_probability.substrates.jax.bijectors as tfb
 from ryp import r, to_py
 
-from ..var import Basis, BasisDot, IndexingTerm, MRFTerm, ScaleIG, Term
+from ..var import ATerm, ATerm2, Basis, BasisDot, IndexingTerm, MRFTerm, ScaleIG, Term
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
@@ -276,6 +277,78 @@ class BasisBuilder:
             cache_basis=True,
         )
         return basis
+
+    def ta(
+        self,
+        x1: str,
+        x2: str,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
+        k: int | tuple[int, int] = -1,
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+        Bname: str = "B",
+    ) -> tuple[Basis, Sequence[jax.Array]]:
+        _validate_bs(bs)
+        absorb_cons: bool = True
+        diagonal_penalty: bool = True
+        scale_penalty: bool = True
+
+        x1_array = jnp.asarray(self.registry.data[x1].to_numpy())
+        x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
+
+        if isinstance(k, int):
+            if k == -1:
+                k1: str | int = "NA"
+                k2: str | int = "NA"
+            else:
+                k1 = k
+                k2 = k
+        elif len(k) == 2:
+            k1, k2 = k
+        else:
+            raise ValueError(f"{k=} not supported.")
+
+        if isinstance(bs, str):
+            bs_arg = f"'{bs}'"
+        elif len(bs) == 2:
+            bs_arg = f"c('{bs[0]}', '{bs[1]}')"
+        else:
+            raise ValueError(f"{bs=} not supported.")
+
+        spec = f"ti({x1}, {x2}, bs={bs_arg}, k=c({k1}, {k2}), m={m})"
+
+        smooth = scon.SmoothCon(
+            spec,
+            data={x1: x1_array, x2: x2_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x1_var = self.registry.get_numeric_obs(x1)
+        x2_var = self.registry.get_numeric_obs(x2)
+
+        x1x2_name = f"{x1},{x2}"
+
+        x1_x2_var = lsl.TransientCalc(
+            lambda x1, x2: jnp.c_[x1, x2],
+            x1=x1_var,
+            x2=x2_var,
+            _name=x1x2_name,
+        )
+
+        penalties = [jnp.asarray(p) for p in _margin_penalties(smooth)]
+
+        basis = Basis(
+            x1_x2_var,
+            name=Bname + "(" + x1 + "," + x2 + ")",
+            basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
+            penalty=None,
+            use_callback=True,
+            cache_basis=True,
+        )
+        return basis, penalties
 
     def ps(
         self,
@@ -765,6 +838,82 @@ class TermBuilder:
             inference=inference,
             coef_name=None,
             noncentered=noncentered,
+        )
+        return term
+
+    def ta2(
+        self,
+        bases: Sequence[Basis],
+        scales: Sequence[ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"]],
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+    ) -> ATerm2:
+        scales_ = []
+        for scale in scales:
+            if scale == "IG(1.0, 0.005)":
+                scale_ = self._init_default_scale()
+                scale_._variance_param.transform(
+                    bijector=tfb.Softplus(), inference=gs.MCMCSpec(gs.IWLSKernel)
+                )
+                scales_.append(scale_)
+
+        term = ATerm2.f(
+            bases=bases,
+            penalties=None,
+            scales=scales,
+            fname=self._auto_fname(fname="ta"),
+            inference=inference,
+            bname=self._auto_fname(fname="B"),
+        )
+        return term
+
+    def ta(
+        self,
+        x1: str,
+        x2: str,
+        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
+        k: int | tuple[int, int] = -1,
+        scale1: ScaleIG
+        | lsl.Var
+        | float
+        | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale2: ScaleIG
+        | lsl.Var
+        | float
+        | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        m: str = "NA",
+        knots: np.typing.ArrayLike | None = None,
+    ) -> ATerm:
+        if scale1 == "IG(1.0, 0.005)":
+            scale1 = self._init_default_scale()
+            scale1._variance_param.transform(
+                bijector=tfb.Softplus(), inference=gs.MCMCSpec(gs.IWLSKernel)
+            )
+
+        if scale2 == "IG(1.0, 0.005)":
+            scale2 = self._init_default_scale()
+            scale2._variance_param.transform(
+                bijector=tfb.Softplus(), inference=gs.MCMCSpec(gs.IWLSKernel)
+            )
+
+        basis, penalties = self.bases.ta(
+            x1=x1,
+            x2=x2,
+            bs=bs,
+            k=k,
+            m=m,
+            knots=knots,
+            Bname=self._auto_fname(fname="B"),
+        )
+
+        fname = self._auto_fname(fname="ta")
+        term = ATerm.f(
+            basis=basis,
+            penalties=penalties,
+            scales=(scale1, scale2),
+            inference=inference,
+            coef_name=None,
+            fname=fname,
         )
         return term
 

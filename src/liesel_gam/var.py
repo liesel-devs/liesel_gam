@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from functools import reduce
 from typing import Any, Self
 
 import jax
@@ -11,7 +12,7 @@ import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
 
-from .dist import MultivariateNormalSingular
+from .dist import MultivariateNormalSingular, MultivariateNormalStructured
 from .kernel import init_star_ig_gibbs
 
 InferenceTypes = Any
@@ -490,6 +491,187 @@ class Term(UserVar):
 
 
 SmoothTerm = Term
+
+
+class ATerm(UserVar):
+    """
+    General anisotropic structured additive tensor product term.
+
+    A structured additive term represents a smooth or structured effect in a
+    generalized additive model. The term wraps a design/basis matrix together
+    with a prior/penalty and a set of coefficients. The object exposes the
+    coefficient variable and evaluates the term as the matrix-vector product
+    of the basis and the coefficients.
+
+    The term evaluates to ``basis @ coef``.
+    """
+
+    def __init__(
+        self,
+        basis: Basis,
+        penalties: Sequence[Array],
+        scales: Sequence[ScaleIG | lsl.Var | Array],
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        _update_on_init: bool = True,
+    ):
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
+
+        nbases = jnp.shape(basis.value)[-1]
+
+        mvnds = MultivariateNormalStructured.get_locscale_constructor(
+            penalties=penalties
+        )
+
+        scales_var = lsl.TransientCalc(lambda *x: jnp.stack(x, axis=-1), *scales)
+
+        prior = lsl.Dist(distribution=mvnds, loc=jnp.zeros(nbases), scales=scales_var)
+
+        self.nbases = nbases
+        self.basis = basis
+        self.coef = lsl.Var.new_param(
+            jnp.zeros(nbases), prior, inference=inference, name=coef_name
+        )
+        calc = lsl.Calc(
+            lambda basis, coef: jnp.dot(basis, coef),
+            basis=basis,
+            coef=self.coef,
+            _update_on_init=_update_on_init,
+        )
+
+        super().__init__(calc, name=name)
+        if _update_on_init:
+            self.coef.update()
+
+    @classmethod
+    def f(
+        cls,
+        basis: Basis,
+        penalties: Sequence[Array],
+        scales: Sequence[ScaleIG | lsl.Var | Array],
+        fname: str = "f",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+    ) -> Self:
+        if not basis.x.name:
+            raise ValueError("basis.x must be named.")
+
+        if not basis.name:
+            raise ValueError("basis must be named.")
+
+        name = f"{fname}({basis.x.name})"
+        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
+
+        term = cls(
+            basis=basis,
+            penalties=penalties,
+            scales=scales,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+        )
+
+        return term
+
+
+class ATerm2(UserVar):
+    """
+    General anisotropic structured additive tensor product term.
+
+    A structured additive term represents a smooth or structured effect in a
+    generalized additive model. The term wraps a design/basis matrix together
+    with a prior/penalty and a set of coefficients. The object exposes the
+    coefficient variable and evaluates the term as the matrix-vector product
+    of the basis and the coefficients.
+
+    The term evaluates to ``basis @ coef``.
+    """
+
+    def __init__(
+        self,
+        bases: Sequence[Basis],
+        penalties: Sequence[Array],
+        scales: Sequence[ScaleIG | lsl.Var | Array],
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        basis_name: str = "",
+        _update_on_init: bool = True,
+    ):
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
+
+        _rowwise_kron = jax.vmap(jnp.kron)
+
+        def rowwise_kron(*bases):
+            return reduce(_rowwise_kron, bases)
+
+        basis = lsl.Var.new_calc(rowwise_kron, *bases, name=basis_name)
+
+        nbases = jnp.shape(basis.value)[-1]
+
+        mvnds = MultivariateNormalStructured.get_locscale_constructor(
+            penalties=penalties
+        )
+
+        scales_var = lsl.TransientCalc(lambda *x: jnp.stack(x, axis=-1), *scales)
+
+        prior = lsl.Dist(distribution=mvnds, loc=jnp.zeros(nbases), scales=scales_var)
+
+        self.nbases = nbases
+        self.basis = basis
+        self.coef = lsl.Var.new_param(
+            jnp.zeros(nbases), prior, inference=inference, name=coef_name
+        )
+        calc = lsl.Calc(
+            lambda basis, coef: jnp.dot(basis, coef),
+            basis=basis,
+            coef=self.coef,
+            _update_on_init=_update_on_init,
+        )
+
+        super().__init__(calc, name=name)
+        if _update_on_init:
+            self.coef.update()
+
+    @classmethod
+    def f(
+        cls,
+        bases: Sequence[Basis],
+        penalties: Sequence[Array] | None,
+        scales: Sequence[ScaleIG | lsl.Var | Array],
+        fname: str = "f",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        bname: str = "B",
+    ) -> Self:
+        xnames = []
+        for b in bases:
+            if not b.x.name:
+                raise ValueError(f"basis.x of {b} with name {b.name} must be named.")
+            xnames.append(b.x.name)
+
+        xnames_str = ",".join(xnames)
+
+        basis_name = bname + "(" + xnames_str + ")"
+
+        name = f"{fname}({xnames_str})"
+        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
+
+        if penalties is None:
+            penalties = [b.penalty.value for b in bases]
+
+        term = cls(
+            bases=bases,
+            penalties=penalties,
+            scales=scales,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+            basis_name=basis_name,
+        )
+
+        return term
 
 
 class MRFTerm(Term):
