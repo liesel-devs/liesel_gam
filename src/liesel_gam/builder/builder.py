@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Literal, get_args
+from typing import Any, Literal, NamedTuple, get_args
 
 import formulaic as fo
 import jax
@@ -21,6 +21,12 @@ InferenceTypes = Any
 Array = jax.Array
 
 BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
+
+
+class MRFSpec(NamedTuple):
+    basis: Basis
+    nb: dict[str, np.typing.NDArray[np.int_]] | None
+    labels: list[str] | None
 
 
 def _validate_bs(bs):
@@ -472,7 +478,7 @@ class BasisBuilder:
         diagonal_penalty: bool = False,
         scale_penalty: bool = False,
         Bname: str = "B",
-    ) -> tuple[Basis, dict[str, np.typing.NDArray[np.int_]] | None, list[str] | None]:
+    ) -> MRFSpec:
         """
         Polys: Dictionary of arrays. The keys of the dict are the region labels.
             The corresponding values define the region by defining polygons.
@@ -482,6 +488,18 @@ class BasisBuilder:
             neighbors.
             If it is a list or array of integers, the values are the indices of the
             neighbors.
+
+        Comments on return value:
+
+        - If either polys or nb are supplied, the returned container will contain nb.
+        - If only a penalty matrix is supplied, the returned container will *not*
+          contain nb.
+        - Returning the label order only makes sense if the basis is *not*
+          reparameterized, because only then we have a clear correspondence of
+          parameters to labels.
+          If the basis is reparameterized, there's no such correspondence in a clear
+          way, so the returned label order is None.
+
         """
         if polys is None and nb is None and penalty is None:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
@@ -609,7 +627,7 @@ class BasisBuilder:
             # switch to zero-based indexing as expected in Python
             nb_out = {k: np.astype(v - 1, int) for k, v in nb_out.items()}
 
-        return basis, nb_out, label_order
+        return MRFSpec(basis, nb_out, label_order)
 
 
 class TermBuilder:
@@ -966,7 +984,7 @@ class TermBuilder:
         if scale == "IG(1.0, 0.005)":
             scale = self._init_default_scale()
 
-        basis, neighbors, labels = self.bases.mrf(
+        spec = self.bases.mrf(
             x=x,
             k=k,
             polys=polys,
@@ -980,7 +998,7 @@ class TermBuilder:
 
         fname = self._auto_fname(fname="mrf")
         term = MRFTerm.f(
-            basis,
+            spec.basis,
             fname=fname,
             scale=scale,
             inference=inference,
@@ -989,9 +1007,9 @@ class TermBuilder:
         )
 
         term.polygons = polys
-        term.neighbors = neighbors
-        if labels is not None:
-            term.labels = labels
+        term.neighbors = spec.nb
+        if spec.labels is not None:
+            term.labels = spec.labels
 
         return term
 
