@@ -683,6 +683,7 @@ class TermBuilder:
     def labels_to_integers(self, newdata: dict) -> dict:
         return labels_to_integers(newdata, self.bases.mappings)
 
+    # formula
     def fo(
         self,
         formula: str,
@@ -710,6 +711,7 @@ class TermBuilder:
 
         return term
 
+    # P-spline
     def ps(
         self,
         x: str,
@@ -750,6 +752,8 @@ class TermBuilder:
         )
         return term
 
+    # ANOVA part of isotropic tensor product interaction
+    # allows MGCV bases
     def ti(
         self,
         x1: str,
@@ -822,6 +826,7 @@ class TermBuilder:
         )
         return term
 
+    # random intercept
     def ri(
         self,
         cluster: str,
@@ -848,6 +853,7 @@ class TermBuilder:
 
         return term
 
+    # random scaling
     def rs(
         self,
         x: str | Term,
@@ -881,6 +887,7 @@ class TermBuilder:
         )
         return term
 
+    # varying coefficient
     def vc(
         self,
         x: str,
@@ -897,6 +904,7 @@ class TermBuilder:
         )
         return term
 
+    # general smooth with MGCV bases
     def s(
         self,
         x: str,
@@ -967,6 +975,7 @@ class TermBuilder:
         )
         return term
 
+    # markov random field
     def mrf(
         self,
         x: str,
@@ -1013,6 +1022,7 @@ class TermBuilder:
 
         return term
 
+    # general basis function + penalty smooth
     def f(
         self,
         *x: str,
