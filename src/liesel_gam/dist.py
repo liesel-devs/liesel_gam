@@ -290,6 +290,12 @@ class StructuredPenaltyOperator:
         return jnp.square(self._scales)
 
     def materialize_precision(self) -> jax.Array:
+        return self._materialize_precision(self.variances)
+
+    def materialize_penalty(self) -> jax.Array:
+        return self._materialize_precision(jnp.ones_like(self.variances))
+
+    def _materialize_precision(self, variances: jax.Array) -> jax.Array:
         """This is inefficient, should be used for testing only."""
         p = len(self._penalties)
 
@@ -315,7 +321,6 @@ class StructuredPenaltyOperator:
 
             return K
 
-        variances = self.variances
         batch_shape = variances.shape[:-1]
         K = variances.shape[-1]
 
