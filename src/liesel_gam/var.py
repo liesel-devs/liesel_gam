@@ -489,6 +489,15 @@ class Term(UserVar):
 
         return term
 
+    @property
+    def penalty(self) -> jax.Array | None:
+        try:
+            pen = self.coef.dist_node["penalty"].value
+        except Exception:
+            pen = self.basis.penalty
+
+        return pen
+
 
 SmoothTerm = Term
 
@@ -614,7 +623,7 @@ class ATerm2(UserVar):
             penalties=penalties
         )
 
-        scales_var = lsl.TransientCalc(lambda *x: jnp.stack(x, axis=-1), *scales)
+        scales_var = lsl.Calc(lambda *x: jnp.stack(x, axis=-1), *scales)
 
         prior = lsl.Dist(distribution=mvnds, loc=jnp.zeros(nbases), scales=scales_var)
 
@@ -623,6 +632,7 @@ class ATerm2(UserVar):
         self.coef = lsl.Var.new_param(
             jnp.zeros(nbases), prior, inference=inference, name=coef_name
         )
+        self.scale = scales_var
         calc = lsl.Calc(
             lambda basis, coef: jnp.dot(basis, coef),
             basis=basis,
@@ -672,6 +682,12 @@ class ATerm2(UserVar):
         )
 
         return term
+
+    @property
+    def penalty(self) -> jax.Array | None:
+        operator = self.coef.dist_node.init_dist()._op
+        pen = operator.materialize_penalty()
+        return pen
 
 
 class MRFTerm(Term):
