@@ -11,6 +11,7 @@ import plotnine as p9
 from jax import Array
 from jax.typing import ArrayLike
 
+from .builder.registry import CategoryMapping
 from .var import MRFTerm, Term
 
 KeyArray = Any
@@ -166,7 +167,7 @@ def plot_2d_smooth(
     newdata: gs.Position | None = None,
     ngrid: int = 20,
     plot_vars: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
+    ci_quantiles: tuple[float, float, float] | None = (0.05, 0.5, 0.95),
     hdi_prob: float | None = None,
 ):
     if isinstance(plot_vars, str):
@@ -274,10 +275,10 @@ def ri_summary(
     term: MRFTerm | Term,
     samples,
     newdata: gs.Position | None = None,
-    labels: Sequence[str] | None = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    labels: CategoryMapping | Sequence[str] | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
-) -> p9.ggplot:
+) -> pd.DataFrame:
     if newdata is None:
         newdata_x = {term.basis.x.name: np.unique(term.basis.x.value)}
     else:
@@ -294,8 +295,13 @@ def ri_summary(
         .reset_index()
     )
 
-    if labels is not None:
-        predictions_summary[term.basis.x.name] = labels
+    if isinstance(labels, CategoryMapping):
+        codes = newdata_x[term.basis.x.name]
+        labels_str = list(labels.integers_to_labels(codes))
+        predictions_summary[term.basis.x.name] = labels_str
+    elif labels is not None:
+        labels_str = list(labels)
+        predictions_summary[term.basis.x.name] = labels_str
     else:
         nrow = predictions_summary.shape[0]
         predictions_summary[term.basis.x.name] = np.arange(nrow)
@@ -309,8 +315,8 @@ def plot_regions(
     newdata: gs.Position | None = None,
     plot_vars: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
-    labels: Sequence[str] | None = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    # labels: CategoryMapping | Sequence[str] | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> p9.ggplot:
     polygons = None
@@ -334,7 +340,7 @@ def plot_regions(
         term=term,
         samples=samples,
         newdata=newdata,
-        labels=labels,
+        labels=None,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
     )
@@ -346,10 +352,10 @@ def plot_forest(
     term: MRFTerm | Term,
     samples,
     newdata: gs.Position | None = None,
-    labels: Sequence[str] | None = None,
+    labels: CategoryMapping | Sequence[str] | None = None,
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
-    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> p9.ggplot:
     df = ri_summary(
@@ -366,6 +372,9 @@ def plot_forest(
         xlab = cluster + " (indices)"
     else:
         xlab = cluster + " (labels)"
+
+    df[ymin] = df[ymin].astype(df["mean"].dtype)
+    df[ymax] = df[ymax].astype(df["mean"].dtype)
 
     p = (
         p9.ggplot(df)
