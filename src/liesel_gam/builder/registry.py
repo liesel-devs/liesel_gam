@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import logging
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -15,6 +16,8 @@ import numpy as np
 import pandas as pd
 
 from .category_mapping import CategoryMapping, series_is_categorical
+
+logger = logging.getLogger(__name__)
 
 Array = Any
 
@@ -498,6 +501,24 @@ class PandasRegistry:
             jax_codes = self._to_jax(category_codes, name)
             var = lsl.Var.new_obs(jax_codes, name=name)
             self._var_cache[name] = var
+
+            # now some exception handling
+            # only emitted once
+            nparams = len(mapping.labels_to_integers_map)
+            n_observed_clusters = jnp.unique(var.value).size
+            observed_clusters = np.unique(var.value).tolist()
+            clusters = list(mapping.integers_to_labels_map)
+            clusters_not_in_data = [c for c in clusters if c not in observed_clusters]
+
+            if n_observed_clusters != nparams:
+                logger.info(
+                    f"For {name}, there are {nparams} categories, but the "
+                    f"data contain observations for only {n_observed_clusters}. The "
+                    f"categories without observations are: {clusters_not_in_data}. "
+                    "If this is intended, you can ignore this warning. "
+                    "Be aware, that parameters for the unobserved categories may be "
+                    "included in the model."
+                )
 
         return var, mapping
 

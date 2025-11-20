@@ -1,3 +1,5 @@
+import logging
+
 import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
@@ -481,6 +483,20 @@ class TestFoBasisLinearCategorical:
         bases = gb.BasisBuilder(registry)
         basis = bases.fo("C(x)", name="X")
         assert basis.value.shape == (2, 2)
+
+    def test_category_with_unobserved_label_logging(self, caplog) -> None:
+        data = pd.DataFrame(
+            {"x": pd.Categorical(["a", "b"], categories=["a", "b", "c"])}
+        )
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+
+        with caplog.at_level(logging.INFO, logger="liesel_gam"):
+            basis = bases.fo("C(x)", name="X")
+
+        assert basis.value.shape == (2, 2)
+        assert "categories without observations" in caplog.text
+        assert caplog.records[0].levelno == logging.INFO
 
 
 @pytest.fixture(scope="module")
