@@ -9,6 +9,18 @@ import pandas as pd
 Array = Any
 
 
+class CategoryError(KeyError):
+    pass
+
+
+class UnknownLabelError(CategoryError):
+    pass
+
+
+class UnknownCodeError(CategoryError):
+    pass
+
+
 class CategoryMapping:
     """Wraps a category mapping of labels to integers."""
 
@@ -29,6 +41,8 @@ class CategoryMapping:
                 codes_flat[i] = self.labels_to_integers_map.get(
                     xi, self._code_for_unknown_label
                 )
+                if codes_flat[i] == self._code_for_unknown_label:
+                    raise UnknownLabelError(f"Category label {xi} is unknown.")
 
             codes = np.reshape(codes_flat, shape=x.shape)
 
@@ -51,6 +65,8 @@ class CategoryMapping:
                 label = self.integers_to_labels_map.get(
                     xi, self._label_for_unknown_code
                 )
+                if label == self._label_for_unknown_code:
+                    raise UnknownCodeError(f"Category code {xi} is unknown.")
                 labels_flat_list.append(label)
 
             labels_flat = np.asarray(labels_flat_list)
