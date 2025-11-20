@@ -1,8 +1,10 @@
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
+import pytest
 
 import liesel_gam as gam
+from liesel_gam.builder.category_mapping import UnknownCodeError, UnknownLabelError
 
 df = pd.DataFrame(
     {
@@ -88,3 +90,92 @@ class TestIsCategoricalEdgeCases:
     def test_single_level_categorical(self) -> None:
         s = pd.Series(pd.Categorical(["a", "a", "a"]))
         assert gam.series_is_categorical(s)
+
+
+class TestCategoryMappingFromSeries:
+    def test_from_series_with_strings(self) -> None:
+        s = pd.Series(["apple", "banana", "apple"])
+        cm = gam.CategoryMapping.from_series(s)
+        assert set(cm.labels_to_integers_map) == {"apple", "banana"}
+
+    def test_from_series_with_repeated_values(self) -> None:
+        s = pd.Series(["a", "a", "b", "b"])
+        cm = gam.CategoryMapping.from_series(s)
+        assert len(cm.labels_to_integers_map) == 2
+
+    def test_from_categorical_preserves_declared_categories(self) -> None:
+        cat = pd.Series(
+            pd.Categorical(["low", "high"], categories=["low", "med", "high"])
+        )
+        cm = gam.CategoryMapping.from_series(cat)
+        assert list(cm.labels_to_integers_map) == ["low", "med", "high"]
+
+    def test_from_series_invalid_type(self) -> None:
+        with pytest.raises(TypeError):
+            gam.CategoryMapping.from_series(np.array(["a", "b"]))
+
+
+class TestCategoryMappingEncoding:
+    def test_labels_to_integers_known_values(self) -> None:
+        cm = gam.CategoryMapping.from_series(pd.Series(["red", "blue"]))
+        encoded = cm.labels_to_integers(["red", "blue", "red"])
+        assert encoded.dtype == np.int_
+        assert encoded.tolist() == [
+            cm.labels_to_integers_map["red"],
+            cm.labels_to_integers_map["blue"],
+            cm.labels_to_integers_map["red"],
+        ]
+
+    def test_labels_to_integers_unknown_label(self) -> None:
+        cm = gam.CategoryMapping.from_series(pd.Series(["red", "blue"]))
+        with pytest.raises(UnknownLabelError):
+            cm.labels_to_integers(["red", "green"])
+
+    def test_labels_to_integers_known_but_unobserved_category(self) -> None:
+        cat = pd.Categorical(["red", "blue"], categories=["red", "blue", "green"])
+        cm = gam.CategoryMapping.from_series(cat)
+        assert cm.labels_to_integers(["red", "green"]).tolist() == [
+            cm.labels_to_integers_map["red"],
+            cm.labels_to_integers_map["green"],
+        ]
+
+    def test_labels_to_integers_preserves_shape(self) -> None:
+        cm = gam.CategoryMapping.from_series(pd.Series(["red", "blue", "green"]))
+        arr = np.array([["red", "blue"], ["green", "red"]])
+        encoded = cm.labels_to_integers(arr)
+        assert encoded.shape == (2, 2)
+        assert encoded.tolist() == [
+            [cm.labels_to_integers_map["red"], cm.labels_to_integers_map["blue"]],
+            [cm.labels_to_integers_map["green"], cm.labels_to_integers_map["red"]],
+        ]
+
+
+class TestCategoryMappingDecoding:
+    def test_integers_to_labels_known_values(self) -> None:
+        cm = gam.CategoryMapping({"sun": 0, "moon": 1})
+        decoded = cm.integers_to_labels([0, 1, 0])
+        assert decoded.tolist() == ["sun", "moon", "sun"]
+
+    def test_integers_to_labels_unknown_code(self) -> None:
+        cm = gam.CategoryMapping({"sun": 0})
+        with pytest.raises(UnknownCodeError):
+            cm.integers_to_labels([0, 99])
+
+    def test_integers_to_labels_preserves_shape(self) -> None:
+        cm = gam.CategoryMapping({"cat": 0, "dog": 1})
+        arr = np.array([[0, 1], [1, 0]])
+        decoded = cm.integers_to_labels(arr)
+        assert decoded.shape == (2, 2)
+        assert decoded.tolist() == [["cat", "dog"], ["dog", "cat"]]
+
+    def test_roundtrip_labels_and_integers(self) -> None:
+        cm = gam.CategoryMapping.from_series(pd.Series(["x", "y", "z"]))
+        labels = np.array(["x", "z", "x"])
+        encoded = cm.labels_to_integers(labels)
+        decoded = cm.integers_to_labels(encoded)
+        assert decoded.tolist() == labels.tolist()
+
+    def test_integers_to_labels_accepts_sequences(self) -> None:
+        cm = gam.CategoryMapping({"apple": 0, "banana": 1})
+        decoded = cm.integers_to_labels([0, 1])
+        assert decoded.tolist() == ["apple", "banana"]
