@@ -77,9 +77,14 @@ class CategoryMapping:
 
     @classmethod
     def from_series(cls, series: pd.Series | pd.Categorical) -> CategoryMapping:
-        if isinstance(series.dtype, pd.CategoricalDtype):
+        is_series = isinstance(series, pd.Series)
+        has_cat_dtype = isinstance(series.dtype, pd.CategoricalDtype)
+        is_cat = isinstance(series, pd.Categorical)
+        if is_cat:
+            unique_labels = np.asarray(series.categories)
+        elif is_series and has_cat_dtype:
             unique_labels = np.asarray(series.cat.categories)
-        elif isinstance(series, pd.Series):
+        elif is_series:
             cat = pd.Categorical(series)
             unique_labels = np.asarray(cat.categories)
         else:
