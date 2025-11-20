@@ -613,8 +613,6 @@ class BasisBuilder:
 
         spec = f"s({x}, k={k}, bs='mrf', xt={xt})"
 
-        x_array = np.asarray(var.value)
-
         # disabling warnings about "mrf should be a factor"
         # since even turning data into a pandas df and x_array into
         # a categorical series did not satisfy mgcv in that regard.
@@ -623,9 +621,12 @@ class BasisBuilder:
         # so I think turning the warnings off temporarily here is fine
         r("old_warn <- getOption('warn')")
         r("options(warn = -1)")
+        observed = mapping.integers_to_labels(var.value)
+        regions = list(mapping.labels_to_integers_map)
+        df = pd.DataFrame({x: pd.Categorical(observed, categories=regions)})
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data=df,
             diagonal_penalty=diagonal_penalty,
             absorb_cons=absorb_cons,
             scale_penalty=scale_penalty,
