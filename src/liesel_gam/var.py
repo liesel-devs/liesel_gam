@@ -159,8 +159,8 @@ class ScaleIG(UserVar):
     def __init__(
         self,
         value: Array,
-        concentration: float | lsl.Var | lsl.Node,
-        scale: float | lsl.Var | lsl.Node,
+        concentration: float | lsl.Var | lsl.Node | jax.Array,
+        scale: float | lsl.Var | lsl.Node | jax.Array,
         name: str = "",
         variance_name: str = "",
         inference: InferenceTypes = None,

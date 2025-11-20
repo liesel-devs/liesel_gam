@@ -19,6 +19,7 @@ from .registry import CategoryMapping, PandasRegistry
 InferenceTypes = Any
 
 Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
 
 BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
 
@@ -27,6 +28,11 @@ class MRFSpec(NamedTuple):
     basis: Basis
     nb: dict[str, np.typing.NDArray[np.int_]] | None
     labels: list[str] | None
+
+
+class VarIGPrior(NamedTuple):
+    concentration: float | Array
+    scale: float | Array
 
 
 def _validate_bs(bs):
@@ -659,17 +665,22 @@ class TermBuilder:
         self._automatically_assigned_fnames[fname].append(fname_indexed)
         return fname_indexed
 
-    def _init_default_scale(self) -> ScaleIG:
+    def _init_default_scale(
+        self,
+        concentration: float | Array,
+        scale: float | Array,
+        value: float | Array = 1.0,
+    ) -> ScaleIG:
         scale_name = self._auto_fname("$\\tau$")
         variance_name = self._auto_fname("$\\tau^2$")
-        scale = ScaleIG(
-            1.0,
-            concentration=1.0,
-            scale=0.005,
+        scale_var = ScaleIG(
+            value=value,
+            concentration=concentration,
+            scale=scale,
             name=scale_name,
             variance_name=variance_name,
         )
-        return scale
+        return scale_var
 
     @classmethod
     def from_dict(cls, data: dict[str, np.typing.ArrayLike]) -> TermBuilder:
@@ -716,7 +727,7 @@ class TermBuilder:
         self,
         x: str,
         k: int = 20,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -726,8 +737,10 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         basis = self.bases.ps(
             x=x,
@@ -760,14 +773,16 @@ class TermBuilder:
         x2: str,
         bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
         k: int | tuple[int, int] = -1,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         basis = self.bases.ti(
             x1=x1,
@@ -796,14 +811,16 @@ class TermBuilder:
         x2: str,
         bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "tp",
         k: int | tuple[int, int] = -1,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         basis = self.bases.te(
             x1=x1,
@@ -830,13 +847,15 @@ class TermBuilder:
     def ri(
         self,
         cluster: str,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         penalty: np.typing.ArrayLike | None = None,
         noncentered: bool = False,
     ) -> IndexingTerm:
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         basis = self.bases.ri(
             cluster=cluster, Bname=self._auto_fname(fname="RI"), penalty=penalty
@@ -858,7 +877,7 @@ class TermBuilder:
         self,
         x: str | Term,
         cluster: str,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         penalty: np.typing.ArrayLike | None = None,
         noncentered: bool = False,
@@ -910,7 +929,7 @@ class TermBuilder:
         x: str,
         k: int = -1,
         bs: BasisTypes = "tp",
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
@@ -949,8 +968,10 @@ class TermBuilder:
         - fz (factor smooth interaction)
         - fs (random factor smooth interaction)
         """
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         basis = self.bases.s(
             x=x,
@@ -979,7 +1000,7 @@ class TermBuilder:
     def mrf(
         self,
         x: str,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         k: int = -1,
         polys: dict[str, np.typing.ArrayLike] | None = None,
@@ -990,8 +1011,10 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> MRFTerm:
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         spec = self.bases.mrf(
             x=x,
@@ -1027,15 +1050,17 @@ class TermBuilder:
         self,
         *x: str,
         basis_fn: Callable[[Array], Array] = lambda x: x,
-        scale: ScaleIG | lsl.Var | float | Literal["IG(1.0, 0.005)"] = "IG(1.0, 0.005)",
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: np.typing.ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
-        if scale == "IG(1.0, 0.005)":
-            scale = self._init_default_scale()
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
 
         basis = self.bases.basis(
             *x,
