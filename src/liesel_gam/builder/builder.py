@@ -461,6 +461,10 @@ class BasisBuilder:
             raise TypeError(f"{cluster=} must be categorical.")
 
         self.mappings[cluster] = result.mapping
+        nparams = len(result.mapping.labels_to_integers_map)
+
+        if penalty is None:
+            penalty = jnp.eye(nparams)
 
         basis = Basis(
             value=result.var,
