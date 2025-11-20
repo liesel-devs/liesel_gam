@@ -377,7 +377,7 @@ class BasisBuilder:
         )
         return basis
 
-    def fo(
+    def lin(
         self,
         formula: str,
         name: str = "",
@@ -725,7 +725,7 @@ class TermBuilder:
         return labels_to_integers(newdata, self.bases.mappings)
 
     # formula
-    def fo(
+    def lin(
         self,
         formula: str,
         prior: lsl.Dist | None = None,
@@ -742,7 +742,7 @@ class TermBuilder:
         if name == "":
             name = "fo(" + xname + ")"
 
-        basis = self.bases.fo(
+        basis = self.bases.lin(
             formula, name=xname, include_intercept=include_intercept, context=context
         )
 
