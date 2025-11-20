@@ -138,7 +138,7 @@ class BasisBuilder:
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: np.typing.ArrayLike | lsl.Value | None = None,
-        Bname: str = "B",
+        basis_name: str = "B",
     ) -> Basis:
         x_vars = []
         for x_name in x:
@@ -156,7 +156,7 @@ class BasisBuilder:
         basis = Basis(
             value=Xvar,
             basis_fn=basis_fn,
-            name=Bname + "(" + Xname + ")",
+            name=basis_name + "(" + Xname + ")",
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=jnp.asarray(penalty),
@@ -172,7 +172,7 @@ class BasisBuilder:
         k: int | tuple[int, int] = -1,
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
-        Bname: str = "B",
+        basis_name: str = "B",
     ) -> Basis:
         _validate_bs(bs)
         absorb_cons: bool = True
@@ -227,7 +227,7 @@ class BasisBuilder:
 
         basis = Basis(
             x1_x2_var,
-            name=Bname + "(" + x1 + "," + x2 + ")",
+            name=basis_name + "(" + x1 + "," + x2 + ")",
             basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
             penalty=K1 + K2,
             use_callback=True,
@@ -243,7 +243,7 @@ class BasisBuilder:
         k: int | tuple[int, int] = -1,
         m: str = "NA",
         knots: np.typing.ArrayLike | None = None,
-        Bname: str = "B",
+        basis_name: str = "B",
     ) -> Basis:
         _validate_bs(bs)
         absorb_cons: bool = True
@@ -299,7 +299,7 @@ class BasisBuilder:
 
         basis = Basis(
             x1_x2_var,
-            name=Bname + "(" + x1 + "," + x2 + ")",
+            name=basis_name + "(" + x1 + "," + x2 + ")",
             basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
             penalty=penalty,
             use_callback=True,
@@ -317,7 +317,7 @@ class BasisBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        Bname: str = "B",
+        basis_name: str = "B",
     ) -> Basis:
         spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree}, {penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
@@ -333,7 +333,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=Bname + "(" + x + ")",
+            name=basis_name + "(" + x + ")",
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -351,7 +351,7 @@ class BasisBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        Bname: str = "B",
+        basis_name: str = "B",
     ) -> Basis:
         _validate_bs(bs)
         bs_arg = f"'{bs}'"
@@ -369,7 +369,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=Bname + "(" + x + ")",
+            name=basis_name + "(" + x + ")",
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -477,7 +477,10 @@ class BasisBuilder:
         return basis
 
     def ri(
-        self, cluster: str, Bname: str = "B", penalty: np.typing.ArrayLike | None = None
+        self,
+        cluster: str,
+        basis_name: str = "B",
+        penalty: np.typing.ArrayLike | None = None,
     ) -> Basis:
         result = self.registry.get_obs_and_mapping(cluster)
         if result.mapping is None:
@@ -492,7 +495,7 @@ class BasisBuilder:
         basis = Basis(
             value=result.var,
             basis_fn=lambda x: x,
-            name=Bname + "(" + cluster + ")",
+            name=basis_name + "(" + cluster + ")",
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
@@ -510,7 +513,7 @@ class BasisBuilder:
         absorb_cons: bool = False,
         diagonal_penalty: bool = False,
         scale_penalty: bool = False,
-        Bname: str = "B",
+        basis_name: str = "B",
     ) -> MRFSpec:
         """
         Polys: Dictionary of arrays. The keys of the dict are the region labels.
@@ -636,7 +639,7 @@ class BasisBuilder:
         basis = Basis(
             value=var,
             basis_fn=basis_fun,
-            name=Bname + "(" + x + ")",
+            name=basis_name + "(" + x + ")",
             cache_basis=True,
             use_callback=True,
             penalty=penalty_arr,
@@ -778,7 +781,7 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            Bname=self._auto_fname(fname="B"),
+            basis_name=self._auto_fname(fname="B"),
         )
 
         fname = self._auto_fname(fname="ps")
@@ -818,7 +821,7 @@ class TermBuilder:
             k=k,
             m=m,
             knots=knots,
-            Bname=self._auto_fname(fname="B"),
+            basis_name=self._auto_fname(fname="B"),
         )
 
         fname = self._auto_fname(fname="ti")
@@ -856,7 +859,7 @@ class TermBuilder:
             k=k,
             m=m,
             knots=knots,
-            Bname=self._auto_fname(fname="B"),
+            basis_name=self._auto_fname(fname="B"),
         )
 
         fname = self._auto_fname(fname="te")
@@ -885,7 +888,7 @@ class TermBuilder:
             )
 
         basis = self.bases.ri(
-            cluster=cluster, Bname=self._auto_fname(fname="RI"), penalty=penalty
+            cluster=cluster, basis_name=self._auto_fname(fname="RI"), penalty=penalty
         )
 
         fname = self._auto_fname(fname="ri")
@@ -1009,7 +1012,7 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            Bname=self._auto_fname(fname="B"),
+            basis_name=self._auto_fname(fname="B"),
         )
 
         fname = self._auto_fname(fname="s")
@@ -1052,7 +1055,7 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            Bname=self._auto_fname(fname="B"),
+            basis_name=self._auto_fname(fname="B"),
         )
 
         fname = self._auto_fname(fname="mrf")
@@ -1095,7 +1098,7 @@ class TermBuilder:
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=penalty,
-            Bname=self._auto_fname(fname="B"),
+            basis_name=self._auto_fname(fname="B"),
         )
 
         fname = self._auto_fname(fname="f")
