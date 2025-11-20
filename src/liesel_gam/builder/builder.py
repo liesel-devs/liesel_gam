@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any, Literal, NamedTuple, get_args
 
@@ -22,6 +23,9 @@ Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
 
 BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
+
+
+logger = logging.getLogger(__name__)
 
 
 class MRFSpec(NamedTuple):
@@ -102,6 +106,20 @@ def assert_intercept_in_spec(spec: fo.ModelSpec) -> fo.ModelSpec:
 def validate_formula(formula: str) -> None:
     if "~" in formula:
         raise ValueError("'~' in formulas is not supported.")
+
+    terms = ["".join(x.split()) for x in formula.split("+")]
+    for term in terms:
+        if term == "1":
+            raise ValueError(
+                "Using '1 +' is not supported. To add an intercept, use the "
+                "argument 'include_intercept'."
+            )
+        if term == "0" or term == "-1":
+            raise ValueError(
+                "Using '0 +' or '-1' is not supported. Intercepts are not included "
+                "by default and can be added manually with the argument "
+                "'include_intercept'."
+            )
 
 
 class BasisBuilder:

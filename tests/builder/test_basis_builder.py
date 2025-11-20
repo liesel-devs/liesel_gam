@@ -57,11 +57,17 @@ class TestFoBasisLinearNumeric:
     def test_removing_intercept_manually_is_forbidden(self, data):
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             bases.fo("-1 + y + x_float", name="X")
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ValueError):
             bases.fo("0 + y + x_float", name="X")
+
+    def test_adding_intercept_manually_is_forbidden(self, data):
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(ValueError):
+            bases.fo("1 + y + x_float", name="X")
 
     def test_removing_intercept_manually_does_not_interfere_with_names(self, data):
         # edge case with unfortunate variable name
