@@ -59,7 +59,7 @@ def _margin_penalties(smooth: scon.SmoothCon):
     return [pen.to_numpy() for pen in pens]
 
 
-def _tp_penalty(K1, K2) -> np.typing.NDArray:
+def _tp_penalty(K1, K2) -> Array:
     """Computes the full tensor product penalty from the marginals."""
     # this should go into smoothcon, but it works here for now
     D1 = np.shape(K1)[1]
@@ -67,7 +67,7 @@ def _tp_penalty(K1, K2) -> np.typing.NDArray:
     I1 = np.eye(D1)
     I2 = np.eye(D2)
 
-    return np.kron(K1, I2) + np.kron(I1, K2)
+    return jnp.asarray(jnp.kron(K1, I2) + jnp.kron(I1, K2))
 
 
 def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> dict:
@@ -137,9 +137,14 @@ class BasisBuilder:
         basis_fn: Callable[[Array], Array] = lambda x: x,
         use_callback: bool = True,
         cache_basis: bool = True,
-        penalty: np.typing.ArrayLike | lsl.Value | None = None,
+        penalty: ArrayLike | lsl.Value | None = None,
         basis_name: str = "B",
     ) -> Basis:
+        if isinstance(penalty, lsl.Value):
+            penalty.value = jnp.asarray(penalty.value)
+        elif penalty is not None:
+            penalty = jnp.asarray(penalty)
+
         x_vars = []
         for x_name in x:
             x_var = self.registry.get_numeric_obs(x_name)
@@ -171,9 +176,11 @@ class BasisBuilder:
         bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
         k: int | tuple[int, int] = -1,
         m: str = "NA",
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         basis_name: str = "B",
     ) -> Basis:
+        if knots is not None:
+            knots = np.asarray(knots)
         _validate_bs(bs)
         absorb_cons: bool = True
         diagonal_penalty: bool = True
@@ -242,9 +249,11 @@ class BasisBuilder:
         bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
         k: int | tuple[int, int] = -1,
         m: str = "NA",
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         basis_name: str = "B",
     ) -> Basis:
+        if knots is not None:
+            knots = np.asarray(knots)
         _validate_bs(bs)
         absorb_cons: bool = True
         diagonal_penalty: bool = True
@@ -313,12 +322,14 @@ class BasisBuilder:
         k: int = 20,
         basis_degree: int = 3,
         penalty_order: int = 2,
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        if knots is not None:
+            knots = np.asarray(knots)
         spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree}, {penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
         smooth = scon.SmoothCon(
@@ -347,12 +358,14 @@ class BasisBuilder:
         k: int = -1,
         bs: BasisTypes = "tp",
         m: str = "NA",
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        if knots is not None:
+            knots = np.asarray(knots)
         _validate_bs(bs)
         bs_arg = f"'{bs}'"
         spec = f"s({x}, bs={bs_arg}, k={k}, m={m})"
@@ -480,8 +493,10 @@ class BasisBuilder:
         self,
         cluster: str,
         basis_name: str = "B",
-        penalty: np.typing.ArrayLike | None = None,
+        penalty: ArrayLike | None = None,
     ) -> Basis:
+        if penalty is not None:
+            penalty = jnp.asarray(penalty)
         result = self.registry.get_obs_and_mapping(cluster)
         if result.mapping is None:
             raise TypeError(f"{cluster=} must be categorical.")
@@ -507,9 +522,9 @@ class BasisBuilder:
         self,
         x: str,
         k: int = -1,
-        polys: dict[str, np.typing.ArrayLike] | None = None,
-        nb: dict[str, np.typing.ArrayLike | list[str] | list[int]] | None = None,
-        penalty: np.typing.ArrayLike | None = None,
+        polys: dict[str, ArrayLike] | None = None,
+        nb: dict[str, ArrayLike | list[str] | list[int]] | None = None,
+        penalty: ArrayLike | None = None,
         absorb_cons: bool = False,
         diagonal_penalty: bool = False,
         scale_penalty: bool = False,
@@ -713,7 +728,7 @@ class TermBuilder:
         return scale_var
 
     @classmethod
-    def from_dict(cls, data: dict[str, np.typing.ArrayLike]) -> TermBuilder:
+    def from_dict(cls, data: dict[str, ArrayLike]) -> TermBuilder:
         return cls.from_df(pd.DataFrame(data))
 
     @classmethod
@@ -761,7 +776,7 @@ class TermBuilder:
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         basis_degree: int = 3,
         penalty_order: int = 2,
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
@@ -806,7 +821,7 @@ class TermBuilder:
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
         if isinstance(scale, VarIGPrior):
@@ -844,7 +859,7 @@ class TermBuilder:
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
         if isinstance(scale, VarIGPrior):
@@ -879,7 +894,7 @@ class TermBuilder:
         cluster: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
-        penalty: np.typing.ArrayLike | None = None,
+        penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> IndexingTerm:
         if isinstance(scale, VarIGPrior):
@@ -909,7 +924,7 @@ class TermBuilder:
         cluster: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
-        penalty: np.typing.ArrayLike | None = None,
+        penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> lsl.Var:
         ri = self.ri(
@@ -962,7 +977,7 @@ class TermBuilder:
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
-        knots: np.typing.ArrayLike | None = None,
+        knots: ArrayLike | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
@@ -1033,9 +1048,9 @@ class TermBuilder:
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         k: int = -1,
-        polys: dict[str, np.typing.ArrayLike] | None = None,
-        nb: dict[str, np.typing.ArrayLike | list[str] | list[int]] | None = None,
-        penalty: np.typing.ArrayLike | None = None,
+        polys: dict[str, ArrayLike] | None = None,
+        nb: dict[str, ArrayLike | list[str] | list[int]] | None = None,
+        penalty: ArrayLike | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
@@ -1084,7 +1099,7 @@ class TermBuilder:
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         use_callback: bool = True,
         cache_basis: bool = True,
-        penalty: np.typing.ArrayLike | None = None,
+        penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
         if isinstance(scale, VarIGPrior):

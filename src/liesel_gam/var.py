@@ -514,11 +514,11 @@ class MRFTerm(Term):
         self._neighbors = value
 
     @property
-    def polygons(self) -> dict[str, np.typing.ArrayLike] | None:
+    def polygons(self) -> dict[str, ArrayLike] | None:
         return self._polygons
 
     @polygons.setter
-    def polygons(self, value: dict[str, np.typing.ArrayLike] | None) -> None:
+    def polygons(self, value: dict[str, ArrayLike] | None) -> None:
         self._polygons = value
 
     @property
