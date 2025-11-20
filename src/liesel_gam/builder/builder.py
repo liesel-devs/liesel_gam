@@ -400,6 +400,11 @@ class BasisBuilder:
         - cc
         - hashed
 
+        .. warning:: If you use bs, cr, cs, or cc, be aware that these will not
+            lead to terms that include a penalty. In most cases, you probably want
+            to use :meth:`~.TermBuilder.s`, :meth:`~.TermBuilder.ps`, and so on
+            instead.
+
         Not supported:
 
         - String literals
