@@ -268,8 +268,16 @@ class Term(UserVar):
 
         self.nbases = nbases
         self.basis = basis
+
+        if isinstance(penalty, lsl.Var | lsl.Value):
+            nparam = jnp.shape(penalty.value)[-1]
+        elif penalty is not None:
+            nparam = jnp.shape(penalty)[-1]
+        else:
+            nparam = self.nbases
+
         self.coef = lsl.Var.new_param(
-            jnp.zeros(nbases), prior, inference=inference, name=coef_name
+            jnp.zeros(nparam), prior, inference=inference, name=coef_name
         )
         calc = lsl.Calc(
             lambda basis, coef: jnp.dot(basis, coef),
