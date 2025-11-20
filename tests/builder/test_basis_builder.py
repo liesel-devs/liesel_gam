@@ -34,6 +34,15 @@ class TestBasisBuilder:
         registry = gb.PandasRegistry(data, na_action="drop")
         gb.BasisBuilder(registry)
 
+    def test_ri_basis(self) -> None:
+        data = pd.DataFrame(
+            {"x": pd.Categorical(["a", "b"], categories=["a", "b", "c"])}
+        )
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.ri("x")
+        assert basis.value.size == 2
+
 
 class TestFoBasisLinearNumeric:
     def test_name(self, data) -> None:
@@ -463,6 +472,15 @@ class TestFoBasisLinearCategorical:
         bool_cat3 = np.asarray(basis.value[:, 1] == 1)
         cat3 = bases.data[bool_cat3]["cat_ordered"].to_numpy()
         assert np.all(cat3 == "high")
+
+    def test_category_with_unobserved_label(self) -> None:
+        data = pd.DataFrame(
+            {"x": pd.Categorical(["a", "b"], categories=["a", "b", "c"])}
+        )
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.fo("C(x)", name="X")
+        assert basis.value.shape == (2, 2)
 
 
 @pytest.fixture(scope="module")
