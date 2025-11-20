@@ -22,6 +22,9 @@ InferenceTypes = Any
 Array = jax.Array
 
 BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
+# P-splines: k=20, diff=2, cubic splines
+# cubic splines is the default throughout
+# man könnte schon vllt 20 nehmen
 
 
 class MRFSpec(NamedTuple):
@@ -565,8 +568,8 @@ class BasisBuilder:
         Comments on return value:
 
         - If either polys or nb are supplied, the returned container will contain nb.
-        - If only a penalty matrix is supplied, the returned container will *not*
-          contain nb.
+        - If only a penalty matrix is supplied, the returned nb will be None.
+
         - Returning the label order only makes sense if the basis is *not*
           reparameterized, because only then we have a clear correspondence of
           parameters to labels.
