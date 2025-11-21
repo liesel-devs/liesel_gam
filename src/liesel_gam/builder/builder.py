@@ -398,38 +398,6 @@ class BasisBuilder:
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> Basis:
-        r"""
-        Supported:
-        - {a+1} for quoted Python
-        - `weird name` backtick-strings for weird names
-        - (a + b)**n for n-th order interactions
-        - a:b for simple interactions
-        - a*b for expanding to a + b + a:b
-        - a / b for nesting
-        - b %in% a for inverted nesting
-        - Python functions
-        - bs
-        - cr
-        - cs
-        - cc
-        - hashed
-
-        .. warning:: If you use bs, cr, cs, or cc, be aware that these will not
-            lead to terms that include a penalty. In most cases, you probably want
-            to use :meth:`~.TermBuilder.s`, :meth:`~.TermBuilder.ps`, and so on
-            instead.
-
-        Not supported:
-
-        - String literals
-        - Numeric literals
-        - Wildcard "."
-        - \| for splitting a formula
-        - "te" tensor products
-
-        - "~" in formula
-
-        """
         validate_formula(formula)
         spec = fo.ModelSpec(formula, output="numpy")
 
@@ -784,6 +752,41 @@ class TermBuilder:
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> BasisDot:
+        r"""
+        Supported:
+        - {a+1} for quoted Python
+        - `weird name` backtick-strings for weird names
+        - (a + b)**n for n-th order interactions
+        - a:b for simple interactions
+        - a*b for expanding to a + b + a:b
+        - a / b for nesting
+        - b %in% a for inverted nesting
+        - Python functions
+        - bs
+        - cr
+        - cs
+        - cc
+        - hashed
+
+        .. warning:: If you use bs, cr, cs, or cc, be aware that these will not
+            lead to terms that include a penalty. In most cases, you probably want
+            to use :meth:`~.TermBuilder.s`, :meth:`~.TermBuilder.ps`, and so on
+            instead.
+
+        Not supported:
+
+        - String literals
+        - Numeric literals
+        - Wildcard "."
+        - \| for splitting a formula
+        - "te" tensor products
+
+        - "~" in formula
+        - 1 + in formula
+        - 0 + in formula
+        - -1 in formula
+
+        """
         if xname == "":
             xname = self._auto_xname()
 
@@ -1093,6 +1096,20 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> MRFTerm:
+        """
+        Polys: Dictionary of arrays. The keys of the dict are the region labels.
+            The corresponding values define the region by defining polygons.
+        nb: Dictionary of array. The keys of the dict are the region labels.
+            The corresponding values indicate the neighbors of the region.
+            If it is a list or array of strings, the values are the labels of the
+            neighbors.
+            If it is a list or array of integers, the values are the indices of the
+            neighbors.
+
+
+        mgcv does not concern itself with your category ordering. It *will* order
+        categories alphabetically. Penalty columns have to take this into account.
+        """
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale
