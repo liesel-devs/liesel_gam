@@ -75,3 +75,6 @@ path = "src/liesel_gam/__about__.py"
 
 [tool.hatch.build]
 exclude = ["tests/", "notebooks/"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
