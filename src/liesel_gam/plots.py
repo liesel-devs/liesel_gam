@@ -244,6 +244,10 @@ def plot_polys(
     plot_vars: str | Sequence[str],
     df: pd.DataFrame,
     polys: Mapping[str, ArrayLike],
+    show_unobserved: bool = True,
+    highlight_unobserved: bool = True,
+    observed_color: str = "none",
+    unobserved_color: str = "red",
 ) -> p9.ggplot:
     if isinstance(plot_vars, str):
         plot_vars = [plot_vars]
@@ -252,10 +256,17 @@ def plot_polys(
 
     df["label"] = df[region].astype(str)
     # plot_df = df.merge(poly_df, on="label")
+
+    if "observed" not in df.columns:
+        df["observed"] = True
+
+    if df["observed"].all():
+        show_unobserved = False
+
     plot_df = poly_df.merge(df, on="label")
 
     plot_df = plot_df.melt(
-        id_vars=["label", "V0", "V1"],
+        id_vars=["label", "V0", "V1", "observed"],
         value_vars=plot_vars,
         var_name="variable",
         value_name="value",
@@ -263,12 +274,26 @@ def plot_polys(
 
     plot_df["variable"] = pd.Categorical(plot_df["variable"], categories=plot_vars)
 
+    if not show_unobserved:
+        plot_df = plot_df.query("observed == True")
+
+    if show_unobserved and not highlight_unobserved:
+        unobserved_color = observed_color
+
     p = (
         p9.ggplot(plot_df)
         + p9.aes("V0", "V1", group="label", fill="value")
-        + p9.geom_polygon()
         + p9.facet_wrap("~variable", labeller="label_both")
     )
+    if highlight_unobserved and show_unobserved:
+        p = (
+            p
+            + p9.aes(color="observed")
+            + p9.scale_color_manual({True: observed_color, False: unobserved_color})
+        )
+
+    p = p + p9.geom_polygon()
+
     return p
 
 
@@ -279,14 +304,20 @@ def ri_summary(
     labels: CategoryMapping | Sequence[str] | None = None,
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
-    show_unobserved: bool = True,
 ) -> pd.DataFrame:
-    if newdata is None and isinstance(labels, CategoryMapping) and show_unobserved:
-        newdata_x = {term.basis.x.name: np.asarray(list(labels.integers_to_labels_map))}
+    if newdata is None and isinstance(labels, CategoryMapping):
+        grid = np.asarray(list(labels.integers_to_labels_map))
+        unique_x = np.unique(term.basis.x.value)
+        newdata_x = {term.basis.x.name: grid}
+        observed = [x in unique_x for x in grid]
     elif newdata is None:
-        newdata_x = {term.basis.x.name: np.unique(term.basis.x.value)}
+        grid = np.unique(term.basis.x.value)
+        newdata_x = {term.basis.x.name: grid}
+        observed = [True for _ in grid]
     else:
         newdata_x = newdata
+        grid = newdata[term.basis.x.name]
+        observed = [x in grid for x in term.basis.x.value]
 
     predictions = term.predict(samples=samples, newdata=newdata_x)
     predictions_summary = (
@@ -309,6 +340,8 @@ def ri_summary(
     else:
         predictions_summary[term.basis.x.name] = term.basis.x.value
 
+    predictions_summary["observed"] = observed
+
     return predictions_summary
 
 
@@ -322,6 +355,9 @@ def plot_regions(
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
+    highlight_unobserved: bool = True,
+    observed_color: str = "none",
+    unobserved_color: str = "red",
 ) -> p9.ggplot:
     polygons = None
     if polys is not None:
@@ -353,10 +389,18 @@ def plot_regions(
         labels=labels,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
-        show_unobserved=show_unobserved,
     )
     region = term.basis.x.name
-    return plot_polys(region=region, plot_vars=plot_vars, df=df, polys=polygons)
+    return plot_polys(
+        region=region,
+        plot_vars=plot_vars,
+        df=df,
+        polys=polygons,
+        show_unobserved=show_unobserved,
+        highlight_unobserved=highlight_unobserved,
+        observed_color=observed_color,
+        unobserved_color=unobserved_color,
+    )
 
 
 def plot_forest(
@@ -369,6 +413,8 @@ def plot_forest(
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
+    highlight_unobserved: bool = True,
+    unobserved_color: str = "red",
 ) -> p9.ggplot:
     if labels is None:
         try:
@@ -383,7 +429,6 @@ def plot_forest(
         labels=labels,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
-        show_unobserved=show_unobserved,
     )
     cluster = term.basis.x.name
 
@@ -395,6 +440,9 @@ def plot_forest(
     df[ymin] = df[ymin].astype(df["mean"].dtype)
     df[ymax] = df[ymax].astype(df["mean"].dtype)
 
+    if not show_unobserved:
+        df = df.query("observed == True")
+
     p = (
         p9.ggplot(df)
         + p9.aes(cluster, "mean", color="mean")
@@ -403,6 +451,16 @@ def plot_forest(
         + p9.coord_flip()
         + p9.labs(x=xlab)
     )
+
+    if highlight_unobserved:
+        df_uo = df.query("observed == False")
+        p = p + p9.geom_point(
+            p9.aes(cluster, "mean"),
+            color="red",
+            shape="x",
+            data=df_uo,
+        )
+
     return p
 
 
