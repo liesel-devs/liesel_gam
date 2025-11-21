@@ -588,6 +588,27 @@ class IndexingTerm(Term):
             self.update()
 
 
+class RITerm(IndexingTerm):
+    _labels = None
+    _mapping = None
+
+    @property
+    def labels(self) -> list[str] | None:
+        return self._labels
+
+    @labels.setter
+    def labels(self, value: list[str]) -> None:
+        self._labels = value
+
+    @property
+    def mapping(self) -> CategoryMapping | None:
+        return self._mapping
+
+    @mapping.setter
+    def mapping(self, value: CategoryMapping) -> None:
+        self._mapping = value
+
+
 class LinearTerm(Term):
     """Kept for backwards-compatibility of the interface."""
 

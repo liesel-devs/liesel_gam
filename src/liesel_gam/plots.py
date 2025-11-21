@@ -279,7 +279,9 @@ def ri_summary(
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> pd.DataFrame:
-    if newdata is None:
+    if newdata is None and isinstance(labels, CategoryMapping):
+        newdata_x = {term.basis.x.name: np.asarray(list(labels.integers_to_labels_map))}
+    elif newdata is None:
         newdata_x = {term.basis.x.name: np.unique(term.basis.x.value)}
     else:
         newdata_x = newdata
@@ -336,11 +338,16 @@ def plot_regions(
             "be supplied manually."
         )
 
+    try:
+        labels = term.mapping  # type: ignore
+    except AttributeError:
+        labels = None
+
     df = ri_summary(
         term=term,
         samples=samples,
         newdata=newdata,
-        labels=None,
+        labels=labels,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
     )
@@ -358,6 +365,11 @@ def plot_forest(
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> p9.ggplot:
+    try:
+        labels = term.mapping  # type: ignore
+    except AttributeError:
+        labels = None
+
     df = ri_summary(
         term=term,
         samples=samples,

@@ -14,7 +14,7 @@ import pandas as pd
 import smoothcon as scon
 from ryp import r, to_py
 
-from ..var import Basis, BasisDot, IndexingTerm, MRFTerm, ScaleIG, Term
+from ..var import Basis, BasisDot, MRFTerm, RITerm, ScaleIG, Term
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
@@ -913,7 +913,7 @@ class TermBuilder:
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
-    ) -> IndexingTerm:
+    ) -> RITerm:
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale
@@ -924,13 +924,17 @@ class TermBuilder:
         )
 
         fname = self._auto_fname(fname="ri")
-        term = IndexingTerm.f(
+        term = RITerm.f(
             basis=basis,
             scale=scale,
             inference=inference,
             noncentered=noncentered,
             fname=fname,
         )
+
+        mapping = self.bases.mappings[cluster]
+        term.mapping = mapping
+        term.labels = list(mapping.labels_to_integers_map)
 
         return term
 
