@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Literal, NamedTuple, get_args
 
 import formulaic as fo
@@ -30,8 +30,9 @@ logger = logging.getLogger(__name__)
 
 class MRFSpec(NamedTuple):
     basis: Basis
-    nb: dict[str, np.typing.NDArray[np.int_]] | None
-    labels: list[str] | None
+    mapping: CategoryMapping
+    nb: dict[str, list[str]] | None
+    ordered_labels: list[str] | None
 
 
 class VarIGPrior(NamedTuple):
@@ -523,7 +524,7 @@ class BasisBuilder:
         x: str,
         k: int = -1,
         polys: dict[str, ArrayLike] | None = None,
-        nb: dict[str, ArrayLike | list[str] | list[int]] | None = None,
+        nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
         absorb_cons: bool = False,
         diagonal_penalty: bool = False,
@@ -539,6 +540,10 @@ class BasisBuilder:
             neighbors.
             If it is a list or array of integers, the values are the indices of the
             neighbors.
+
+
+        mgcv does not concern itself with your category ordering. It *will* order
+        categories alphabetically. Penalty columns have to take this into account.
 
         Comments on return value:
 
@@ -634,6 +639,8 @@ class BasisBuilder:
         )
         r("options(warn = old_warn)")
 
+        x_name = x
+
         def basis_fun(x):
             """
             The array outputted by this smooth contains column names.
@@ -642,7 +649,9 @@ class BasisBuilder:
             # disabling warnings about "mrf should be a factor"
             r("old_warn <- getOption('warn')")
             r("options(warn = -1)")
-            basis = jnp.asarray(np.astype(smooth(x)[:, 1:], "float"))
+            labels = mapping.integers_to_labels(x)
+            df = pd.DataFrame({x_name: pd.Categorical(labels, categories=regions)})
+            basis = jnp.asarray(np.astype(smooth.predict(df)[:, 1:], "float"))
             r("options(warn = old_warn)")
             return basis
 
@@ -676,10 +685,17 @@ class BasisBuilder:
             label_order = [lab[1:] for lab in label_order]  # removes leading x from R
 
         if nb_out is not None:
-            # switch to zero-based indexing as expected in Python
-            nb_out = {k: np.astype(v - 1, int) for k, v in nb_out.items()}
 
-        return MRFSpec(basis, nb_out, label_order)
+            def to_label(code):
+                try:
+                    label_array = mapping.integers_to_labels(code - 1)
+                except TypeError:
+                    label_array = code
+                return np.atleast_1d(label_array).tolist()
+
+            nb_out = {k: to_label(v) for k, v in nb_out.items()}
+
+        return MRFSpec(basis, mapping, nb_out, label_order)
 
 
 class TermBuilder:
@@ -1050,7 +1066,7 @@ class TermBuilder:
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         k: int = -1,
         polys: dict[str, ArrayLike] | None = None,
-        nb: dict[str, ArrayLike | list[str] | list[int]] | None = None,
+        nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
@@ -1086,8 +1102,11 @@ class TermBuilder:
 
         term.polygons = polys
         term.neighbors = spec.nb
-        if spec.labels is not None:
-            term.labels = spec.labels
+        if spec.ordered_labels is not None:
+            term.ordered_labels = spec.ordered_labels
+
+        term.labels = list(spec.mapping.labels_to_integers_map)
+        term.mapping = spec.mapping
 
         return term
 

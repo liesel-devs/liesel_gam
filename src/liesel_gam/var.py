@@ -7,9 +7,10 @@ import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
-import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.typing import ArrayLike
+
+from liesel_gam.builder.category_mapping import CategoryMapping
 
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
@@ -503,14 +504,16 @@ SmoothTerm = Term
 class MRFTerm(Term):
     _neighbors = None
     _polygons = None
+    _ordered_labels = None
     _labels = None
+    _mapping = None
 
     @property
-    def neighbors(self) -> dict[str, np.typing.NDArray[np.int_]] | None:
+    def neighbors(self) -> dict[str, list[str]] | None:
         return self._neighbors
 
     @neighbors.setter
-    def neighbors(self, value: dict[str, np.typing.NDArray[np.int_]] | None) -> None:
+    def neighbors(self, value: dict[str, list[str]] | None) -> None:
         self._neighbors = value
 
     @property
@@ -528,6 +531,22 @@ class MRFTerm(Term):
     @labels.setter
     def labels(self, value: list[str]) -> None:
         self._labels = value
+
+    @property
+    def mapping(self) -> CategoryMapping | None:
+        return self._mapping
+
+    @mapping.setter
+    def mapping(self, value: CategoryMapping) -> None:
+        self._mapping = value
+
+    @property
+    def ordered_labels(self) -> list[str] | None:
+        return self._ordered_labels
+
+    @ordered_labels.setter
+    def ordered_labels(self, value: list[str]) -> None:
+        self._ordered_labels = value
 
 
 class IndexingTerm(Term):

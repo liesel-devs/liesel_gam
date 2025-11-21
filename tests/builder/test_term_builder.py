@@ -78,3 +78,54 @@ class TestMRFTerm:
         mrf = tb.mrf("district", polys=columb_polys)
         assert mrf.basis.value.shape[-1] == 48
         assert mrf.coef.value.shape[-1] == 48
+
+    def test_labels_unordered(self) -> None:
+        nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
+        df = pd.DataFrame({"district": ["c", "a", "b", "a"]})
+        tb = gb.TermBuilder.from_df(df)
+        mrf = tb.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
+        assert mrf.ordered_labels == ["a", "b", "c"]
+
+    def test_labels_categorical(self) -> None:
+        nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
+        df = pd.DataFrame(
+            {
+                "district": pd.Categorical(
+                    ["c", "a", "b", "a"], categories=["c", "a", "b"]
+                )
+            }
+        )
+        tb = gb.TermBuilder.from_df(df)
+        mrf = tb.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
+        assert mrf.ordered_labels == ["a", "b", "c"]
+
+    def test_labels_ordered(self) -> None:
+        nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
+        df = pd.DataFrame(
+            {
+                "district": pd.Categorical(
+                    ["c", "a", "b", "a"], categories=["c", "a", "b"], ordered=True
+                )
+            }
+        )
+        tb = gb.TermBuilder.from_df(df)
+        mrf = tb.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
+        assert mrf.ordered_labels == ["a", "b", "c"]
