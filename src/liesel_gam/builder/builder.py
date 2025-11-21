@@ -602,6 +602,21 @@ class BasisBuilder:
 
         if penalty is not None:
             penalty = np.asarray(penalty)
+            pen_rank = np.linalg.matrix_rank(penalty)
+            pen_dim = penalty.shape[-1]
+            if (pen_dim - pen_rank) != 1:
+                logger.warning(
+                    f"Supplied penalty has dimension {penalty.shape} and rank "
+                    f"{pen_rank}. The expected rank deficiency is 1. "
+                    "This may indicate a problem. There might be disconnected sets "
+                    "of regions in the data represented by this penalty. "
+                    "In this case, you probably need more elaborate constraints "
+                    "than the ones provided here. You might consider splitting the "
+                    "disconnected regions into several mrf terms. "
+                    "Otherwise, please only continue if you are certain that you "
+                    "know what is happening."
+                )
+
             xt_args.append("penalty=penalty")
             if not np.shape(penalty)[0] == np.shape(penalty)[1]:
                 raise ValueError(f"Penalty must be square, got {np.shape(penalty)=}")
@@ -629,6 +644,7 @@ class BasisBuilder:
         observed = mapping.integers_to_labels(var.value)
         regions = list(mapping.labels_to_integers_map)
         df = pd.DataFrame({x: pd.Categorical(observed, categories=regions)})
+
         smooth = scon.SmoothCon(
             spec,
             data=df,
