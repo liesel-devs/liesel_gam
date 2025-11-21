@@ -984,9 +984,9 @@ class TermBuilder:
 
         fname = self._auto_fname(fname="rs")
         term = lsl.Var.new_calc(
-            lambda x, ri: x * ri,
+            lambda x, cluster: x * cluster,
             x=x_var,
-            ri=ri,
+            cluster=ri,
             name=fname + "(" + xname + "|" + cluster + ")",
         )
         return term
