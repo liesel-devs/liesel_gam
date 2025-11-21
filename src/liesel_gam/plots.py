@@ -12,7 +12,7 @@ from jax import Array
 from jax.typing import ArrayLike
 
 from .builder.registry import CategoryMapping
-from .var import MRFTerm, Term
+from .var import MRFTerm, RITerm, Term
 
 KeyArray = Any
 
@@ -327,6 +327,7 @@ def plot_polys(
     highlight_unobserved: bool = True,
     observed_color: str = "none",
     unobserved_color: str = "red",
+    color: str | None = None,
 ) -> p9.ggplot:
     if isinstance(which, str):
         which = [which]
@@ -370,14 +371,15 @@ def plot_polys(
             + p9.aes(color="observed")
             + p9.scale_color_manual({True: observed_color, False: unobserved_color})
         )
-
-    p = p + p9.geom_polygon()
+        p = p + p9.geom_polygon()
+    else:
+        p = p + p9.geom_polygon(color=color)
 
     return p
 
 
-def ri_summary(
-    term: MRFTerm | Term,
+def summarise_cluster(
+    term: RITerm | MRFTerm | Term,
     samples,
     newdata: gs.Position | None = None,
     labels: CategoryMapping | Sequence[str] | None = None,
@@ -425,7 +427,7 @@ def ri_summary(
 
 
 def summarise_regions(
-    term: MRFTerm | Term,
+    term: RITerm | MRFTerm | Term,
     samples,
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -457,7 +459,7 @@ def summarise_regions(
         except AttributeError:
             labels = None
 
-    df = ri_summary(
+    df = summarise_cluster(
         term=term,
         samples=samples,
         newdata=newdata,
@@ -491,18 +493,19 @@ def summarise_regions(
 
 
 def plot_regions(
-    term: MRFTerm | Term,
+    term: RITerm | MRFTerm | Term,
     samples,
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
-    labels: CategoryMapping | Sequence[str] | None = None,
+    labels: CategoryMapping | None = None,
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
     highlight_unobserved: bool = True,
     observed_color: str = "none",
     unobserved_color: str = "red",
+    color: str | None = None,
 ) -> p9.ggplot:
     polygons = None
     if polys is not None:
@@ -527,7 +530,7 @@ def plot_regions(
         except AttributeError:
             labels = None
 
-    df = ri_summary(
+    df = summarise_cluster(
         term=term,
         samples=samples,
         newdata=newdata,
@@ -545,14 +548,15 @@ def plot_regions(
         highlight_unobserved=highlight_unobserved,
         observed_color=observed_color,
         unobserved_color=unobserved_color,
+        color=color,
     )
 
 
 def plot_forest(
-    term: MRFTerm | Term,
+    term: RITerm | MRFTerm | Term,
     samples,
     newdata: gs.Position | None = None,
-    labels: CategoryMapping | Sequence[str] | None = None,
+    labels: CategoryMapping | None = None,
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -567,7 +571,7 @@ def plot_forest(
         except AttributeError:
             labels = None
 
-    df = ri_summary(
+    df = summarise_cluster(
         term=term,
         samples=samples,
         newdata=newdata,
@@ -601,7 +605,7 @@ def plot_forest(
         df_uo = df.query("observed == False")
         p = p + p9.geom_point(
             p9.aes(cluster, "mean"),
-            color="red",
+            color=unobserved_color,
             shape="x",
             data=df_uo,
         )
@@ -610,36 +614,69 @@ def plot_forest(
 
 
 def summarise_1d_smooth_clustered(
-    term: lsl.Var,
-    x: lsl.Var,
-    cluster: lsl.Var,
+    clustered_term: lsl.Var,
     samples: dict[str, Array],
     ngrid: int = 150,
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
-    hdi_prob: float | None = None,
-    labels: Sequence[str] | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+    labels: CategoryMapping | None = None,
 ):
     if isinstance(which, str):
         which = [which]
 
-    if newdata is None:
-        xgrid = jnp.linspace(x.value.min(), x.value.max(), ngrid)
-        cluster_grid = jnp.unique(cluster.value)
-        grid = {x.name: xgrid, cluster.name: cluster_grid}
+    term = clustered_term.value_node["x"]
+    cluster = clustered_term.value_node["cluster"]
+
+    assert isinstance(term, Term | lsl.Var)
+    assert isinstance(cluster, RITerm | MRFTerm)
+
+    if labels is None:
+        try:
+            labels = cluster.mapping  # type: ignore
+        except AttributeError:
+            labels = None
+
+    if isinstance(term, Term):
+        x = term.basis.x
     else:
-        grid = newdata
+        x = term
 
-    full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
-    newdata_x = dict(zip(grid.keys(), full_grid_arrays))
+    if newdata is None and isinstance(labels, CategoryMapping):
+        cgrid = np.asarray(list(labels.integers_to_labels_map))  # integer codes
+        unique_clusters = np.unique(cluster.basis.x.value)  # unique codes
+        xgrid = jnp.linspace(x.value.min(), x.value.max(), ngrid)
+        grid: dict[str, ArrayLike] = {x.name: xgrid, cluster.basis.x.name: cgrid}
 
-    term_samples = term.predict(samples, newdata=newdata_x)
-    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
-    hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
+        # code : bool
+        observed = {x: x in unique_clusters for x in cgrid}
+    elif newdata is None:
+        cgrid = np.unique(cluster.basis.x.value)
+        xgrid = jnp.linspace(x.value.min(), x.value.max(), ngrid)
+        grid = {x.name: xgrid, cluster.basis.x.name: cgrid}
+
+        # code : bool
+        observed = {x: True for x in cgrid}
+    else:
+        pass
+
+    if newdata is None:
+        full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
+        newdata_x = dict(zip(grid.keys(), full_grid_arrays))
+    else:
+        newdata_x = newdata
+        cgrid = newdata[cluster.basis.x.name]
+        # code : bool
+        observed = {x: x in cgrid for x in np.unique(cluster.basis.x.value)}
+
+    term_samples = clustered_term.predict(samples, newdata=newdata_x)
     term_summary = (
         gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
+            term_samples,
+            name=clustered_term.name,
+            quantiles=ci_quantiles,
+            hdi_prob=hdi_prob,
         )
         .to_dataframe()
         .reset_index()
@@ -649,7 +686,10 @@ def summarise_1d_smooth_clustered(
         term_summary[k] = np.asarray(v)
 
     if labels is not None:
-        term_summary[cluster.name] = np.repeat(labels, ngrid)
+        labels_long = labels.integers_to_labels(newdata_x[cluster.basis.x.name])
+        term_summary[cluster.basis.x.name] = labels_long
+
+    term_summary["observed"] = [observed[x] for x in newdata_x[cluster.basis.x.name]]
 
     term_summary.reset_index(inplace=True)
 
@@ -657,60 +697,60 @@ def summarise_1d_smooth_clustered(
 
 
 def plot_1d_smooth_clustered(
-    term: lsl.Var,
-    x: lsl.Var,
-    cluster: lsl.Var,
+    clustered_term: lsl.Var,
     samples: dict[str, Array],
-    ngrid: int = 150,
+    ngrid: int = 20,
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
-    hdi_prob: float | None = None,
-    labels: Sequence[str] | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+    labels: CategoryMapping | None = None,
+    color_scale: str = "viridis",
 ):
     if isinstance(which, str):
         which = [which]
 
-    if newdata is None:
-        xgrid = jnp.linspace(x.value.min(), x.value.max(), ngrid)
-        cluster_grid = jnp.unique(cluster.value)
-        grid = {x.name: xgrid, cluster.name: cluster_grid}
-    else:
-        grid = newdata
+    term = clustered_term.value_node["x"]
+    cluster = clustered_term.value_node["cluster"]
 
-    full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
-    newdata_x = dict(zip(grid.keys(), full_grid_arrays))
-
-    term_samples = term.predict(samples, newdata=newdata_x)
-    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
-    hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
-    term_summary = (
-        gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
-        )
-        .to_dataframe()
-        .reset_index()
-    )
-
-    for k, v in newdata_x.items():
-        term_summary[k] = np.asarray(v)
-
-    if labels is not None:
-        term_summary[cluster.name] = np.repeat(labels, ngrid)
-
-    term_summary.reset_index(inplace=True)
+    assert isinstance(term, Term | lsl.Var)
+    assert isinstance(cluster, RITerm | MRFTerm)
 
     if labels is None:
-        clab = cluster.name + " (indices)"
+        try:
+            labels = cluster.mapping  # type: ignore
+        except AttributeError:
+            labels = None
+
+    term_summary = summarise_1d_smooth_clustered(
+        clustered_term=clustered_term,
+        samples=samples,
+        ngrid=ngrid,
+        ci_quantiles=ci_quantiles,
+        hdi_prob=hdi_prob,
+        labels=labels,
+        newdata=newdata,
+    )
+
+    if labels is None:
+        clab = cluster.basis.x.name + " (indices)"
     else:
-        clab = cluster.name + " (labels)"
+        clab = cluster.basis.x.name + " (labels)"
+
+    if isinstance(term, Term):
+        x = term.basis.x
+    else:
+        x = term
 
     p = (
         p9.ggplot(term_summary)
-        + p9.aes(x.name, "mean", group=cluster.name)
-        + p9.aes(color=cluster.name)
-        + p9.labs(title=f"Posterior summary of {term.name}", x=x.name, color=clab)
+        + p9.aes(x.name, "mean", group=cluster.basis.x.name)
+        + p9.aes(color=cluster.basis.x.name)
+        + p9.labs(
+            title=f"Posterior summary of {clustered_term.name}", x=x.name, color=clab
+        )
         + p9.facet_wrap("~variable", labeller="label_both")
+        + p9.scale_color_cmap_d(color_scale)
         + p9.geom_line()
     )
 
