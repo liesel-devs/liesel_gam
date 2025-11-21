@@ -251,7 +251,8 @@ def plot_polys(
     poly_df = polys_to_df(polys)
 
     df["label"] = df[region].astype(str)
-    plot_df = df.merge(poly_df, on="label")
+    # plot_df = df.merge(poly_df, on="label")
+    plot_df = poly_df.merge(df, on="label")
 
     plot_df = plot_df.melt(
         id_vars=["label", "V0", "V1"],
@@ -278,8 +279,9 @@ def ri_summary(
     labels: CategoryMapping | Sequence[str] | None = None,
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
 ) -> pd.DataFrame:
-    if newdata is None and isinstance(labels, CategoryMapping):
+    if newdata is None and isinstance(labels, CategoryMapping) and show_unobserved:
         newdata_x = {term.basis.x.name: np.asarray(list(labels.integers_to_labels_map))}
     elif newdata is None:
         newdata_x = {term.basis.x.name: np.unique(term.basis.x.value)}
@@ -305,8 +307,7 @@ def ri_summary(
         labels_str = list(labels)
         predictions_summary[term.basis.x.name] = labels_str
     else:
-        nrow = predictions_summary.shape[0]
-        predictions_summary[term.basis.x.name] = np.arange(nrow)
+        predictions_summary[term.basis.x.name] = term.basis.x.value
 
     return predictions_summary
 
@@ -317,9 +318,10 @@ def plot_regions(
     newdata: gs.Position | None = None,
     plot_vars: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
-    # labels: CategoryMapping | Sequence[str] | None = None,
+    labels: CategoryMapping | Sequence[str] | None = None,
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
 ) -> p9.ggplot:
     polygons = None
     if polys is not None:
@@ -338,10 +340,11 @@ def plot_regions(
             "be supplied manually."
         )
 
-    try:
-        labels = term.mapping  # type: ignore
-    except AttributeError:
-        labels = None
+    if labels is None:
+        try:
+            labels = term.mapping  # type: ignore
+        except AttributeError:
+            labels = None
 
     df = ri_summary(
         term=term,
@@ -350,6 +353,7 @@ def plot_regions(
         labels=labels,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
+        show_unobserved=show_unobserved,
     )
     region = term.basis.x.name
     return plot_polys(region=region, plot_vars=plot_vars, df=df, polys=polygons)
@@ -364,11 +368,13 @@ def plot_forest(
     ymax: str = "hdi_high",
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
 ) -> p9.ggplot:
-    try:
-        labels = term.mapping  # type: ignore
-    except AttributeError:
-        labels = None
+    if labels is None:
+        try:
+            labels = term.mapping  # type: ignore
+        except AttributeError:
+            labels = None
 
     df = ri_summary(
         term=term,
@@ -377,6 +383,7 @@ def plot_forest(
         labels=labels,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
+        show_unobserved=show_unobserved,
     )
     cluster = term.basis.x.name
 
