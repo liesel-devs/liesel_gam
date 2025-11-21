@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import logging
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Literal, assert_never
 
 import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
+
+from .category_mapping import CategoryMapping, series_is_categorical
+
+logger = logging.getLogger(__name__)
 
 Array = Any
 
@@ -22,6 +28,16 @@ class CannotHashValueError(Exception):
     def __init__(self, value: Any):
         super().__init__(f"Cannot hash value of type '{type(value).__name__}'")
         self.value = value
+
+
+@dataclass
+class VarAndMapping:
+    var: lsl.Var
+    mapping: CategoryMapping | None = None
+
+    @property
+    def is_categorical(self) -> bool:
+        return self.mapping is not None
 
 
 class PandasRegistry:
@@ -342,8 +358,10 @@ class PandasRegistry:
             Dictionary mapping category names to liesel.Var objects
         """
 
-        base_var, codebook = self.get_categorical_obs(name)
+        base_var, mapping = self.get_categorical_obs(name)
         base_var.name = base_var.name = f"{name}_codes"
+
+        codebook = mapping.labels_to_integers_map
 
         if len(codebook) < 2:
             raise ValueError(
@@ -414,7 +432,7 @@ class PandasRegistry:
                 f"Available variables: {sorted(available)}"
             )
 
-        return isinstance(self.data[name].dtype, pd.CategoricalDtype)
+        return series_is_categorical(self.data[name])
 
     def is_boolean(self, name: str) -> bool:
         """Check if a variable is boolean.
@@ -453,7 +471,7 @@ class PandasRegistry:
             )
         return self.get_obs(name)
 
-    def get_categorical_obs(self, name: str) -> tuple[lsl.Var, dict[int, Any]]:
+    def get_categorical_obs(self, name: str) -> tuple[lsl.Var, CategoryMapping]:
         """Get a variable and ensure it is categorical.
 
         Each variable is converted to integer codes.
@@ -462,36 +480,47 @@ class PandasRegistry:
             name: Variable name to retrieve
 
         Returns:
-            liesel.Var object for the categorical variable and a dictionary
-            mapping integer codes to category labels
+            liesel.Var object for the categorical variable and a CategoryMapping.
 
         Raises:
             TypeError: If any variable is not categorical
         """
+        series = self.data[name]
         if not self.is_categorical(name):
             raise TypeError(
                 f"Type mismatch for variable '{name}': expected categorical, "
-                f"got {str(self.data[name].dtype)}"
+                f"got {str(series.dtype)}"
             )
 
-        # convert categorical variables to integer codes
-        values = self.data[name]
-        category_codes = values.cat.codes.to_numpy().astype(int)
-        category_labels = values.cat.categories.tolist()
-
-        coding_dict = {
-            int(code): label for label, code in zip(category_labels, category_codes)
-        }
-
-        # check if already cached
+        mapping = CategoryMapping.from_series(series)
         if name in self._var_cache:
             var = self._var_cache[name]
         else:
+            # convert categorical variables to integer codes
+            category_codes = mapping.labels_to_integers(series)
             jax_codes = self._to_jax(category_codes, name)
             var = lsl.Var.new_obs(jax_codes, name=name)
             self._var_cache[name] = var
 
-        return var, coding_dict
+            # now some exception handling
+            # only emitted once
+            nparams = len(mapping.labels_to_integers_map)
+            n_observed_clusters = jnp.unique(var.value).size
+            observed_clusters = np.unique(var.value).tolist()
+            clusters = list(mapping.integers_to_labels_map)
+            clusters_not_in_data = [c for c in clusters if c not in observed_clusters]
+
+            if n_observed_clusters != nparams:
+                logger.info(
+                    f"For {name}, there are {nparams} categories, but the "
+                    f"data contain observations for only {n_observed_clusters}. The "
+                    f"categories without observations are: {clusters_not_in_data}. "
+                    "If this is intended, you can ignore this warning. "
+                    "Be aware, that parameters for the unobserved categories may be "
+                    "included in the model."
+                )
+
+        return var, mapping
 
     def get_boolean_obs(self, name: str) -> lsl.Var:
         """Get a variable and ensure it is boolean.
@@ -511,3 +540,17 @@ class PandasRegistry:
                 f"got {str(self.data[name].dtype)}"
             )
         return self.get_obs(name)
+
+    def get_obs_and_mapping(self, name: str) -> VarAndMapping:
+        """
+        Get an observed variable. Returns a wrapper that holds the variable and,
+        if the variable is categorical, the :class:`.CategoryMapping` between
+        labels and integer codes.
+        """
+        if self.is_categorical(name):
+            var, mapping = self.get_categorical_obs(name)
+        else:
+            var = self.get_obs(name)
+            mapping = None
+
+        return VarAndMapping(var, mapping)

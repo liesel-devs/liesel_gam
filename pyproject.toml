@@ -3,8 +3,12 @@ name = "liesel_gam"
 dynamic = ["version"]
 description = "Functionality for Generalized Additive Models in Liesel"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = ["liesel>=0.4"]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "formulaic>=1.2.1",
+    "liesel>=0.4.1",
+    "smoothcon @ git+https://github.com/liesel-devs/smoothcon.git",
+]
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]
 classifiers = [
@@ -71,3 +75,6 @@ path = "src/liesel_gam/__about__.py"
 
 [tool.hatch.build]
 exclude = ["tests/", "notebooks/"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

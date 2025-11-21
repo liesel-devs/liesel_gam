@@ -1,45 +1,81 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Self, cast
 
+import liesel.goose as gs
 import liesel.model as lsl
+
+from .var import BasisDot, Term, UserVar
 
 Array = Any
 
+term_types = Term | BasisDot | lsl.Var
 
-class AdditivePredictor(lsl.Var):
+
+class AdditivePredictor(UserVar):
     def __init__(
-        self, name: str, inv_link: Callable[[Array], Array] | None = None
+        self,
+        name: str,
+        inv_link: Callable[[Array], Array] | None = None,
+        intercept: bool | lsl.Var = True,
     ) -> None:
         if inv_link is None:
 
-            def _sum(*args, **kwargs):
-                # the + 0. implicitly ensures correct dtype also for empty predictors
-                return sum(args) + sum(kwargs.values()) + 0.0
+            def inv_link(x):
+                return x
+
+        def _sum(*args, intercept, **kwargs):
+            # the + 0. implicitly ensures correct dtype also for empty predictors
+            return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
+
+        if intercept and not isinstance(intercept, lsl.Var):
+            intercept_: lsl.Var | float = lsl.Var.new_param(
+                name=f"{name}_intercept",
+                value=0.0,
+                distribution=None,
+                inference=gs.MCMCSpec(gs.IWLSKernel),
+            )
         else:
+            intercept_ = 0.0
 
-            def _sum(*args, **kwargs):
-                # the + 0. implicitly ensures correct dtype also for empty predictors
-                return inv_link(sum(args) + sum(kwargs.values()) + 0.0)
-
-        super().__init__(lsl.Calc(_sum), name=name)
+        super().__init__(lsl.Calc(_sum, intercept=intercept_), name=name)
         self.update()
-        self.terms: dict[str, lsl.Var] = {}
+        self.terms: dict[str, term_types] = {}
         """Dictionary of terms in this predictor."""
+
+    @property
+    def intercept(self) -> lsl.Var | lsl.Node:
+        return self.value_node["intercept"]
+
+    @intercept.setter
+    def intercept(self, value: lsl.Var | lsl.Node):
+        self.value_node["intercept"] = value
 
     def update(self) -> Self:
         return cast(Self, super().update())
 
-    def __add__(self, other: lsl.Var) -> Self:
-        self.value_node.add_inputs(other)
-        self.terms[other.name] = other
-        return self.update()
+    def __iadd__(self, other: term_types | Sequence[term_types]) -> Self:
+        if isinstance(other, term_types):
+            self.append(other)
+        else:
+            self.extend(other)
+        return self
 
-    def __iadd__(self, other: lsl.Var) -> Self:
-        self.value_node.add_inputs(other)
-        self.terms[other.name] = other
-        return self.update()
+    def append(self, term: term_types) -> None:
+        if not isinstance(term, term_types):
+            raise TypeError(f"{term} is of unsupported type {type(term)}.")
+
+        if term.name in self.terms:
+            raise RuntimeError(f"{self} already contains a term of name {term.name}.")
+
+        self.value_node.add_inputs(term)
+        self.terms[term.name] = term
+        self.update()
+
+    def extend(self, terms: Sequence[term_types]) -> None:
+        for term in terms:
+            self.append(term)
 
     def __getitem__(self, name) -> lsl.Var:
         return self.terms[name]

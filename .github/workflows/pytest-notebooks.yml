@@ -31,12 +31,16 @@ jobs:
           r-version: 'release'
           use-public-rspm: true
 
+      - name: Fix R library path
+        run: |
+          echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Install R dependencies
+        run: |
+          Rscript -e "install.packages('arrow')"
+
       - name: Install Package
         run: uv sync --locked --group dev
-
-      - name: Add R shared libraries to LD_LIBRARY_PATH
-        run: |
-          echo "LD_LIBRARY_PATH=$(python -m rpy2.situation LD_LIBRARY_PATH):\$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Debug R environment
         run: |
