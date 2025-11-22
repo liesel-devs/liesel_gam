@@ -420,7 +420,7 @@ def summarise_cluster(
         )
     elif labels is not None:
         labels_str = list(labels)
-        categories = list(labels.labels_to_integers_map)
+        categories = sorted(set(labels_str))
         predictions_summary[term.basis.x.name] = pd.Categorical(
             labels_str, categories=categories
         )
