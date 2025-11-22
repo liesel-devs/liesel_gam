@@ -414,10 +414,16 @@ def summarise_cluster(
     if isinstance(labels, CategoryMapping):
         codes = newdata_x[term.basis.x.name]
         labels_str = list(labels.integers_to_labels(codes))
-        predictions_summary[term.basis.x.name] = labels_str
+        categories = list(labels.labels_to_integers_map)
+        predictions_summary[term.basis.x.name] = pd.Categorical(
+            labels_str, categories=categories
+        )
     elif labels is not None:
         labels_str = list(labels)
-        predictions_summary[term.basis.x.name] = labels_str
+        categories = list(labels.labels_to_integers_map)
+        predictions_summary[term.basis.x.name] = pd.Categorical(
+            labels_str, categories=categories
+        )
     else:
         predictions_summary[term.basis.x.name] = term.basis.x.value
 
@@ -513,7 +519,7 @@ def plot_regions(
     else:
         try:
             # using type ignore here, since the case of term not having the attribute
-            # polygons is handle by the try except
+            # polygons is handled by the try except
             polygons = term.polygons  # type: ignore
         except AttributeError:
             pass
@@ -687,7 +693,10 @@ def summarise_1d_smooth_clustered(
 
     if labels is not None:
         labels_long = labels.integers_to_labels(newdata_x[cluster.basis.x.name])
-        term_summary[cluster.basis.x.name] = labels_long
+        categories = list(labels.labels_to_integers_map)
+        term_summary[cluster.basis.x.name] = pd.Categorical(
+            labels_long, categories=categories
+        )
 
     term_summary["observed"] = [observed[x] for x in newdata_x[cluster.basis.x.name]]
 
