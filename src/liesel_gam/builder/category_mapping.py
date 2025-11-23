@@ -35,6 +35,11 @@ class CategoryMapping:
 
     @classmethod
     def from_series(cls, series: pd.Series | pd.Categorical) -> CategoryMapping:
+        """
+        When series is a pd.Categorical, the category sorting is kept.
+        When series is a series of dtype str or object, categories are sorted
+        alphabetically.
+        """
         is_series = isinstance(series, pd.Series)
         has_cat_dtype = isinstance(series.dtype, pd.CategoricalDtype)
         is_cat = isinstance(series, pd.Categorical)
@@ -44,7 +49,7 @@ class CategoryMapping:
             unique_labels = np.asarray(series.cat.categories)
         elif is_series:
             cat = pd.Categorical(series)
-            unique_labels = np.asarray(cat.categories)
+            unique_labels = np.sort(np.asarray(cat.categories))
         else:
             raise TypeError(
                 f"series must be a pd.Series or pd.Categorical, got {type(series)}."
