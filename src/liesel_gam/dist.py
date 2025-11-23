@@ -400,11 +400,24 @@ class StructuredPenaltyOperator:
     def quad_form(self, x: jax.Array) -> jax.Array:
         variances = self.variances  # shape (B..., K)
         batch_shape = variances.shape[:-1]
+        batch_shape_x = x.shape[:-1]
+        if batch_shape_x and (batch_shape_x != batch_shape):
+            raise ValueError(
+                f"x has batch shape {batch_shape_x}, but batch size is {batch_shape}."
+            )
+
         K = variances.shape[-1]
+        N = x.shape[-1]
 
         # flatten batch dims so we can vmap over a single leading dim
         B_flat = int(jnp.prod(jnp.array(batch_shape))) if batch_shape else 1
         tau2_flat = variances.reshape(B_flat, K)  # (B_flat, K)
+        if batch_shape_x:
+            x_flat = x.reshape(B_flat, N)  # (B_flat, N)
+            in_axis_x = 0
+        else:
+            x_flat = x
+            in_axis_x = None
 
         pens_flat = [p.reshape((B_flat,) + p.shape[-2:]) for p in self._penalties]
 
@@ -414,8 +427,10 @@ class StructuredPenaltyOperator:
             scaled_penalties = [p[i] / v[i] for i in range(len(penalties))]
             return _kron_sum_quadratic(x, scaled_penalties)
 
-        quad_form_vec = jax.vmap(kron_sum_quadratic, in_axes=(None,) + (0,) + (0,) * K)
-        quad_form_out = quad_form_vec(x, tau2_flat, *pens_flat)
+        quad_form_vec = jax.vmap(
+            kron_sum_quadratic, in_axes=(in_axis_x,) + (0,) + (0,) * K
+        )
+        quad_form_out = quad_form_vec(x_flat, tau2_flat, *pens_flat)
 
         quad_form_out = jnp.reshape(quad_form_out, batch_shape)
         return quad_form_out

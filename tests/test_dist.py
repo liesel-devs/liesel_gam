@@ -362,3 +362,42 @@ class TestMultivariateNormalStructuredSingular:
         lp2 = dist2.log_prob(x)
 
         assert jnp.allclose(lp1, lp2, atol=1e-4)
+
+    def test_batching(self):
+        k = jax.random.key(0)
+        key_x1, key_x2, key_beta = jax.random.split(k, 3)
+
+        B = 3
+
+        tau21 = jnp.arange(B) + 0.5
+        tau22 = 1 + jnp.arange(B) * 0.2
+
+        K1 = tfd.Normal(0.0, 1.0).sample((B, 10, 10), key_x1)
+        K1 = jax.vmap(lambda K: K @ K.T + jnp.eye(10))(K1)
+        K2 = tfd.Normal(0.0, 1.0).sample((B, 20, 20), key_x2)
+        K2 = jax.vmap(lambda K: K @ K.T + jnp.eye(20))(K2)
+
+        eigenvalues1 = jax.vmap(jnp.linalg.eigvalsh)(K1)
+        eigenvalues2 = jax.vmap(jnp.linalg.eigvalsh)(K2)
+
+        K_tau2 = jax.vmap(
+            lambda tau21, tau22, K1, K2: tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
+            + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2),
+            (0, 0, 0, 0),
+        )(tau21, tau22, K1, K2)
+
+        op = gd.StructuredPenaltyOperator(
+            jnp.c_[1 / jnp.sqrt(tau21), 1 / jnp.sqrt(tau22)],
+            [K1, K2],
+            [eigenvalues1, eigenvalues2],
+        )
+
+        beta = tfd.Normal(0.0, 1.0).sample((B, K_tau2.shape[-1]), key_beta)
+        dist = gd.MultivariateNormalStructured(jnp.zeros_like(beta), op)
+
+        assert dist.log_prob(beta[0]).shape == (3,)
+        assert dist.log_prob(beta).shape == (3,)
+
+        dist = gd.MultivariateNormalStructured(jnp.zeros_like(beta[0]), op)
+
+        assert dist.log_prob(beta[0]).shape == (3,)
