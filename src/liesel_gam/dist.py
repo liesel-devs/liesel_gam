@@ -184,7 +184,8 @@ def _compute_masks(
     if not jnp.allclose(masks, ranks):
         raise ValueError(
             f"Number of zero eigenvalues ({masks}) does not "
-            f"correspond to penalty rank ({ranks})."
+            f"correspond to penalty rank ({ranks}). Maybe a different value for "
+            f"{eps=} can help."
         )
     mask = diags > eps
 
