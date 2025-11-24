@@ -3,6 +3,9 @@ name: notebooks
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: # trigger manually from GitHub UI
 
 jobs:
   pytest:
@@ -37,10 +40,10 @@ jobs:
 
       - name: Install R dependencies
         run: |
-          Rscript -e "install.packages('arrow')"
+          Rscript -e "install.packages(c('arrow', 'svglite'))"
 
       - name: Install Package
-        run: uv sync --locked --group dev
+        run: uv sync --locked --group dev --group gam
 
       - name: Debug R environment
         run: |
@@ -51,4 +54,4 @@ jobs:
 
 
       - name: Run pytest
-        run: uv run pytest tests/notebooks --nbval-lax --nbval-current-env
+        run: uv run pytest notebooks --nbval-lax --nbval-current-env
