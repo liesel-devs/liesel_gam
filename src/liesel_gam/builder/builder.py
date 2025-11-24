@@ -683,21 +683,23 @@ class BasisBuilder:
 
 
 class TermBuilder:
-    def __init__(self, registry: PandasRegistry) -> None:
+    def __init__(self, registry: PandasRegistry, prefix_names_by: str = "") -> None:
         self.registry = registry
         self.bases = BasisBuilder(registry)
+        self.prefix = prefix_names_by
 
         self._automatically_assigned_xnames: list[str] = []
         self._automatically_assigned_fnames: dict[str, list[str]] = dict()
 
     def _auto_xname(self) -> str:
-        name = "x" + str(len(self._automatically_assigned_xnames) + 1)
+        name = self.prefix + "x" + str(len(self._automatically_assigned_xnames) + 1)
         self._automatically_assigned_xnames.append(name)
         return name
 
     def _auto_fname(self, fname: str) -> str:
         max_i = 10_000
         i = 1
+        fname = self.prefix + fname
         fname_indexed = fname + str(i)
         if fname not in self._automatically_assigned_fnames:
             self._automatically_assigned_fnames[fname] = []
@@ -729,13 +731,17 @@ class TermBuilder:
         return scale_var
 
     @classmethod
-    def from_dict(cls, data: dict[str, ArrayLike]) -> TermBuilder:
-        return cls.from_df(pd.DataFrame(data))
+    def from_dict(
+        cls, data: dict[str, ArrayLike], prefix_names_by: str = ""
+    ) -> TermBuilder:
+        return cls.from_df(pd.DataFrame(data), prefix_names_by=prefix_names_by)
 
     @classmethod
-    def from_df(cls, data: pd.DataFrame) -> TermBuilder:
-        registry = PandasRegistry(data, na_action="drop")
-        return cls(registry)
+    def from_df(cls, data: pd.DataFrame, prefix_names_by: str = "") -> TermBuilder:
+        registry = PandasRegistry(
+            data, na_action="drop", prefix_names_by=prefix_names_by
+        )
+        return cls(registry, prefix_names_by=prefix_names_by)
 
     def labels_to_integers(self, newdata: dict) -> dict:
         return labels_to_integers(newdata, self.bases.mappings)
