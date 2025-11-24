@@ -41,10 +41,10 @@ def _remove_singleton_vars(gb: lsl.GraphBuilder) -> lsl.GraphBuilder:
     nodes, vars_ = model.pop_nodes_and_vars()
 
     for var in singleton_vars:
-        vars_.pop(var.name)
+        vars_.pop(var.name, None)
 
     for node in singleton_nodes:
-        nodes.pop(node.name)
+        nodes.pop(node.name, None)
 
     gb = lsl.GraphBuilder(to_float32=model._to_float32)
     gb.add(*vars_.values())
