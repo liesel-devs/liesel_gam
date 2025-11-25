@@ -357,7 +357,9 @@ as dedicated methods, including:
 - `.vc`: Varying coefficient terms
 
 
-## Funding
-We are
+## Acknowledgements
+
+Liesel is being developed by Paul Wiemann, Hannes Riebl, Johannes
+Brachem and Gianmarco Callegher with support from Thomas Kneib. We are
 grateful to the German Research Foundation (DFG) for funding the
-development of Liesel through grant KN 922/11-1.
+development through grant KN 922/11-1.
