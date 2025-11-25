@@ -5,20 +5,22 @@
 [![pytest](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml)
 [![pytest-cov](https://raw.githubusercontent.com/liesel-devs/liesel_gam/refs/heads/main/tests/coverage.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml)
 
-This package provides functionality to make the setup of
+This library provides functionality to make the setup of
 semiparametric generalized additive distributional regression models in [Liesel](https://github.com/liesel-devs/liesel)
-convenient. It works nicely with [liesel-devs/smoothcon](https://github.com/liesel-devs/smoothcon),
-which can be used to obtain basis and penalty matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html).
+convenient. It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty
+matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html),
+and relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse
+Wilkinson formulas, known to many from the formula syntax in R.
 
 ## Disclaimer
 
-This package is experimental and under active development. That means:
+This library is experimental and under active development. That means:
 
-- The API cannot be considered stable. If you depend on this package, pin the version.
+- The API cannot be considered stable. If you depend on this library, pin the version.
 - Testing has not been extensive as of now. Please check and verify!
 - There is currently no documentation beyond this readme.
 
-In any case, this package comes with no warranty or guarantees.
+This library comes with no warranty or guarantees.
 
 ## Installation
 
@@ -40,113 +42,284 @@ This is a short pseudo-code illustration without real data. For full examples, p
 consider the [notebooks](https://github.com/liesel-devs/liesel_gam/blob/main/notebooks).
 
 ```python
+import tensorflow_probability.substrates.jax.distributions as tfd
+import jax.numpy as jnp
+
 import liesel.model as lsl
 import liesel.goose as gs
 
 import liesel_gam as gam
 
-import jax.numpy as jnp
+data = ... # assuming data is a pandas DataFrame object
 ```
 
-Set up the response model.
+
+First, we set up the response model. The `gam.AdditivePredictor` classes are 
+containers for `lsl.Var` objects, which can added using the `+=` operator, as we will
+see. By default, each `gam.AdditivePredictor` includes an intercept with a
+constant prior, but you are free to pass any `lsl.Var` as the intercept 
+during initialization.
 
 ```python
-loc = gam.AdditivePredictor("loc")
-scale = gam.AdditivePredictor("scale", inv_link=jnp.exp) # terms will be added on the linked level
+loc_pred = gam.AdditivePredictor("mu")
+scale_pred = gam.AdditivePredictor("sigma", inv_link=jnp.exp)
 
 y = lsl.Var.new_obs(
     value=...,
-    distribution=lsl.Dist(..., loc=loc, scale=scale),
+    distribution=lsl.Dist(tfd.Normal, loc=loc_pred, scale=scale_pred),
     name="y"
 )
 ```
 
-Add intercept terms
+Next, we initialize a `gam.TermBuilder`. This class helps you set up structure additive 
+regression terms from a dataframe.
 
 ```python
-loc += gam.Intercept(
-    value=0.0, # this is the default
-    distribution=None, # this is the default
-    inference=gs.MCMCSpec(gs.IWLSKernel), # supply inference information here
-    name="b0"
-)
-
-scale += gam.Intercept( # this term will be applied on the log link level
-    value=0.0,
-    distribution=None,
-    inference=gs.MCMCSpec(gs.IWLSKernel),
-    name="g0"
-)
-
+tb = gam.TermBuilder.from_df(data)
 ```
 
-Add a smooth term, which can be any structured additive term defined by a basis matrix
-and a penalty matrix. A potentially rank-deficient multivariate normal prior will
-be set up for the coefficient of this term.
+Using the TermBuilder, we can now start adding terms to our predictors. For example, to
+add a linear effect we can use `gam.TermBuilder.lin`, which allows us to use
+Wilkinson formulas as implemented in [formulaic](https://matthewwardrop.github.io/formulaic/latest/guides/grammar/). 
+
+Note that formulaic allows you to set up several
+smooth bases and these speficications are supported by `liesel_gam`. If you use
+them, be aware that smooths set up via formulaic in the `lin` term will *not*  be 
+equipped with any regularizing priors. They will be fully unpenalized smooths. In
+almost all cases, you will want to use penalized smooths. The `gam.TermBuilder` offers
+dedicated methods for setting up penalized smooths, see below.
 
 ```python
-loc += gam.SmoothTerm(
-    basis=...,
-    penalty=...,
-    scale=lsl.Var.new_param(..., name="tau"),
-    inference=gs.MCMCSpec(gs.IWLSKernel),
-    name="s(x)"
-)
+loc_pred += tb.lin("x1 + x2*x3 + C(x4, contr.sum)")
+scale_pred += tb.lin("x1") # using a simpler model for the scale predictor here
 ```
 
-Add a linear term.
+
+
+Next, we add a smooth term. 
 
 ```python
-loc += gam.LinearTerm(
-    x=..., # 1d-array or 2d-array are both allowed
-    distribution=lsl.Dist(...),
-    inference=gs.MCMCSpec(gs.IWLSKernel),
-    name="x"
-)
+loc_pred += tb.s("x5", bs="ps", k=20)
 ```
 
-Get a Liesel EngineBuilder instance to set up MCMC sampling.
+Finally, we build the Liesel model.
 
 ```python
 model = lsl.Model([y])
-eb = gs.LieselMCMC(model).get_engine_builder() # get your engine builder instance
 ```
 
-## Contents
+For MCMC sampling, we then set up an engine builder. All terms returned by 
+`gam.TermBuilder` come with default `inference` specifications that provide a
+`gs.IWLSKernel` for the coefficients of each term. Smoothing parameters receive a 
+default prior of `InverseGamma(scale=1.0, concentration=0.005)` and a corresponding
+`gs.GibbsKernel`. This setup allows you to get first results quickly.
 
 ```python
-import liesel.model as lsl
-import liesel.goose as gs
+eb = gs.LieselMCMC(model).get_engine_builder(seed=42, num_chains=4)
 
-import liesel_gam as gam
+eb.set_duration(
+    warmup_duration=1000, 
+    posterior_duration=1000, 
+    term_duration=200, 
+    posterior_thinning=2
+)
+engine = eb.build()
 ```
 
-This package provides the following classes and functions:
+## Example notebooks
 
-- `gam.AdditivePredictor`: A `lsl.Var` object that provides a convenient way to define an additive predictor.
-- `gam.SmoothTerm`: A `lsl.Var` object that provides a convenient way to set up a structured additive term with a singular multivariate normal prior, given a basis matrix, a penalty matrix, and a `lsl.Var` representing the prior scale parameter.
-  - The alternative constructor `gam.SmoothTerm.new_ig` can be used to quickly set up a term with an inverse gamma prior on the prior variance parameter. This variance parameter will be initialized with a suitable Gibbs kernel.
-- `gam.LinearTerm`: A `lsl.Var` object that provides a convenient way to set up a linear term.
-- `gam.Intercept`: A `lsl.Var` parameter object that represents an intercept.
-- `gam.Basis`: An observed `lsl.Var` object that represents a basis matrix.
+This repository includes a number of notebooks with minimal examples for using different
+smooth terms. You can find them here: [Notebooks](https://github.com/liesel-devs/liesel_gam/tree/main/notebooks)
 
-A bit more behind the scenes:
+## Plotting functionality
 
-- `gam.MultivariateNormalSingular`: An implementation of the singular multivariate normal distribution in the `tensorflow_probability` interface.
-- `gam.star_ig_gibbs` and `gam.init_star_ig_gibbs`: Shortcuts for setting up a `gs.GibbsKernel` for a variance parameter with an inverse gamma prior.
+`liesel_gam` comes with some default plotting functions building on the wonderful
+[plotnine](https://plotnine.org), which brings a ggplot2-like syntax to python.
 
-## Usage
+The current plotting functions are:
 
-Usage is illustrated in the following notebooks.
+- `gam.plot_1d_smooth`: For plotting univariate smooths.
+- `gam.plot_2d_smooth`: For plotting bivariate smooths.
+- `gam.plot_regions`: For plotting discrete spatial effects like markov random fields or spatially organized random intercepts.
+- `gam.plot_forest`: For plotting discrete effects like random intercepts and markov random fields.
+- `gam.plot_1d_smooth_clustered`: For plotting clustered smooths, including random slopes and smooths with a random scalar.
+- `gam.plot_polys`: General function for plotting discrete spatial regions.
 
-- [notebooks/test_gam_gibbs.ipynb](https://github.com/liesel-devs/liesel_gam/blob/main/notebooks/test_gam_gibbs.ipynb): Uses the `gam.SmoothTerm.new_ig` constructor for the quickest and most convenient setup.
-- [notebooks/test_gam_manual.ipynb](https://github.com/liesel-devs/liesel_gam/blob/main/notebooks/test_gam_manual.ipynb): Uses `gam.SmoothTerm` with a manually initialized scale parameter. This is less convenient, but demonstrates how to use any  `lsl.Var` for the scale parameter.
 
-## Usage with bases and penalties from `mgcv` via `smoothcon`
+Example usage:
 
-We can get access to a large class of possible basis and penalty matrices by
-interfacing with the wonderful R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html)
-via [liesel-devs/smoothcon](https://github.com/liesel-devs/smoothcon).
 
-Example notebooks that illustrate smoothcon usage are provided in the [smoothcon
-repository](https://github.com/liesel-devs/smoothcon/tree/main/notebooks).
+```python
+gam.plot_1d_smooth(
+    term=model.vars["s1(x)"],  # the Term object, here retrieved from the model
+    samples=samples            # the MCMC samples drawn via liesel.goose
+)
+```
+
+![Plot of a univariate smooth](img/s1(x).png)
+
+
+## More information
+
+### Customizing intercepts
+
+By default, a `gam.AdditivePredictor` comes with an intercept that receives a constant
+prior and is sampled with `gs.IWLSKernel`. You can override this default in several ways.
+
+You can turn off the default by passing `intercept=False`:
+
+```python
+loc_pred = gam.AdditivePredictor("mu", intercept=False)
+```
+
+You can also pass a custom variable, which opens the full freedom of Liesel to you in
+terms of prior and inference specification for the intercept:
+
+```python
+loc_intercept = lsl.Var.new_param(
+    value=0.0,
+    distribution=lsl.Dist(tfd.Normal, loc=0.0, scale=100.0),
+    inference=gs.MCMCSpec(gs.NUTSKernel),
+    name="mu_intercept"
+)
+
+loc_pred = gam.AdditivePredictor("mu", intercept=loc_intercept)
+```
+
+### Priors for `lin` terms
+
+The regression coefficients of a `lin` term receive a constant prior by default.
+You can customize the prior by passing a `lsl.Dist` to the `prior` argument:
+
+```python
+loc_pred += tb.lin(
+    "x1 + x2*x3 + C(x4, contr.sum)",
+    prior=lsl.Dist(tfd.Normal, loc=0.0, scale=100.0)
+)
+```
+
+### Joint sampling for `lin` terms and intercepts
+
+By default, each term initialized by the `gam.TermBuilder` receives their own kernel,
+and this includes the intercept. That means, in the blocked MCMC algorithm employed
+by Liesel, there will be one block for the intercept of each predictor and separate
+blocks for other terms.
+
+However, there may be cases in which you want intercepts and linear terms to be sampled
+jointly by a single sampler. You can achieve this by customizing the `inference`
+arguments and using the `gs.MCMCSpec(kernel_group)` argument:
+
+```python
+loc_intercept = lsl.Var.new_param(
+    value=0.0,
+    inference=gs.MCMCSpec(gs.IWLSKernel, kernel_group="loc_lin"),
+    name="mu_intercept"
+)
+
+loc_pred = gam.AdditivePredictor("mu", intercept=loc_intercept)
+
+loc_pred += tb.lin(
+    "x1 + x2*x3 + C(x4, contr.sum)",
+    inference=gs.MCMCSpec(gs.IWLSKernel, kernel_group="loc_lin")
+)
+```
+
+
+
+### Inference for smooth coefficients
+
+By default, the smooth coefficients receive an `gs.IWLSKernel` inference specification, 
+but you are free to change this:
+
+```python
+loc_pred += tb.s(
+    "x5", 
+    bs="ps", 
+    k=20,
+    inference=gs.MCMCSpec(gs.NUTSKernel)
+)
+```
+
+### Priors and inference for variance parameters
+
+The variance parameters in the priors of penalized smooths are controlled with the `scale` argument,
+which accepts `gam.VarIGPrior` and `lsl.Var` objects, but also simple floats.
+
+- The default `scale=gam.VarIGPrior(1.0, 0.005)` will set up an inverse gamma prior for
+  the smooth's variance parameter, with parameters `concentration=1.0` and `scale=0.005`.
+  The variance parameter will then automatically receive a fitting Gibbs kernel, since
+  the full conditional is known in this case.
+- If you pass `scale=gam.VarIGPrior(a, b)` for any `a` and `b`, you will also set up an inverse gamma prior for
+  the smooth's variance parameter, with parameters `concentration=a` and `scale=b`.
+  Again, the variance parameter will then automatically receive a fitting Gibbs kernel, since
+  the full conditional is known in this case.
+- If you pass a float, this is taken as the scale parameter and held fixed.
+- You can also pass a custom `lsl.Var`. In this case, it is your responsibility to 
+  define a fitting `inference` specification. For example, to set up a term with a
+  half-normal prior on the scale parameter, and sampling of the log scale via NUTS:
+
+```python
+scale_x5 = lsl.Var.new_param(
+    1.0,
+    distribution=lsl.Dist(tfd.HalfNormal, scale=20.0),
+    name="scale_x5"
+)
+
+scale_x5.transform(
+    bijector=tfb.Exp(),
+    inference=gs.MCMCSpec(gs.NUTSKernel),
+    name="log_scale_x5"
+)
+
+loc_pred += tb.s(
+    "x5", 
+    bs="ps", 
+    k=20,
+    scale=scale_x5
+)
+```
+
+### Composing terms
+
+Since `gam.TermBuilder` returns objects that are subclasses of `lsl.Var` objects,
+you can use them as building blocks for more sophisticated models. For example, 
+to build a varying coefficient model, you can do the following:
+
+```python
+x1_var = tb.registry.get_obs("x1")
+x2_smooth = tb.s("x2")
+
+term = lsl.Var.new_calc(
+    lambda x, by: x * by,
+    x=x1_var,
+    by=x2_smooth,
+    name="x1*s(x2)",
+)
+
+loc_pred += term
+```
+
+In fact, this is essentially how the `gam.TermBuilder.vc` method is implemented.
+
+
+## Smooth terms in liesel_gam
+
+`gam.TermBuilder` offers a range of smooth terms
+as dedicated methods, including:
+
+- `.ps`: Dedicated method for univariate P-splines
+- `.s`: General method for setting up univariate smooths with an interface heavily inspired by `mgcv`. Allows for different bases specified in the argument `bs`:
+  - `"tp"` (thin plate splines), 
+  - `"ts"` (thin plate splines with a null space penalty)
+  - `"cr"` (cubic regression splines)
+  - `"cs"` (cubic regression splines with shrinkage)
+  - `"cc"` (cyclic cubic regression splines)
+  - `"bs"` (B-splines)
+  - `"ps"` (penalized B-splines, i.e. P-splines)
+  - `"cp"` (cyclic P-splines)
+- `.te` and `.ti`: General methods for setting up bivariate tensor product smooths, 
+   similar to MGCV. Quote: "te produces a full tensor product smooth, while ti produces a tensor product interaction, appropriate when the main effects (and any lower interactions) are also present."
+- `.mrf`: Markov random fields (discrete-region spatial effects)
+- `.ri`: Random intercept terms.
+- `.rs`: Random slope terms.
+- `.vc`: Varying coefficient terms
