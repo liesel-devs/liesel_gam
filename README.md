@@ -84,6 +84,8 @@ pip install git+https://github.com/liesel-devs/liesel_gam.git
 This is a short pseudo-code illustration without real data. For full examples, please
 consider the [notebooks](https://github.com/liesel-devs/liesel_gam/blob/main/notebooks).
 
+### Imports
+
 ```python
 import tensorflow_probability.substrates.jax.distributions as tfd
 import jax.numpy as jnp
@@ -96,12 +98,14 @@ import liesel_gam as gam
 data = ... # assuming data is a pandas DataFrame object
 ```
 
+### Additive predictors and response model
 
 First, we set up the response model. The `gam.AdditivePredictor` classes are
 containers for `lsl.Var` objects, which can added using the `+=` operator, as we will
 see. By default, each `gam.AdditivePredictor` includes an intercept with a
 constant prior, but you are free to pass any `lsl.Var` as the intercept
 during initialization.
+
 
 ```python
 loc_pred = gam.AdditivePredictor("mu")
@@ -114,12 +118,17 @@ y = lsl.Var.new_obs(
 )
 ```
 
+### TermBuilder
+
 Next, we initialize a `gam.TermBuilder`. This class helps you set up structure additive
 regression terms from a dataframe.
+
 
 ```python
 tb = gam.TermBuilder.from_df(data)
 ```
+
+### TermBuilder.lin: Linear terms from formulas
 
 Using the TermBuilder, we can now start adding terms to our predictors. For example, to
 add a linear effect we can use `gam.TermBuilder.lin`, which allows us to use
@@ -137,13 +146,15 @@ loc_pred += tb.lin("x1 + x2*x3 + C(x4, contr.sum)")
 scale_pred += tb.lin("x1") # using a simpler model for the scale predictor here
 ```
 
-
+### TermBuilder.s: Penalized smooth terms
 
 Next, we add a smooth term.
 
 ```python
 loc_pred += tb.s("x5", bs="ps", k=20)
 ```
+
+### MCMC algorithm setup
 
 Finally, we build the Liesel model.
 
