@@ -44,6 +44,17 @@ y = lsl.Var.new_obs(
 model = lsl.Model([y])
 ```
 
+As a Liesel addon, `liesel_gam` gives you:
+
+- a lot of freedom to use existing building blocks to create
+new models via Liesel
+- just-in-time compilation for speed via [JAX](https://github.com/jax-ml/jax),
+- automatic differentiation via [JAX](https://github.com/jax-ml/jax),
+- access to different samplers
+like Hamiltonian Monte Carlo (HMC), the No-U-turn sampler (NUTS), the
+iteratively-reweighted least squares samples (IWLS), Gibbs sampling, and general
+metropolis-hastings sampling via Liesel.
+
 ## Disclaimer
 
 This library is experimental and under active development. That means:
