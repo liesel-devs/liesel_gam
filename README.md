@@ -18,6 +18,8 @@ matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/
 and relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse
 Wilkinson formulas, known to many from the formula syntax in R.
 
+<br>
+
 A little syntax teaser:
 
 ```python
