@@ -10,6 +10,7 @@
 
 
 <img src="https://raw.githubusercontent.com/liesel-devs/liesel/main/misc/logo/logo-light.png" alt="logo" align="right" width="150">
+
 This library provides functionality to make the setup of
 semiparametric generalized additive distributional regression models in [Liesel](https://github.com/liesel-devs/liesel)
 convenient. It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty
