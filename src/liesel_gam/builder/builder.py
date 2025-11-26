@@ -1146,7 +1146,7 @@ class TermBuilder:
     def f(
         self,
         *x: str,
-        basis_fn: Callable[[Array], Array] = lambda x: x,
+        basis_fn: Callable[[Array], Array],
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         use_callback: bool = True,
