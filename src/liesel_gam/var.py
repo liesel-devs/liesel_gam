@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Self
+from typing import Any, NamedTuple, Self
 
 import jax
 import jax.numpy as jnp
@@ -17,6 +17,11 @@ from .kernel import init_star_ig_gibbs
 
 InferenceTypes = Any
 Array = Any
+
+
+class VarIGPrior(NamedTuple):
+    concentration: float | Array
+    scale: float | Array
 
 
 def _append_name(name: str, append: str) -> str:
@@ -193,6 +198,23 @@ class ScaleIG(UserVar):
         return self
 
 
+def _init_scale_ig(
+    x: ScaleIG | VarIGPrior | lsl.Var | Array | None,
+) -> ScaleIG | lsl.Var | Array | None:
+    if isinstance(x, VarIGPrior):
+        concentration = x.concentration
+        scale_ = x.scale
+        scale_var: ScaleIG | lsl.Var | Array | None = ScaleIG(
+            value=1.0,
+            concentration=concentration,
+            scale=scale_,
+        )
+    else:
+        scale_var = x
+
+    return scale_var
+
+
 class Term(UserVar):
     """
     General structured additive term.
@@ -255,12 +277,14 @@ class Term(UserVar):
         self,
         basis: Basis,
         penalty: lsl.Var | lsl.Value | Array | None,
-        scale: ScaleIG | lsl.Var | Array | None,
+        scale: ScaleIG | VarIGPrior | lsl.Var | Array | None,
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         _update_on_init: bool = True,
     ):
+        scale = _init_scale_ig(scale)
+
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
         nbases = jnp.shape(basis.value)[-1]
@@ -354,7 +378,7 @@ class Term(UserVar):
         cls,
         basis: Basis,
         fname: str = "f",
-        scale: ScaleIG | lsl.Var | Array | None = None,
+        scale: ScaleIG | lsl.Var | Array | VarIGPrior | None = None,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         noncentered: bool = False,
@@ -554,7 +578,7 @@ class IndexingTerm(Term):
         self,
         basis: Basis,
         penalty: lsl.Var | lsl.Value | Array | None,
-        scale: ScaleIG | lsl.Var | Array | None,
+        scale: ScaleIG | VarIGPrior | lsl.Var | Array | None,
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,

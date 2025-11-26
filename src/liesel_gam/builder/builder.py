@@ -14,7 +14,7 @@ import pandas as pd
 import smoothcon as scon
 from ryp import r, to_py
 
-from ..var import Basis, BasisDot, MRFTerm, RITerm, ScaleIG, Term
+from ..var import Basis, BasisDot, MRFTerm, RITerm, ScaleIG, Term, VarIGPrior
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
@@ -33,11 +33,6 @@ class MRFSpec(NamedTuple):
     mapping: CategoryMapping
     nb: dict[str, list[str]] | None
     ordered_labels: list[str] | None
-
-
-class VarIGPrior(NamedTuple):
-    concentration: float | Array
-    scale: float | Array
 
 
 def _validate_bs(bs):
