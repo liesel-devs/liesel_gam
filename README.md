@@ -77,9 +77,9 @@ You can also install the development version from GitHub via pip:
 pip install git+https://github.com/liesel-devs/liesel_gam.git
 ```
 
-## Illustration
+## Illustrations
 
-This is a short pseudo-code illustration without real data. For full examples, please
+These are pseudo-code illustrations without real data. For full examples, please
 consider the [notebooks](https://github.com/liesel-devs/liesel_gam/blob/main/notebooks).
 
 ### Imports
