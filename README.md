@@ -5,9 +5,7 @@
 [![pytest](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml)
 [![pytest-cov](https://raw.githubusercontent.com/liesel-devs/liesel_gam/refs/heads/main/tests/coverage.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml)
 
-
 ![Panel of GAM summary plots](img/plots.png)
-
 
 <img src="https://raw.githubusercontent.com/liesel-devs/liesel/main/misc/logo/logo-light.png" alt="logo" align="right" width="150">
 
@@ -106,7 +104,6 @@ see. By default, each `gam.AdditivePredictor` includes an intercept with a
 constant prior, but you are free to pass any `lsl.Var` as the intercept
 during initialization.
 
-
 ```python
 loc_pred = gam.AdditivePredictor("mu")
 scale_pred = gam.AdditivePredictor("sigma", inv_link=jnp.exp)
@@ -122,7 +119,6 @@ y = lsl.Var.new_obs(
 
 Next, we initialize a `gam.TermBuilder`. This class helps you set up structure additive
 regression terms from a dataframe.
-
 
 ```python
 tb = gam.TermBuilder.from_df(data)
@@ -199,9 +195,7 @@ The current plotting functions are:
 - `gam.plot_1d_smooth_clustered`: For plotting clustered smooths, including random slopes and smooths with a random scalar.
 - `gam.plot_polys`: General function for plotting discrete spatial regions.
 
-
 Example usage:
-
 
 ```python
 gam.plot_1d_smooth(
@@ -211,7 +205,6 @@ gam.plot_1d_smooth(
 ```
 
 ![Plot of a univariate smooth](img/s1(x).png)
-
 
 ## More information
 
@@ -277,8 +270,6 @@ loc_pred += tb.lin(
     inference=gs.MCMCSpec(gs.IWLSKernel, kernel_group="loc_lin")
 )
 ```
-
-
 
 ### Inference for smooth coefficients
 
@@ -355,6 +346,78 @@ loc_pred += term
 
 In fact, this is essentially how the `gam.TermBuilder.vc` method is implemented.
 
+### Using a custom basis function
+
+If you have a custom basis function and a penalty matrix, you can supply them
+directly to the TermBuilder.
+
+```python
+def custom_basis_fn(x: jax.Array) -> jax.Array:
+    # code for your custom basis goes here
+
+    # x is shape (n, k), where k is the number of columns in the input data that this
+    # term depends on
+
+    # the return needs to be an array of dimension (n, p)
+    # where n is the number of observations for x and p is the dimension
+    # of the penalty matrix corresponding to this basis.
+    ...
+
+custom_penalty = ... # your custom penalty of shape (p, p)
+
+loc_pred += tb.f(
+    # here, we supply two covariances.
+    # They will be concatenated into x = jnp.stack([x6, x7], axis=-1) for passing
+    # to basis_fn
+    "x6", "x7",
+    basis_fn=custom_basis_fn,
+    penalty=custom_penalty
+)
+```
+
+Implementing a custom basis via a basis function
+is advantageous, because it enables us to simply pass the
+covariates that this basis relies on directly to `lsl.Model.predict` for predictions:
+
+```python
+model = lsl.Model([y]) # a lsl.Model that contains an .f term
+
+new_x6 = ... # 1d array with new data for x6
+new_x7 = ... # 1d array with new data for x7
+model.predict(newdata={"x6": new_x6, "x7": new_x7}, predict=["f1(x6,x7)"])
+```
+
+### Using a custom basis matrix directly
+
+If you have a custom basis matrix and a penalty matrix, you can initialize a
+`liesel_gam.Basis` object and, building on it, a `liesel_gam.Term` directly:
+
+```python
+custom_basis = gam.Basis(
+    value=...,   # your basis matrix of shape (n, p) goes here
+    penalty=..., # your penalty matrix of shape (p, p) goes here
+    xname="x8" # the name of the basis object will by default be B(xname); here: B(x8)
+)
+
+custom_term = gam.Term.f(
+    basis=custom_basis,
+    scale=gam.VarIGPrior(1.0, 0.005), # also accepts any scalar-valued lsl.Var object
+    fname="h" # name of the term will be fname(basis.x.name), so here: h(x8)
+)
+
+loc_pred += custom_term # still need to add the term to our predictor
+```
+
+Be aware that, if you go this route, the `lsl.Model` does *not* how to construct
+your basis from input data. So to predict at new values, you will have to
+provide a full basis matrix:
+
+```python
+model = lsl.Model([y]) # a lsl.Model that contains your custom term
+
+new_custom_basis = ... # your (m, p) array, the basis matrix at which you want to predict
+model.predict(newdata={"x8": new_custom_basis}, predict=["h(x8)"])
+```
 
 ## Smooth terms in liesel_gam
 
@@ -377,7 +440,6 @@ as dedicated methods, including:
 - `.ri`: Random intercept terms.
 - `.rs`: Random slope terms.
 - `.vc`: Varying coefficient terms
-
 
 ## Acknowledgements
 
