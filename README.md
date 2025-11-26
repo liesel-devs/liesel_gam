@@ -25,11 +25,11 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 import liesel.model as lsl
 import liesel_gam as gam
 
-tb = gam.TermBuilder.from_df(data)             # data is a pandas DataFrame
+tb = gam.TermBuilder.from_df(data)             # A pandas DataFrame
 
 loc = gam.AdditivePredictor(name="loc")
 
-loc += tb.lin("x1 + x2*x3 + C(x4, contr.sum)") # linear term
+loc += tb.lin("x1 + x2*x3 + C(x4, contr.sum)") # Linear term
 loc += tb.s("x5", bs="ps", k=20)               # P-spline
 loc += tb.te("x6", "x7", k=(6, 8))             # Tensor product
 
