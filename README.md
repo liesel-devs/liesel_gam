@@ -1,20 +1,27 @@
-# Generalized Additive Models in Liesel
+# Bayesian Generalized Additive Models in Liesel
 
 [![pre-commit](https://github.com/liesel-devs/liesel_gam/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pre-commit.yml)
 [![notebooks](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest-notebooks.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/tree/main/notebooks)
 [![pytest](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml)
 [![pytest-cov](https://raw.githubusercontent.com/liesel-devs/liesel_gam/refs/heads/main/tests/coverage.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest.yml)
 
+This title is short and catchy, but does not convey the full range of models covered by this library. We could also say:
+
+- Bayesian Generalized Additive Models for **Location, Scale, and Shape** (and beyond)
+- Bayesian **Structured Additive Distributional Regression**
+
 ![Panel of GAM summary plots](img/plots.png)
 
 <img src="https://raw.githubusercontent.com/liesel-devs/liesel/main/misc/logo/logo-light.png" alt="logo" align="right" width="150">
 
 This library provides functionality to make the setup of
-semiparametric generalized additive distributional regression models in [Liesel](https://github.com/liesel-devs/liesel)
+generalized additive models in [Liesel](https://github.com/liesel-devs/liesel)
 convenient. It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty
 matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html),
 and relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse
 Wilkinson formulas, known to many from the formula syntax in R.
+
+This library in fact allows not only for classical
 
 <br>
 
@@ -25,7 +32,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 import liesel.model as lsl
 import liesel_gam as gam
 
-tb = gam.TermBuilder.from_df(data)             # A pandas DataFrame
+tb = gam.TermBuilder.from_df(data)             # data: a pandas DataFrame
 
 loc = gam.AdditivePredictor(name="loc")
 
