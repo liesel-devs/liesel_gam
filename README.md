@@ -10,20 +10,9 @@ This title is short and catchy, but does not convey the full range of models cov
 - Bayesian Generalized Additive Models for **Location, Scale, and Shape** (and beyond)
 - Bayesian **Structured Additive Distributional Regression**
 
-![Panel of GAM summary plots](img/plots.png)
+![Panel of GAM summary plots](img/plots3.png)
 
-<img src="https://raw.githubusercontent.com/liesel-devs/liesel/main/misc/logo/logo-light.png" alt="logo" align="right" width="150">
-
-This library provides functionality to make the setup of
-generalized additive models in [Liesel](https://github.com/liesel-devs/liesel)
-convenient. It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty
-matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html),
-and relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse
-Wilkinson formulas, known to many from the formula syntax in R.
-
-This library in fact allows not only for classical
-
-<br>
+This library provides functionality to make the setup of generalized additive models in [Liesel](https://github.com/liesel-devs/liesel) convenient. It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html), and relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse Wilkinson formulas, known to many from the formula syntax in R.
 
 A little syntax teaser:
 
