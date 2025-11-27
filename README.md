@@ -204,7 +204,7 @@ gam.plot_1d_smooth(
 
 ## More information
 
-### Customizing intercepts
+### Customize the intercepts
 
 By default, a `gam.AdditivePredictor` comes with an intercept that receives a constant
 prior and is sampled with `gs.IWLSKernel`. You can override this default in several ways.
@@ -229,7 +229,7 @@ loc_intercept = lsl.Var.new_param(
 loc_pred = gam.AdditivePredictor("mu", intercept=loc_intercept)
 ```
 
-### Priors for `lin` terms
+### Define priors for `lin` terms
 
 The regression coefficients of a `lin` term receive a constant prior by default.
 You can customize the prior by passing a `lsl.Dist` to the `prior` argument:
@@ -241,7 +241,7 @@ loc_pred += tb.lin(
 )
 ```
 
-### Joint sampling for `lin` terms and intercepts
+### Sample `lin` terms and intercepts in one joint block
 
 By default, each term initialized by the `gam.TermBuilder` receives their own kernel,
 and this includes the intercept. That means, in the blocked MCMC algorithm employed
@@ -267,12 +267,15 @@ loc_pred += tb.lin(
 )
 ```
 
-### Inference for smooth coefficients
+### Use different MCMC kernels like HMC/NUTS
 
-By default, the smooth coefficients receive an `gs.IWLSKernel` inference specification,
-but you are free to change this:
+The default MCMC kernel for all terms created by a `gam.TermBuilder` is `gs.IWLSKernel`.
+You are free to override this default by supplying your own `liesel.goose.MCMCSpec`
+object in the `inference` argument:
 
 ```python
+import liesel.goose as gs
+
 loc_pred += tb.s(
     "x5",
     bs="ps",
@@ -281,7 +284,12 @@ loc_pred += tb.s(
 )
 ```
 
-### Priors and inference for variance parameters
+This way, you can also use Liesel to set up general custom Metropolis-Hastings
+kernels ([gs.MHKernel](https://docs.liesel-project.org/en/latest/generated/liesel.goose.MHKernel.html))
+or Gibbs kernels
+([gs.GibbsKernel](https://docs.liesel-project.org/en/latest/generated/liesel.goose.GibbsKernel.html)).
+
+### Use different priors and MCMC kernels for variance parameters
 
 The variance parameters in the priors of penalized smooths are controlled with the `scale` argument,
 which accepts `gam.VarIGPrior` and `lsl.Var` objects, but also simple floats.
@@ -320,7 +328,7 @@ loc_pred += tb.s(
 )
 ```
 
-### Composing terms
+### Compose terms to build new models
 
 Since `gam.TermBuilder` returns objects that are subclasses of `lsl.Var` objects,
 you can use them as building blocks for more sophisticated models. For example,
@@ -342,7 +350,7 @@ loc_pred += term
 
 In fact, this is essentially how the `gam.TermBuilder.vc` method is implemented.
 
-### Using a custom basis function
+### Use a custom basis function
 
 If you have a custom basis function and a penalty matrix, you can supply them
 directly to the TermBuilder.
@@ -383,7 +391,7 @@ new_x7 = ... # 1d array with new data for x7
 model.predict(newdata={"x6": new_x6, "x7": new_x7}, predict=["f1(x6,x7)"])
 ```
 
-### Using a custom basis matrix directly
+### Use a custom basis matrix directly
 
 If you have a custom basis matrix and a penalty matrix, you can initialize a
 `liesel_gam.Basis` object and, building on it, a `liesel_gam.Term` directly:
@@ -415,7 +423,79 @@ new_custom_basis = ... # your (m, p) array, the basis matrix at which you want t
 model.predict(newdata={"x8": new_custom_basis}, predict=["h(x8)"])
 ```
 
-## Smooth terms in liesel_gam
+### Noncentered parameterization
+
+Sometimes sampling from the posterior can be made more easy by sampling from a
+reparameterized model, particularly using a "noncentered" parameterization
+(see [Stan documentation](https://mc-stan.org/docs/2_18/stan-users-guide/reparameterization-section.html)).
+
+Consider the mdoel $x \sim N(0, \sigma^2)$. Noncentered parameterization means that,
+instead of sampling $x$ and $\sigma^2$ directly, we rewrite it as $x = \sigma * \tilde{x}$,
+where $\tilde{x} \sim N(0, 1)$, and draw samples of $\tilde{x}$ and $\sigma^2$.
+
+For many terms in `liesel_gam` you can enable a noncentered parameterization by
+setting a corresponding argument to `True`:
+
+```python
+loc_pred += tb.s("x5", bs="ps", k=20, noncentered=True)
+```
+
+### Extract a basis directly
+
+Sometimes you just want a certain basis matrix, and use it to build your own term.
+You can do that by using the `gam.BasisBuilder`, which is available from the
+`TermBuilder` object. The method names of the `gam.BasisBuilder` correspond to the
+term initialization methods on the `TermBuilder`.
+
+```python
+tb = gam.TermBuilder.from_df(data)
+
+s_basis = tb.bases.s(
+    "x5",
+    bs="ps",
+    k=20,
+
+    # whether sum-to-zero constraints should be applied by reparameterizing the basis
+    absorb_cons = True,
+
+    # whether the penalty matrix corresponding to this basis should be reparameterized
+    # into a diagonal matrix, with a corresponding reparameterization for the basis
+    diagonal_penalty = True,
+
+    # whether the penalty matrix should corresponding to this basis should be
+    # scaled
+    scale_penalty = True
+)
+```
+
+The `Basis` object then gives you access to its own value through `Basis.value`, to
+the basis function through `Basis.value_node.function`, and to its penalty
+through `Basis.penalty`.
+
+### Extract a column from the data frame as a variable
+
+If you simply want to turn a column of your data frame into a `lsl.Var` object,
+you can use the `gam.PandasRegistry` attached to the `TermBuilder`:
+
+```python
+tb = gam.TermBuilder.from_df(data)
+
+x1_var = tb.registry.get_obs("x1")
+x2_var = tb.registry.get_numerical_obs("x2")
+x3_var = tb.registry.get_boolean_obs("x3")
+x4_var, mapping = tb.registry.get_categorical_obs("x4")
+```
+
+`tb.registry.get_categorical_obs` returns a variable object that represents
+the categories in the corresponding column of the data frame as numeric codes
+for compatibility with jax. For that reason, it also returns a `gam.CategoryMapping`
+object that enables you to convert back and forth between category labels and numeric
+category codes.
+
+The registry has some more convenience methods on offer that we do not list
+here. Check out the documentation for more.
+
+## Overview of smooth terms available in `liesel_gam`
 
 `gam.TermBuilder` offers a range of smooth terms
 as dedicated methods, including:
