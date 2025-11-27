@@ -324,10 +324,8 @@ def plot_polys(
     df: pd.DataFrame,
     polys: Mapping[str, ArrayLike],
     show_unobserved: bool = True,
-    highlight_unobserved: bool = True,
     observed_color: str = "none",
     unobserved_color: str = "red",
-    color: str | None = None,
 ) -> p9.ggplot:
     if isinstance(which, str):
         which = [which]
@@ -354,26 +352,19 @@ def plot_polys(
 
     plot_df["variable"] = pd.Categorical(plot_df["variable"], categories=which)
 
-    if not show_unobserved:
-        plot_df = plot_df.query("observed == True")
-
-    if show_unobserved and not highlight_unobserved:
-        unobserved_color = observed_color
-
     p = (
         p9.ggplot(plot_df)
         + p9.aes("V0", "V1", group="label", fill="value")
+        + p9.aes(color="observed")
         + p9.facet_wrap("~variable", labeller="label_both")
+        + p9.scale_color_manual({True: observed_color, False: unobserved_color})
+        + p9.guides(color=p9.guide_legend(override_aes={"fill": None}))
     )
-    if highlight_unobserved and show_unobserved:
-        p = (
-            p
-            + p9.aes(color="observed")
-            + p9.scale_color_manual({True: observed_color, False: unobserved_color})
-        )
+    if show_unobserved:
         p = p + p9.geom_polygon()
     else:
-        p = p + p9.geom_polygon(color=color)
+        p = p + p9.geom_polygon(data=plot_df.query("observed == True"))
+        p = p + p9.geom_polygon(data=plot_df.query("observed == False"), fill="none")
 
     return p
 
@@ -508,10 +499,8 @@ def plot_regions(
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
-    highlight_unobserved: bool = True,
     observed_color: str = "none",
     unobserved_color: str = "red",
-    color: str | None = None,
 ) -> p9.ggplot:
     polygons = None
     if polys is not None:
@@ -551,10 +540,8 @@ def plot_regions(
         df=df,
         polys=polygons,
         show_unobserved=show_unobserved,
-        highlight_unobserved=highlight_unobserved,
         observed_color=observed_color,
         unobserved_color=unobserved_color,
-        color=color,
     )
 
 
