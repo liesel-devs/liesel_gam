@@ -534,7 +534,7 @@ def plot_regions(
         hdi_prob=hdi_prob,
     )
     region = term.basis.x.name
-    return plot_polys(
+    p = plot_polys(
         region=region,
         which=which,
         df=df,
@@ -543,6 +543,8 @@ def plot_regions(
         observed_color=observed_color,
         unobserved_color=unobserved_color,
     )
+    p += p9.labs(title=f"Plot of {term.name}")
+    return p
 
 
 def plot_forest(
@@ -602,6 +604,8 @@ def plot_forest(
             shape="x",
             data=df_uo,
         )
+
+    p += p9.labs(title=f"Posterior summary of {term.name}")
 
     return p
 
