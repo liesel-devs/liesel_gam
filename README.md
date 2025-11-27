@@ -42,6 +42,7 @@ As a Liesel addon, `liesel_gam` gives you:
 
 - a lot of freedom to use existing building blocks to create
 new models via Liesel
+- visualization of your models as directed acyclic graphs via Liesel
 - just-in-time compilation for speed via [JAX](https://github.com/jax-ml/jax),
 - automatic differentiation via [JAX](https://github.com/jax-ml/jax),
 - access to different samplers
