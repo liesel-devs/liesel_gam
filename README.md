@@ -73,6 +73,25 @@ You can also install the development version from GitHub via pip:
 pip install git+https://github.com/liesel-devs/liesel_gam.git
 ```
 
+## Contents
+
+- [Short usage illustration](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#illustrations)
+- [Example notebooks](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#example-notebooks)
+- [Plotting](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#plotting-functionality)
+- [Details](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#more-information)
+  - [Customize the intercepts](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#customize-the-intercepts)
+  - [Define priors for lin terms](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#define-priors-for-lin-terms)
+  - [Use different MCMC kernels like HMC/NUTS](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#use-different-mcmc-kernels-like-hmcnuts)
+  - [Use different priors and MCMC kernels for variance parameters](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#use-different-priors-and-mcmc-kernels-for-variance-parameters)
+  - [Compose terms to build new models](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#compose-terms-to-build-new-models)
+  - [Use a custom basis function](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#use-a-custom-basis-function)
+  - [Use a custom basis matrix directly](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#use-a-custom-basis-matrix-directly)
+  - [Noncentered parameterization](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#noncentered-parameterization)
+  - [Extract a basis](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#extract-a-basis-directly)
+  - [Extract a column from the data frame as a variable](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#extract-a-column-from-the-data-frame-as-a-variable)
+- [Overview of smooth terms available in liesel_gam](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#overview-of-smooth-terms-available-in-liesel_gam)
+- [Acknowledgements](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#acknowledgements)
+
 ## Illustrations
 
 These are pseudo-code illustrations without real data. For full examples, please
