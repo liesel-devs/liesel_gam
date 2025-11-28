@@ -14,6 +14,11 @@ from .plots import plot_forest as plot_forest
 from .plots import plot_polys as plot_polys
 from .plots import plot_regions as plot_regions
 from .plots import polys_to_df as polys_to_df
+from .plots import summarise_1d_smooth as summarise_1d_smooth
+from .plots import summarise_1d_smooth_clustered as summarise_1d_smooth_clustered
+from .plots import summarise_cluster as summarise_cluster
+from .plots import summarise_nd_smooth as summarise_nd_smooth
+from .plots import summarise_regions as summarise_regions
 from .predictor import AdditivePredictor as AdditivePredictor
 from .var import Basis as Basis
 from .var import BasisDot as BasisDot
