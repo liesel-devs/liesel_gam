@@ -16,6 +16,7 @@ from .plots import plot_regions as plot_regions
 from .plots import polys_to_df as polys_to_df
 from .predictor import AdditivePredictor as AdditivePredictor
 from .var import Basis as Basis
+from .var import BasisDot as BasisDot
 from .var import Intercept as Intercept
 from .var import LinearTerm as LinearTerm
 from .var import ScaleIG as ScaleIG
