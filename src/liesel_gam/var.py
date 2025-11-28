@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, NamedTuple, Self
 
 import jax
@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
+from formulaic import ModelSpec
 from jax.typing import ArrayLike
 
 from liesel_gam.builder.category_mapping import CategoryMapping
@@ -617,7 +618,9 @@ class RITerm(IndexingTerm):
     _mapping = None
 
     @property
-    def labels(self) -> list[str] | None:
+    def labels(self) -> list[str]:
+        if self._labels is None:
+            raise ValueError("No labels defined.")
         return self._labels
 
     @labels.setter
@@ -625,7 +628,9 @@ class RITerm(IndexingTerm):
         self._labels = value
 
     @property
-    def mapping(self) -> CategoryMapping | None:
+    def mapping(self) -> CategoryMapping:
+        if self._mapping is None:
+            raise ValueError("No mapping defined.")
         return self._mapping
 
     @mapping.setter
@@ -1026,3 +1031,141 @@ class Basis(UserVar):
         )
 
         return basis
+
+
+class MRFSpec(NamedTuple):
+    mapping: CategoryMapping
+    nb: dict[str, list[str]] | None
+    ordered_labels: list[str] | None
+
+
+class MRFBasis(Basis):
+    _mrf_spec: MRFSpec | None = None
+
+    @property
+    def mrf_spec(self) -> MRFSpec:
+        if self._mrf_spec is None:
+            raise ValueError("No MRF spec defined.")
+        return self._mrf_spec
+
+    @mrf_spec.setter
+    def mrf_spec(self, value: MRFSpec):
+        if not isinstance(value, MRFSpec):
+            raise TypeError(
+                f"Replacement must be of type {MRFSpec}, got {type(value)}."
+            )
+        self._mrf_spec = value
+
+
+class FormulaicBasis(Basis):
+    _model_spec: ModelSpec | None = None
+    _mappings: dict[str, CategoryMapping] | None = None
+    _column_names: list[str] | None = None
+
+    @property
+    def model_spec(self) -> ModelSpec:
+        if self._model_spec is None:
+            raise ValueError("No model spec defined.")
+        return self._model_spec
+
+    @model_spec.setter
+    def model_spec(self, value: ModelSpec):
+        if not isinstance(value, ModelSpec):
+            raise TypeError(
+                f"Replacement must be of type {ModelSpec}, got {type(value)}."
+            )
+        self._model_spec = value
+
+    @property
+    def mappings(self) -> dict[str, CategoryMapping]:
+        if self._mappings is None:
+            raise ValueError("No model spec defined.")
+        return self._mappings
+
+    @mappings.setter
+    def mappings(self, value: dict[str, CategoryMapping]):
+        if not isinstance(value, dict):
+            raise TypeError(f"Replacement must be of type dict, got {type(value)}.")
+
+        for val in value.values():
+            if not isinstance(val, CategoryMapping):
+                raise TypeError(
+                    f"The values in the replacement must be of type {CategoryMapping}, "
+                    f"got {type(val)}."
+                )
+        self._mappings = value
+
+    @property
+    def column_names(self) -> list[str]:
+        if self._column_names is None:
+            raise ValueError("No model spec defined.")
+        return self._column_names
+
+    @column_names.setter
+    def column_names(self, value: Sequence[str]):
+        if not isinstance(value, Sequence):
+            raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
+
+        for val in value:
+            if not isinstance(val, str):
+                raise TypeError(
+                    f"The values in the replacement must be of type str, "
+                    f"got {type(val)}."
+                )
+        self._column_names = list(value)
+
+
+class FormulaicTerm(BasisDot):
+    _model_spec: ModelSpec | None = None
+    _mappings: dict[str, CategoryMapping] | None = None
+    _column_names: list[str] | None = None
+
+    @property
+    def model_spec(self) -> ModelSpec | None:
+        return self._model_spec
+
+    @model_spec.setter
+    def model_spec(self, value: ModelSpec):
+        if not isinstance(value, ModelSpec):
+            raise TypeError(
+                f"Replacement must be of type {ModelSpec}, got {type(value)}."
+            )
+        self._model_spec = value
+
+    @property
+    def mappings(self) -> dict[str, CategoryMapping]:
+        if self._mappings is None:
+            raise ValueError("No model spec defined.")
+        return self._mappings
+
+    @mappings.setter
+    def mappings(self, value: dict[str, CategoryMapping]):
+        if not isinstance(value, dict):
+            raise TypeError(f"Replacement must be of type dict, got {type(value)}.")
+
+        for val in value.values():
+            if not isinstance(val, CategoryMapping):
+                raise TypeError(
+                    f"The values in the replacement must be of type {CategoryMapping}, "
+                    f"got {type(val)}."
+                )
+        self._mappings = value
+
+    @property
+    def column_names(self) -> list[str]:
+        if self._column_names is None:
+            raise ValueError("No model spec defined.")
+        return self._column_names
+
+    @column_names.setter
+    def column_names(self, value: Sequence[str]):
+        if not isinstance(value, Sequence):
+            raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
+
+        for val in value:
+            if not isinstance(val, str):
+                raise TypeError(
+                    f"The values in the replacement must be of type str, "
+                    f"got {type(val)}."
+                )
+        self._column_names = list(value)
