@@ -786,7 +786,7 @@ class TermBuilder:
             xname = self._auto_xname()
 
         if name == "":
-            name = "fo(" + xname + ")"
+            name = "lin(" + xname + ")"
 
         basis = self.bases.lin(
             formula, name=xname, include_intercept=include_intercept, context=context
