@@ -16,8 +16,8 @@ from ryp import r, to_py
 
 from ..var import (
     Basis,
-    FormulaicBasis,
-    FormulaicTerm,
+    LinBasis,
+    LinTerm,
     MRFBasis,
     MRFSpec,
     MRFTerm,
@@ -396,7 +396,7 @@ class BasisBuilder:
         name: str = "",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
-    ) -> FormulaicBasis:
+    ) -> LinBasis:
         validate_formula(formula)
         spec = fo.ModelSpec(formula, output="numpy")
 
@@ -458,7 +458,7 @@ class BasisBuilder:
                 basis = basis[:, 1:]
             return jnp.asarray(basis, dtype=float)
 
-        basis = FormulaicBasis(
+        basis = LinBasis(
             xvar,
             basis_fn=basis_fn,
             name=None,  # to use automatic naming based on xvar.name.
@@ -767,7 +767,7 @@ class TermBuilder:
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
-    ) -> FormulaicTerm:
+    ) -> LinTerm:
         r"""
         Supported:
         - {a+1} for quoted Python
@@ -813,7 +813,7 @@ class TermBuilder:
             formula, name=xname, include_intercept=include_intercept, context=context
         )
 
-        term = FormulaicTerm(
+        term = LinTerm(
             basis, prior=prior, name=name, inference=inference, coef_name=coef_name
         )
 

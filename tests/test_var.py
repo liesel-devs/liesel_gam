@@ -4,7 +4,6 @@ import liesel.goose as gs
 import liesel.model as lsl
 import pytest
 import scipy
-import tensorflow_probability.substrates.jax.distributions as tfd
 
 import liesel_gam as gam
 
@@ -213,84 +212,6 @@ class TestBasis:
 class TestIntercept:
     def test_init(self) -> None:
         gam.Intercept("test")
-
-
-class TestLinearTerm:
-    def test_univariate_works(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.LinearTerm(x, name="b0")
-        assert jnp.allclose(jnp.zeros_like(x), term.value)
-        assert jnp.allclose(x, term.basis.value[:, 0])
-
-    def test_add_intercept(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.LinearTerm(x, name="b0", add_intercept=True)
-        assert jnp.allclose(x, term.basis.value[:, 1])
-        assert jnp.allclose(jnp.ones_like(x), term.basis.value[:, 0])
-
-    def test_bivariate_works(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.LinearTerm(jnp.c_[x, x], name="b0")
-        assert jnp.allclose(x, term.basis.value[:, 0])
-        assert jnp.allclose(x, term.basis.value[:, 1])
-        assert jnp.allclose(jnp.zeros_like(x), term.value)
-
-    def test_dist_works(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        dist = lsl.Dist(tfd.Normal, loc=0.0, scale=2.0)
-        term = gam.LinearTerm(
-            jnp.c_[x, x],
-            name="b0",
-            distribution=dist,
-        )
-        assert term.coef.dist_node is dist
-
-    def test_default_dist_is_none(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.LinearTerm(
-            jnp.c_[x, x],
-            name="b0",
-        )
-        assert term.coef.dist_node is None
-
-
-class TestLinearTerm2:
-    def test_with_intercept(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.var.LinearTerm2(x, name="b0", add_intercept=True)
-        assert jnp.allclose(jnp.zeros_like(x), term.value)
-
-        # intercept column
-        assert jnp.allclose(1.0, term.basis.value[:, 0])
-
-        # x column
-        assert jnp.allclose(x, term.basis.value[:, 1])
-
-    def test_no_intercept(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.var.LinearTerm2(x, name="b0")
-        assert jnp.allclose(x, term.basis.value[:, 0])
-
-    def test_bivariate_works(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.var.LinearTerm2(jnp.c_[x, x], name="b0")
-        assert jnp.allclose(x, term.basis.value[:, 0])
-        assert jnp.allclose(x, term.basis.value[:, 1])
-        assert jnp.allclose(jnp.zeros_like(x), term.value)
-
-    def test_default_dist(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        term = gam.var.LinearTerm2(x, name="b0")
-        dist = term.coef.dist_node
-        assert dist is None
-
-    def test_dist_works(self) -> None:
-        x = jnp.linspace(0, 1, 5)
-        scale = lsl.Var.new_param(1.0, name="scale")
-        prior = gam.var.mvn_diag_prior(scale=scale)
-        term = gam.var.LinearTerm2(x, name="b0", prior=prior)
-        assert term.coef.dist_node is not None
-        assert term.coef.dist_node["scale"] is scale
 
 
 class TestSmoothTerm:

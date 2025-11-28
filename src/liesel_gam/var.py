@@ -638,75 +638,6 @@ class RITerm(IndexingTerm):
         self._mapping = value
 
 
-class LinearTerm(Term):
-    """Kept for backwards-compatibility of the interface."""
-
-    def __init__(
-        self,
-        x: lsl.Var | Array,
-        name: str,
-        distribution: lsl.Dist | None = None,
-        inference: InferenceTypes = None,
-        add_intercept: bool = False,
-        coef_name: str | None = None,
-        basis_name: str | None = None,
-    ):
-        if not isinstance(x, lsl.Var):
-            x = lsl.Var.new_obs(x, name=f"{name}_input")
-
-        if not x.name:
-            # to ensure sensible basis name
-            raise ValueError(f"{x=} must be named.")
-
-        coef_name = coef_name or f"{name}_coef"
-        basis_name = basis_name or f"B({name})"
-        basis = Basis.new_linear(value=x, name=basis_name, add_intercept=add_intercept)
-
-        nbases = jnp.shape(basis.value)[-1]
-        penalty = jnp.eye(nbases)
-        # just a temporary variable to satisfy the api of Term
-        scale = lsl.Var(1.0, name=f"_{name}_scale_tmp")
-
-        super().__init__(
-            basis=basis,
-            penalty=penalty,
-            scale=scale,
-            name=name,
-            inference=inference,
-            coef_name=coef_name,
-        )
-        self.coef.dist_node = distribution
-
-
-class LinearTerm2(UserVar):
-    def __init__(
-        self,
-        x: lsl.Var | Array,
-        prior: lsl.Dist | None = None,
-        name: str = "",
-        inference: InferenceTypes = None,
-        coef_name: str = "",
-        xname: str = "",
-        add_intercept: bool = False,
-        _update_on_init: bool = True,
-    ):
-        self.basis = Basis.new_linear(value=x, xname=xname, add_intercept=add_intercept)
-        self.nbases = self.basis.nbases
-        coef_name = _append_name(name, "_coef")
-
-        self.coef = lsl.Var.new_param(
-            jnp.zeros(self.basis.nbases), prior, inference=inference, name=coef_name
-        )
-        calc = lsl.Calc(
-            lambda basis, coef: jnp.dot(basis, coef),
-            basis=self.basis,
-            coef=self.coef,
-            _update_on_init=_update_on_init,
-        )
-
-        super().__init__(calc, name=name)
-
-
 class BasisDot(UserVar):
     def __init__(
         self,
@@ -1057,7 +988,7 @@ class MRFBasis(Basis):
         self._mrf_spec = value
 
 
-class FormulaicBasis(Basis):
+class LinBasis(Basis):
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
     _column_names: list[str] | None = None
@@ -1115,7 +1046,7 @@ class FormulaicBasis(Basis):
         self._column_names = list(value)
 
 
-class FormulaicTerm(BasisDot):
+class LinTerm(BasisDot):
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
     _column_names: list[str] | None = None
