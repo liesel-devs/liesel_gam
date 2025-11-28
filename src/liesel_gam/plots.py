@@ -51,24 +51,24 @@ def summarise_1d_smooth(
     term: Term,
     samples: dict[str, Array],
     newdata: gs.Position | None = None,
-    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
-    hdi_prob: float | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    ngrid: int = 150,
 ):
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that term.basis.x is
         # a strong node.
         # That is not necessarily always the case.
-        xgrid = jnp.linspace(term.basis.x.value.min(), term.basis.x.value.max(), 150)
+        xgrid = jnp.linspace(term.basis.x.value.min(), term.basis.x.value.max(), ngrid)
         newdata_x = {term.basis.x.name: xgrid}
     else:
         newdata_x = newdata
+        xgrid = newdata[term.basis.x.name]
 
     term_samples = term.predict(samples, newdata=newdata_x)
-    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
-    hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
     term_summary = (
         gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
+            term_samples, name=term.name, quantiles=ci_quantiles, hdi_prob=hdi_prob
         )
         .to_dataframe()
         .reset_index()
@@ -82,10 +82,11 @@ def plot_1d_smooth(
     term: Term,
     samples: dict[str, Array],
     newdata: gs.Position | None = None,
-    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
-    hdi_prob: float | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
     show_n_samples: int | None = 50,
     seed: int | KeyArray = 1,
+    ngrid: int = 150,
 ):
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that term.basis.x is
@@ -97,17 +98,15 @@ def plot_1d_smooth(
         newdata_x = newdata
 
     term_samples = term.predict(samples, newdata=newdata_x)
-    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
-    hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
-    term_summary = (
-        gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
-        )
-        .to_dataframe()
-        .reset_index()
-    )
 
-    term_summary[term.basis.x.name] = xgrid
+    term_summary = summarise_1d_smooth(
+        term=term,
+        samples=samples,
+        newdata=newdata,
+        ci_quantiles=ci_quantiles,
+        hdi_prob=hdi_prob,
+        ngrid=ngrid,
+    )
 
     p = p9.ggplot(term_summary) + p9.labs(
         title=f"Posterior summary of {term.name}",
@@ -165,7 +164,7 @@ def plot_1d_smooth(
     return p
 
 
-def grid_2d(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, Any]:
+def grid_nd(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, Any]:
     mins = {k: jnp.min(v) for k, v in inputs.items()}
     maxs = {k: jnp.max(v) for k, v in inputs.items()}
     grids = {k: np.linspace(mins[k], maxs[k], ngrid) for k in inputs}
@@ -174,14 +173,14 @@ def grid_2d(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, An
     return full_grids
 
 
-def input_grid_2d_smooth(term: Term, ngrid: int) -> dict[str, jax.typing.ArrayLike]:
+def input_grid_nd_smooth(term: Term, ngrid: int) -> dict[str, jax.typing.ArrayLike]:
     if not isinstance(term.basis.x, lsl.TransientCalc | lsl.Calc):
         raise NotImplementedError(
             "Function not implemented for bases with inputs of "
             f"type {type(term.basis.x)}."
         )
     inputs = {n.var.name: n.var.value for n in term.basis.x.all_input_nodes()}  # type: ignore
-    return grid_2d(inputs, ngrid)
+    return grid_nd(inputs, ngrid)
 
 
 # using q_0.05 and q_0.95 explicitly here
@@ -192,14 +191,15 @@ PlotVars = Literal[
 ]
 
 
-def summarise_2d_smooth(
+def summarise_nd_smooth(
     term: Term,
-    samples: dict[str, Array],
+    samples: Mapping[str, jax.Array],
     newdata: gs.Position | None = None,
     ngrid: int = 20,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: tuple[float, float, float] | None = (0.05, 0.5, 0.95),
-    hdi_prob: float | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    newdata_meshgrid: bool = False,
 ):
     if isinstance(which, str):
         which = [which]
@@ -207,10 +207,12 @@ def summarise_2d_smooth(
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that Basis.x is a
         # Calc or TransientCalc. That is not necessarily always the case.
-        newdata_x = input_grid_2d_smooth(term, ngrid=ngrid)
-    else:
+        newdata_x = input_grid_nd_smooth(term, ngrid=ngrid)
+    elif newdata_meshgrid:
         full_grid_arrays = [v.flatten() for v in np.meshgrid(*newdata.values())]
         newdata_x = dict(zip(newdata.keys(), full_grid_arrays))
+    else:
+        newdata_x = newdata
 
     term_samples = term.predict(samples, newdata=newdata_x)
     ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
@@ -242,49 +244,26 @@ def summarise_2d_smooth(
 
 def plot_2d_smooth(
     term: Term,
-    samples: dict[str, Array],
+    samples: Mapping[str, jax.Array],
     newdata: gs.Position | None = None,
     ngrid: int = 20,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: tuple[float, float, float] | None = (0.05, 0.5, 0.95),
-    hdi_prob: float | None = None,
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    newdata_meshgrid: bool = False,
 ):
-    if isinstance(which, str):
-        which = [which]
-
-    if newdata is None:
-        # TODO: Currently, this branch of the function assumes that Basis.x is a
-        # Calc or TransientCalc. That is not necessarily always the case.
-        newdata_x = input_grid_2d_smooth(term, ngrid=ngrid)
-    else:
-        full_grid_arrays = [v.flatten() for v in np.meshgrid(*newdata.values())]
-        newdata_x = dict(zip(newdata.keys(), full_grid_arrays))
-
-    term_samples = term.predict(samples, newdata=newdata_x)
-    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
-    hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
-    term_summary = (
-        gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
-        )
-        .to_dataframe()
-        .reset_index()
+    term_summary = summarise_nd_smooth(
+        term=term,
+        samples=samples,
+        newdata=newdata,
+        ngrid=ngrid,
+        which=which,
+        ci_quantiles=ci_quantiles,
+        hdi_prob=hdi_prob,
+        newdata_meshgrid=newdata_meshgrid,
     )
 
-    for k, v in newdata_x.items():
-        term_summary[k] = np.asarray(v)
-
-    term_summary.reset_index(inplace=True)
-    term_summary = term_summary.melt(
-        id_vars=["index"] + list(newdata_x.keys()),
-        value_vars=which,
-        var_name="variable",
-        value_name="value",
-    )
-
-    term_summary["variable"] = pd.Categorical(
-        term_summary["variable"], categories=which
-    )
+    names = [n.var.name for n in term.basis.x.all_input_nodes()]  # type: ignore
 
     p = (
         p9.ggplot(term_summary)
@@ -293,7 +272,7 @@ def plot_2d_smooth(
             x=term.basis.x.name,
             y=term.name,
         )
-        + p9.aes(*list(newdata_x.keys()), fill="value")
+        + p9.aes(*names, fill="value")
         + p9.facet_wrap("~variable", labeller="label_both")
     )
 
