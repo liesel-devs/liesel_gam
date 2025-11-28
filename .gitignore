@@ -178,3 +178,4 @@ cython_debug/
 .DS_Store
 notebooks/test_ti_smooth.ipynb
 notebooks/test_mrf.R
+img/Präsentation1.pptx
