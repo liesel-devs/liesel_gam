@@ -1,0 +1,253 @@
+import jax.numpy as jnp
+import liesel.model as lsl
+import numpy as np
+import pandas as pd
+import pytest
+import tensorflow_probability.substrates.jax.distributions as tfd
+from jax.random import key as jkey
+from ryp import r, to_py
+
+import liesel_gam as gam
+from liesel_gam.plots import grid_nd, input_grid_nd_smooth
+
+
+@pytest.fixture(scope="module")
+def columb() -> pd.DataFrame:
+    """
+    ['index',
+    'area',
+    'home.value',
+    'income',
+    'crime',
+    'open.space',
+    'district',
+    'x',
+    'y',
+    'home_value']
+    """
+    r("library(mgcv)")
+    r("data(columb)")
+    return to_py("columb", format="pandas").reset_index()
+
+
+@pytest.fixture(scope="module")
+def polys() -> np.array:
+    r("library(mgcv)")
+    r("data(columb.polys)")
+    return to_py("columb.polys", format="numpy")
+
+
+@pytest.fixture(scope="module")
+def tb(columb) -> gam.TermBuilder:
+    df = columb
+    return gam.TermBuilder.from_df(df)
+
+
+class Test1dSmoothSummary:
+    def test_runs(self, tb: gam.TermBuilder) -> None:
+        term = tb.s("x")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_1d_smooth(term=term, samples=samples)
+        assert su.shape[0] == 150
+
+    def test_newdata(self, tb: gam.TermBuilder) -> None:
+        term = tb.s("x")
+        _ = lsl.Model([term])
+
+        newdata = {term.basis.x.name: jnp.linspace(-1, 2, 13)}
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_1d_smooth(term=term, samples=samples, newdata=newdata)
+        assert su.shape[0] == 13
+
+        su = gam.summarise_1d_smooth(
+            term=term, samples=samples, newdata=newdata, ngrid=100
+        )
+        assert su.shape[0] == 13
+
+    def test_hdi_prob(self, tb: gam.TermBuilder) -> None:
+        term = tb.s("x")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_1d_smooth(term=term, samples=samples, hdi_prob=0.9)
+
+        su2 = gam.summarise_1d_smooth(term=term, samples=samples, hdi_prob=0.99)
+
+        assert sum(su1["hdi_low"] > su2["hdi_low"]) > 100
+        assert sum(su1["hdi_high"] < su2["hdi_high"]) > 100
+
+    def test_quantiles(self, tb: gam.TermBuilder) -> None:
+        term = tb.s("x")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_1d_smooth(term=term, samples=samples)
+        assert "q_0.05" in su1.columns
+        assert "q_0.95" in su1.columns
+        assert "q_0.5" in su1.columns
+
+        su2 = gam.summarise_1d_smooth(
+            term=term, samples=samples, ci_quantiles=(0.1, 0.9)
+        )
+        assert "q_0.1" in su2.columns
+        assert "q_0.9" in su2.columns
+
+    def test_ngrid(self, tb: gam.TermBuilder) -> None:
+        term = tb.s("x")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_1d_smooth(term=term, samples=samples, ngrid=40)
+        assert su1.shape[0] == 40
+
+
+class TestNDSmoothSummary:
+    def test_grid(self):
+        in_grid = {
+            "x1": np.linspace(0, 1, 4),
+            "x2": np.linspace(1, 2, 3),
+            "x3": np.linspace(2, 3, 5),
+        }
+        grid = grid_nd(in_grid, ngrid=3)
+        for v in grid.values():
+            assert v.size == 27
+
+        df = pd.DataFrame(grid)
+        assert df.shape == df.drop_duplicates().shape
+
+    def test_input_grid(self, tb: gam.TermBuilder) -> None:
+        lin1 = tb.lin("x + area")
+        grid = input_grid_nd_smooth(lin1, ngrid=3)
+        for v in grid.values():
+            assert v.size == 9
+
+        df = pd.DataFrame(grid)
+        assert df.shape == df.drop_duplicates().shape
+
+        lin2 = tb.lin("x + area + income")
+        grid = input_grid_nd_smooth(lin2, ngrid=3)
+        for v in grid.values():
+            assert v.size == 27
+
+        df = pd.DataFrame(grid)
+        assert df.shape == df.drop_duplicates().shape
+
+        # the grid function will not complain if you enter a variable for a categorical
+        # term, because that term is represented numerically in liesel
+        lin3 = tb.lin("x + area + district")
+        grid = input_grid_nd_smooth(lin3, ngrid=3)
+        for v in grid.values():
+            assert v.size == 27
+
+        df = pd.DataFrame(grid)
+        assert df.shape == df.drop_duplicates().shape
+
+    def test_runs(self, tb: gam.TermBuilder) -> None:
+        term = tb.ti("x", "area")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_nd_smooth(term=term, samples=samples)
+        assert su.shape[0] == 400
+
+    def test_newdata_meshgrid(self, tb: gam.TermBuilder) -> None:
+        term = tb.ti("x", "area")
+        _ = lsl.Model([term])
+
+        newdata = {"x": jnp.linspace(-1, 2, 13), "area": jnp.linspace(-1, 2, 13)}
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_nd_smooth(
+            term=term, samples=samples, newdata=newdata, newdata_meshgrid=True
+        )
+        assert su.shape[0] == 13 * 13
+
+        su = gam.summarise_nd_smooth(
+            term=term,
+            samples=samples,
+            newdata=newdata,
+            ngrid=100,
+            newdata_meshgrid=True,
+        )
+        assert su.shape[0] == 13 * 13
+
+    def test_newdata(self, tb: gam.TermBuilder) -> None:
+        term = tb.ti("x", "area")
+        _ = lsl.Model([term])
+
+        newdata = {"x": jnp.linspace(-1, 2, 13), "area": jnp.linspace(-1, 2, 13)}
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_nd_smooth(term=term, samples=samples, newdata=newdata)
+        assert su.shape[0] == 13
+
+        su = gam.summarise_nd_smooth(
+            term=term,
+            samples=samples,
+            newdata=newdata,
+            ngrid=100,
+        )
+        assert su.shape[0] == 13
+
+    def test_hdi_prob(self, tb: gam.TermBuilder) -> None:
+        term = tb.ti("x", "area")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_nd_smooth(
+            term=term, samples=samples, hdi_prob=0.9, which=["hdi_low", "hdi_high"]
+        )
+
+        su2 = gam.summarise_nd_smooth(
+            term=term, samples=samples, hdi_prob=0.99, which=["hdi_low", "hdi_high"]
+        )
+
+        assert "hdi_low" in su1.variable.to_list()
+        assert "hdi_high" in su1.variable.to_list()
+
+        assert (
+            sum(
+                su1.query("variable == 'hdi_low'")["value"]
+                > su2.query("variable == 'hdi_low'")["value"]
+            )
+            > 100
+        )
+        assert (
+            sum(
+                su1.query("variable == 'hdi_high'")["value"]
+                < su2.query("variable == 'hdi_high'")["value"]
+            )
+            > 100
+        )
+
+    def test_quantiles(self, tb: gam.TermBuilder) -> None:
+        term = tb.ti("x", "area")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_nd_smooth(
+            term=term, samples=samples, which=["q_0.05", "q_0.5", "q_0.95"]
+        )
+        assert "q_0.05" in su1.variable.to_list()
+        assert "q_0.95" in su1.variable.to_list()
+        assert "q_0.5" in su1.variable.to_list()
+
+        su2 = gam.summarise_nd_smooth(
+            term=term,
+            samples=samples,
+            which=["q_0.1", "q_0.9"],
+            ci_quantiles=(0.1, 0.9),
+        )
+        assert "q_0.1" in su2.variable.to_list()
+        assert "q_0.9" in su2.variable.to_list()
+
+    def test_ngrid(self, tb: gam.TermBuilder) -> None:
+        term = tb.ti("x", "area")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_nd_smooth(term=term, samples=samples, ngrid=10)
+        assert su1.shape[0] == 100
