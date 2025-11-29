@@ -232,8 +232,9 @@ def _init_scale_ig(
         )
     elif isinstance(x, ScaleIG | lsl.Var):
         if isinstance(x, ScaleIG):
-            x._variance_param.value = jnp.asarray(x._variance_param.value)
-            x.update()
+            if x._variance_param.strong:
+                x._variance_param.value = jnp.asarray(x._variance_param.value)
+                x.update()
         elif x.strong:
             x.value = jnp.asarray(x.value)
 
