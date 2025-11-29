@@ -241,6 +241,7 @@ class BasisBuilder:
             use_callback=True,
             cache_basis=True,
         )
+        basis._constraint = "absorbed_via_mgcv"
         return basis
 
     def ti(
@@ -315,6 +316,7 @@ class BasisBuilder:
             use_callback=True,
             cache_basis=True,
         )
+        basis._constraint = "absorbed_via_mgcv"
         return basis
 
     def ps(
@@ -351,6 +353,9 @@ class BasisBuilder:
             use_callback=True,
             cache_basis=True,
         )
+
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
         return basis
 
     def s(
@@ -389,6 +394,8 @@ class BasisBuilder:
             use_callback=True,
             cache_basis=True,
         )
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
         return basis
 
     def lin(
@@ -668,6 +675,8 @@ class BasisBuilder:
             use_callback=True,
             penalty=penalty_arr,
         )
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
 
         try:
             nb_out = to_py(f"{smooth._smooth_r_name}[[1]]$xt$nb", format="numpy")

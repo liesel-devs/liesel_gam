@@ -27,3 +27,4 @@ from .var import Intercept as Intercept
 from .var import LinTerm as LinTerm
 from .var import ScaleIG as ScaleIG
 from .var import SmoothTerm as SmoothTerm
+from .var import Term as Term

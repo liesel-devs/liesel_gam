@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, NamedTuple, Self
+from typing import Any, Literal, NamedTuple, Self
 
 import jax
 import jax.numpy as jnp
@@ -13,6 +13,7 @@ from jax.typing import ArrayLike
 
 from liesel_gam.builder.category_mapping import CategoryMapping
 
+from .constraint import LinearConstraintEVD, penalty_to_unit_design
 from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
 
@@ -288,11 +289,8 @@ class Term(UserVar):
 
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
-        nbases = jnp.shape(basis.value)[-1]
-
         prior = term_prior(scale, penalty)
 
-        self.nbases = nbases
         self.basis = basis
 
         if isinstance(penalty, lsl.Var | lsl.Value):
@@ -324,6 +322,10 @@ class Term(UserVar):
                 self.scale.setup_gibbs_inference(self.coef)  # type: ignore
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
+
+    @property
+    def nbases(self) -> int:
+        return jnp.shape(self.basis.value)[-1]
 
     @property
     def scale(self) -> lsl.Var | lsl.Node | None:
@@ -522,6 +524,40 @@ class Term(UserVar):
 
         return term
 
+    def constrain(
+        self,
+        constraint: ArrayLike
+        | Literal["sumzero_coef", "sumzero_term", "constant_and_linear"],
+    ) -> Self:
+        """
+        Apply a linear constraint to the term's basis and corresponding penalty.
+
+        Parameters
+        ----------
+        constraint
+            Type of constraint or custom linear constraint matrix to apply. \
+            If an array is supplied, the constraint will be \
+            ``A @ coef == 0``, where ``A`` is the supplied constraint matrix.
+
+        Returns
+        -------
+        The modified term instance (self).
+
+        Raises
+        ------
+        ValueError
+            If ``type=='custom'`` and ``constraint_matrix`` is not provided.
+        """
+        if not self.basis.value.ndim == 2:
+            raise ValueError(
+                "Constraints can only be applied to matrix-valued bases. "
+                f"The basis of {self} has shape {self.basis.value.shape}"
+            )
+
+        self.basis.constrain(constraint)
+        self.coef.value = jnp.zeros(self.nbases)
+        return self
+
 
 SmoothTerm = Term
 
@@ -707,6 +743,13 @@ def make_callback(function, output_shape, dtype, m: int = 0):
     return fn
 
 
+def is_diagonal(M, atol=1e-12):
+    # mask for off-diagonal elements
+    off_diag_mask = ~jnp.eye(M.shape[-1], dtype=bool)
+    off_diag_values = M[off_diag_mask]
+    return jnp.all(jnp.abs(off_diag_values) < atol)
+
+
 class Basis(UserVar):
     """
     General basis for a structured additive term.
@@ -869,6 +912,17 @@ class Basis(UserVar):
 
         self._penalty = penalty_var
 
+        self._constraint: str | None = None
+        self._reparam_matrix: Array | None = None
+
+    @property
+    def constraint(self) -> str | None:
+        return self._constraint
+
+    @property
+    def reparam_matrix(self) -> Array | None:
+        return self._reparam_matrix
+
     def _validate_xname(self, value: lsl.Var | lsl.Node | ArrayLike, xname: str | None):
         if isinstance(value, lsl.Var | lsl.Node) and xname is not None:
             raise ValueError(
@@ -913,7 +967,7 @@ class Basis(UserVar):
             self._penalty.value = value.value
         else:
             penalty_arr = jnp.asarray(value)
-            self._penalty = lsl.Value(penalty_arr)
+            self._penalty.value = penalty_arr
 
     @classmethod
     def new_linear(
@@ -964,6 +1018,139 @@ class Basis(UserVar):
         )
 
         return basis
+
+    def diagonalize_penalty(self, atol: float = 1e-6) -> Self:
+        """
+        Diagonalize the penalty via an eigenvalue decomposition.
+
+        This method computes a transformation that diagonalizes
+        the penalty matrix and updates the internal basis function such that
+        subsequent evaluations use the accordingly transformed basis. The penalty is
+        updated to the diagonalized version.
+
+        Returns
+        -------
+        The modified basis instance (self).
+        """
+        assert isinstance(self.value_node, lsl.Calc)
+        basis_fn = self.value_node.function
+
+        K = self.penalty.value
+        if is_diagonal(K, atol=atol):
+            return self
+
+        Z = penalty_to_unit_design(K)
+
+        def reparam_basis(*args, **kwargs):
+            return basis_fn(*args, **kwargs) @ Z
+
+        self.value_node.function = reparam_basis
+        self.update()
+        penalty = Z.T @ K @ Z
+        self.update_penalty(penalty)
+
+        return self
+
+    def scale_penalty(self) -> Self:
+        """
+        Scale the penalty matrix by its infinite norm.
+
+        The penalty matrix is divided by its infinity norm (max absolute row
+        sum) so that its values are numerically well-conditioned for
+        downstream use. The updated penalty replaces the previous one.
+
+        Returns
+        -------
+        The modified basis instance (self).
+        """
+        K = self.penalty.value
+        scale = jnp.linalg.norm(K, ord=jnp.inf)
+        penalty = K / scale
+        self.update_penalty(penalty)
+        return self
+
+    def _apply_constraint(self, Z: Array) -> Self:
+        """
+        Apply a linear reparameterisation to the basis using matrix Z.
+
+        This internal helper multiplies the basis functions by ``Z`` (i.e.
+        right-multiplies the design matrix) and updates the penalty to
+        reflect the change of basis: ``K_new = Z.T @ K @ Z``.
+
+        Parameters
+        ----------
+        Z
+            Transformation matrix applied to the basis functions.
+
+        Returns
+        -------
+        The modified basis instance (self).
+        """
+
+        assert isinstance(self.value_node, lsl.Calc)
+        basis_fn = self.value_node.function
+
+        K = self.penalty.value
+
+        def reparam_basis(*args, **kwargs):
+            return basis_fn(*args, **kwargs) @ Z
+
+        self.value_node.function = reparam_basis
+        self.update()
+        penalty = Z.T @ K @ Z
+        self.update_penalty(penalty)
+        return self
+
+    def constrain(
+        self,
+        constraint: ArrayLike
+        | Literal["sumzero_coef", "sumzero_term", "constant_and_linear"],
+    ) -> Self:
+        """
+        Apply a linear constraint to the basis and corresponding penalty.
+
+        Parameters
+        ----------
+        constraint
+            Type of constraint or custom linear constraint matrix to apply.
+            If an array is supplied, the constraint will be \
+            ``A @ coef == 0``, where ``A`` is the supplied constraint matrix.
+
+        Returns
+        -------
+        The modified basis instance (self).
+
+        Raises
+        ------
+        ValueError
+            If ``type=='custom'`` and ``constraint_matrix`` is not provided.
+        """
+        if self.constraint is not None:
+            raise ValueError(
+                f"A '{self.constraint}' constraint has already been applied."
+            )
+
+        if isinstance(constraint, str):
+            type_: str = constraint
+        else:
+            constraint_matrix = jnp.asarray(constraint)
+            type_ = "custom"
+
+        match type_:
+            case "sumzero_coef":
+                Z = LinearConstraintEVD.sumzero_coef(self.nbases)
+            case "sumzero_term":
+                Z = LinearConstraintEVD.sumzero_term(self.value)
+            case "constant_and_linear":
+                Z = LinearConstraintEVD.constant_and_linear(self.x.value, self.value)
+            case "custom":
+                Z = LinearConstraintEVD.general(constraint_matrix)
+
+        self._apply_constraint(Z)
+        self._constraint = type_
+        self._reparam_matrix = Z
+
+        return self
 
 
 class MRFSpec(NamedTuple):
