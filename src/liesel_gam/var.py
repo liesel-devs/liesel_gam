@@ -1104,7 +1104,7 @@ class Basis(UserVar):
     def constrain(
         self,
         constraint: ArrayLike
-        | Literal["sumzero_coef", "sumzero_term", "constant_and_linear"],
+        | Literal["sumzero_term", "sumzero_coef", "constant_and_linear"],
     ) -> Self:
         """
         Apply a linear constraint to the basis and corresponding penalty.
