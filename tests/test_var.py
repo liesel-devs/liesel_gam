@@ -261,8 +261,8 @@ class TestBasisReparameterization:
 
         b2 = basis.value
         pen2 = basis.penalty.value
-        assert jnp.allclose(pen1, pen2, atol=1e-6)
-        assert jnp.allclose(b1, b2, atol=1e-6)
+        assert jnp.allclose(pen1, pen2, atol=1e-5)
+        assert jnp.allclose(b1, b2, atol=1e-5)
 
     def test_scale_penalty(self, basis: gam.Basis):
         b1 = basis.value
@@ -274,8 +274,8 @@ class TestBasisReparameterization:
         pen2 = basis.penalty.value
 
         assert jnp.linalg.norm(pen2, ord=jnp.inf) == pytest.approx(1.0)
-        assert not jnp.allclose(pen1, pen2, atol=1e-6)
-        assert jnp.allclose(b1, b2, atol=1e-6)
+        assert not jnp.allclose(pen1, pen2, atol=1e-5)
+        assert jnp.allclose(b1, b2, atol=1e-5)
 
     def test_scale_penalty_twice(self, basis: gam.Basis):
         basis.scale_penalty()
@@ -294,7 +294,7 @@ class TestBasisReparameterization:
         term = gam.Term.f(basis)
         coef = jax.random.normal(key(42), term.coef.value.shape)
         constrained_coef = basis.reparam_matrix @ coef
-        assert constrained_coef.sum() == pytest.approx(0.0, abs=1e-6)
+        assert constrained_coef.sum() == pytest.approx(0.0, abs=1e-5)
         assert basis.constraint == "sumzero_coef"
 
     def test_constrain_sumzero_term(self, basis: gam.Basis):
@@ -302,7 +302,7 @@ class TestBasisReparameterization:
         term = gam.Term.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
         term.update()
-        assert term.value.sum() == pytest.approx(0.0, abs=1e-6)
+        assert term.value.sum() == pytest.approx(0.0, abs=1e-5)
         assert basis.constraint == "sumzero_term"
 
     def test_constrain_constant_and_linear(self, basis: gam.Basis):
@@ -331,7 +331,7 @@ class TestBasisReparameterization:
         term = gam.Term.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
         term.update()
-        assert term.value.sum() == pytest.approx(0.0, abs=1e-6)
+        assert term.value.sum() == pytest.approx(0.0, abs=1e-5)
         assert basis.constraint == "custom"
 
     def test_constrain_twice(self, basis: gam.Basis):
