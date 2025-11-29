@@ -256,7 +256,7 @@ class TestBasisReparameterization:
         b1 = basis.value
         pen1 = basis.penalty.value
 
-        basis.diagonalize_penalty()
+        basis.diagonalize_penalty(1e-5)
         assert is_diagonal(basis.penalty.value, 1e-5)
 
         b2 = basis.value
