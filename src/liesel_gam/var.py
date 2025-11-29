@@ -548,12 +548,6 @@ class Term(UserVar):
         ValueError
             If ``type=='custom'`` and ``constraint_matrix`` is not provided.
         """
-        if not self.basis.value.ndim == 2:
-            raise ValueError(
-                "Constraints can only be applied to matrix-valued bases. "
-                f"The basis of {self} has shape {self.basis.value.shape}"
-            )
-
         self.basis.constrain(constraint)
         self.coef.value = jnp.zeros(self.nbases)
         return self
@@ -1125,6 +1119,12 @@ class Basis(UserVar):
         ValueError
             If ``type=='custom'`` and ``constraint_matrix`` is not provided.
         """
+        if not self.value.ndim == 2:
+            raise ValueError(
+                "Constraints can only be applied to matrix-valued bases. "
+                f"{self} has shape {self.value.shape}"
+            )
+
         if self.constraint is not None:
             raise ValueError(
                 f"A '{self.constraint}' constraint has already been applied."
