@@ -980,7 +980,7 @@ class TermBuilder:
     # random scaling
     def rs(
         self,
-        x: str | Term,
+        x: str | Term | LinTerm,
         cluster: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
