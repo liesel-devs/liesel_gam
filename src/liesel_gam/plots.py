@@ -12,7 +12,7 @@ from jax import Array
 from jax.typing import ArrayLike
 
 from .builder.registry import CategoryMapping
-from .var import MRFTerm, RITerm, Term
+from .var import LinTerm, MRFTerm, RITerm, Term
 
 KeyArray = Any
 
@@ -371,7 +371,7 @@ def plot_polys(
 
 def summarise_cluster(
     term: RITerm | MRFTerm | Term,
-    samples,
+    samples: Mapping[str, jax.Array],
     newdata: gs.Position | None = None,
     labels: CategoryMapping | Sequence[str] | None = None,
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -425,7 +425,7 @@ def summarise_cluster(
 
 def summarise_regions(
     term: RITerm | MRFTerm | Term,
-    samples,
+    samples: Mapping[str, jax.Array],
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
@@ -491,7 +491,7 @@ def summarise_regions(
 
 def plot_regions(
     term: RITerm | MRFTerm | Term,
-    samples,
+    samples: Mapping[str, jax.Array],
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
@@ -548,8 +548,8 @@ def plot_regions(
 
 
 def plot_forest(
-    term: RITerm | MRFTerm | Term,
-    samples,
+    term: RITerm | MRFTerm | LinTerm,
+    samples: Mapping[str, jax.Array],
     newdata: gs.Position | None = None,
     labels: CategoryMapping | None = None,
     ymin: str = "hdi_low",
@@ -559,6 +559,83 @@ def plot_forest(
     show_unobserved: bool = True,
     highlight_unobserved: bool = True,
     unobserved_color: str = "red",
+    indices: Sequence[int] | None = None,
+) -> p9.ggplot:
+    if isinstance(term, RITerm | MRFTerm):
+        return plot_forest_clustered(
+            term=term,
+            samples=samples,
+            newdata=newdata,
+            labels=labels,
+            ymin=ymin,
+            ymax=ymax,
+            ci_quantiles=ci_quantiles,
+            hdi_prob=hdi_prob,
+            show_unobserved=show_unobserved,
+            highlight_unobserved=highlight_unobserved,
+            unobserved_color=unobserved_color,
+            indices=indices,
+        )
+    elif isinstance(term, LinTerm):
+        return plot_forest_lin(
+            term=term,
+            samples=samples,
+            ymin=ymin,
+            ymax=ymax,
+            ci_quantiles=ci_quantiles,
+            hdi_prob=hdi_prob,
+            indices=indices,
+        )
+    else:
+        raise TypeError(f"term has unsupported type {type(term)}.")
+
+
+def plot_forest_lin(
+    term: LinTerm,
+    samples: Mapping[str, jax.Array],
+    ymin: str = "hdi_low",
+    ymax: str = "hdi_high",
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    indices: Sequence[int] | None = None,
+) -> p9.ggplot:
+    coef_samples = samples[term.coef.name]
+    df = gs.SamplesSummary.from_array(coef_samples).to_dataframe().reset_index()
+    df["x"] = term.column_names
+
+    if indices is not None:
+        df = df.iloc[indices, :]
+
+    df[ymin] = df[ymin].astype(df["mean"].dtype)
+    df[ymax] = df[ymax].astype(df["mean"].dtype)
+
+    p = (
+        p9.ggplot(df)
+        + p9.aes("x", "mean", color="mean")
+        + p9.geom_hline(yintercept=0, color="grey")
+        + p9.geom_pointrange(p9.aes(ymin=ymin, ymax=ymax))
+        + p9.coord_flip()
+        + p9.labs(x="x")
+    )
+
+    p += p9.labs(title=f"Posterior summary of {term.name}")
+
+    return p
+
+
+def plot_forest_clustered(
+    term: RITerm | MRFTerm | Term,
+    samples: Mapping[str, jax.Array],
+    newdata: gs.Position | None = None,
+    labels: CategoryMapping | None = None,
+    ymin: str = "hdi_low",
+    ymax: str = "hdi_high",
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
+    highlight_unobserved: bool = True,
+    unobserved_color: str = "red",
+    indices: Sequence[int] | None = None,
 ) -> p9.ggplot:
     if labels is None:
         try:
@@ -583,6 +660,9 @@ def plot_forest(
 
     df[ymin] = df[ymin].astype(df["mean"].dtype)
     df[ymax] = df[ymax].astype(df["mean"].dtype)
+
+    if indices is not None:
+        df = df.iloc[indices, :]
 
     if not show_unobserved:
         df = df.query("observed == True")
@@ -612,7 +692,7 @@ def plot_forest(
 
 def summarise_1d_smooth_clustered(
     clustered_term: lsl.Var,
-    samples: dict[str, Array],
+    samples: Mapping[str, jax.Array],
     ngrid: int = 150,
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -698,7 +778,7 @@ def summarise_1d_smooth_clustered(
 
 def plot_1d_smooth_clustered(
     clustered_term: lsl.Var,
-    samples: dict[str, Array],
+    samples: Mapping[str, jax.Array],
     ngrid: int = 20,
     newdata: gs.Position | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",

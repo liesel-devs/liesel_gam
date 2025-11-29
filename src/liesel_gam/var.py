@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, NamedTuple, Self
 
 import jax
@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
+from formulaic import ModelSpec
 from jax.typing import ArrayLike
 
 from liesel_gam.builder.category_mapping import CategoryMapping
@@ -617,7 +618,9 @@ class RITerm(IndexingTerm):
     _mapping = None
 
     @property
-    def labels(self) -> list[str] | None:
+    def labels(self) -> list[str]:
+        if self._labels is None:
+            raise ValueError("No labels defined.")
         return self._labels
 
     @labels.setter
@@ -625,81 +628,14 @@ class RITerm(IndexingTerm):
         self._labels = value
 
     @property
-    def mapping(self) -> CategoryMapping | None:
+    def mapping(self) -> CategoryMapping:
+        if self._mapping is None:
+            raise ValueError("No mapping defined.")
         return self._mapping
 
     @mapping.setter
     def mapping(self, value: CategoryMapping) -> None:
         self._mapping = value
-
-
-class LinearTerm(Term):
-    """Kept for backwards-compatibility of the interface."""
-
-    def __init__(
-        self,
-        x: lsl.Var | Array,
-        name: str,
-        distribution: lsl.Dist | None = None,
-        inference: InferenceTypes = None,
-        add_intercept: bool = False,
-        coef_name: str | None = None,
-        basis_name: str | None = None,
-    ):
-        if not isinstance(x, lsl.Var):
-            x = lsl.Var.new_obs(x, name=f"{name}_input")
-
-        if not x.name:
-            # to ensure sensible basis name
-            raise ValueError(f"{x=} must be named.")
-
-        coef_name = coef_name or f"{name}_coef"
-        basis_name = basis_name or f"B({name})"
-        basis = Basis.new_linear(value=x, name=basis_name, add_intercept=add_intercept)
-
-        nbases = jnp.shape(basis.value)[-1]
-        penalty = jnp.eye(nbases)
-        # just a temporary variable to satisfy the api of Term
-        scale = lsl.Var(1.0, name=f"_{name}_scale_tmp")
-
-        super().__init__(
-            basis=basis,
-            penalty=penalty,
-            scale=scale,
-            name=name,
-            inference=inference,
-            coef_name=coef_name,
-        )
-        self.coef.dist_node = distribution
-
-
-class LinearTerm2(UserVar):
-    def __init__(
-        self,
-        x: lsl.Var | Array,
-        prior: lsl.Dist | None = None,
-        name: str = "",
-        inference: InferenceTypes = None,
-        coef_name: str = "",
-        xname: str = "",
-        add_intercept: bool = False,
-        _update_on_init: bool = True,
-    ):
-        self.basis = Basis.new_linear(value=x, xname=xname, add_intercept=add_intercept)
-        self.nbases = self.basis.nbases
-        coef_name = _append_name(name, "_coef")
-
-        self.coef = lsl.Var.new_param(
-            jnp.zeros(self.basis.nbases), prior, inference=inference, name=coef_name
-        )
-        calc = lsl.Calc(
-            lambda basis, coef: jnp.dot(basis, coef),
-            basis=self.basis,
-            coef=self.coef,
-            _update_on_init=_update_on_init,
-        )
-
-        super().__init__(calc, name=name)
 
 
 class BasisDot(UserVar):
@@ -1026,3 +962,141 @@ class Basis(UserVar):
         )
 
         return basis
+
+
+class MRFSpec(NamedTuple):
+    mapping: CategoryMapping
+    nb: dict[str, list[str]] | None
+    ordered_labels: list[str] | None
+
+
+class MRFBasis(Basis):
+    _mrf_spec: MRFSpec | None = None
+
+    @property
+    def mrf_spec(self) -> MRFSpec:
+        if self._mrf_spec is None:
+            raise ValueError("No MRF spec defined.")
+        return self._mrf_spec
+
+    @mrf_spec.setter
+    def mrf_spec(self, value: MRFSpec):
+        if not isinstance(value, MRFSpec):
+            raise TypeError(
+                f"Replacement must be of type {MRFSpec}, got {type(value)}."
+            )
+        self._mrf_spec = value
+
+
+class LinBasis(Basis):
+    _model_spec: ModelSpec | None = None
+    _mappings: dict[str, CategoryMapping] | None = None
+    _column_names: list[str] | None = None
+
+    @property
+    def model_spec(self) -> ModelSpec:
+        if self._model_spec is None:
+            raise ValueError("No model spec defined.")
+        return self._model_spec
+
+    @model_spec.setter
+    def model_spec(self, value: ModelSpec):
+        if not isinstance(value, ModelSpec):
+            raise TypeError(
+                f"Replacement must be of type {ModelSpec}, got {type(value)}."
+            )
+        self._model_spec = value
+
+    @property
+    def mappings(self) -> dict[str, CategoryMapping]:
+        if self._mappings is None:
+            raise ValueError("No model spec defined.")
+        return self._mappings
+
+    @mappings.setter
+    def mappings(self, value: dict[str, CategoryMapping]):
+        if not isinstance(value, dict):
+            raise TypeError(f"Replacement must be of type dict, got {type(value)}.")
+
+        for val in value.values():
+            if not isinstance(val, CategoryMapping):
+                raise TypeError(
+                    f"The values in the replacement must be of type {CategoryMapping}, "
+                    f"got {type(val)}."
+                )
+        self._mappings = value
+
+    @property
+    def column_names(self) -> list[str]:
+        if self._column_names is None:
+            raise ValueError("No model spec defined.")
+        return self._column_names
+
+    @column_names.setter
+    def column_names(self, value: Sequence[str]):
+        if not isinstance(value, Sequence):
+            raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
+
+        for val in value:
+            if not isinstance(val, str):
+                raise TypeError(
+                    f"The values in the replacement must be of type str, "
+                    f"got {type(val)}."
+                )
+        self._column_names = list(value)
+
+
+class LinTerm(BasisDot):
+    _model_spec: ModelSpec | None = None
+    _mappings: dict[str, CategoryMapping] | None = None
+    _column_names: list[str] | None = None
+
+    @property
+    def model_spec(self) -> ModelSpec | None:
+        return self._model_spec
+
+    @model_spec.setter
+    def model_spec(self, value: ModelSpec):
+        if not isinstance(value, ModelSpec):
+            raise TypeError(
+                f"Replacement must be of type {ModelSpec}, got {type(value)}."
+            )
+        self._model_spec = value
+
+    @property
+    def mappings(self) -> dict[str, CategoryMapping]:
+        if self._mappings is None:
+            raise ValueError("No model spec defined.")
+        return self._mappings
+
+    @mappings.setter
+    def mappings(self, value: dict[str, CategoryMapping]):
+        if not isinstance(value, dict):
+            raise TypeError(f"Replacement must be of type dict, got {type(value)}.")
+
+        for val in value.values():
+            if not isinstance(val, CategoryMapping):
+                raise TypeError(
+                    f"The values in the replacement must be of type {CategoryMapping}, "
+                    f"got {type(val)}."
+                )
+        self._mappings = value
+
+    @property
+    def column_names(self) -> list[str]:
+        if self._column_names is None:
+            raise ValueError("No model spec defined.")
+        return self._column_names
+
+    @column_names.setter
+    def column_names(self, value: Sequence[str]):
+        if not isinstance(value, Sequence):
+            raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
+
+        for val in value:
+            if not isinstance(val, str):
+                raise TypeError(
+                    f"The values in the replacement must be of type str, "
+                    f"got {type(val)}."
+                )
+        self._column_names = list(value)

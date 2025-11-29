@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, NamedTuple, get_args
+from typing import Any, Literal, get_args
 
 import formulaic as fo
 import jax
@@ -15,7 +15,18 @@ import pandas as pd
 import smoothcon as scon
 from ryp import r, to_py
 
-from ..var import Basis, BasisDot, MRFTerm, RITerm, ScaleIG, Term, VarIGPrior
+from ..var import (
+    Basis,
+    LinBasis,
+    LinTerm,
+    MRFBasis,
+    MRFSpec,
+    MRFTerm,
+    RITerm,
+    ScaleIG,
+    Term,
+    VarIGPrior,
+)
 from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
@@ -27,13 +38,6 @@ BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
 
 
 logger = logging.getLogger(__name__)
-
-
-class MRFSpec(NamedTuple):
-    basis: Basis
-    mapping: CategoryMapping
-    nb: dict[str, list[str]] | None
-    ordered_labels: list[str] | None
 
 
 def _validate_bs(bs):
@@ -393,7 +397,7 @@ class BasisBuilder:
         name: str = "",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
-    ) -> Basis:
+    ) -> LinBasis:
         validate_formula(formula)
         spec = fo.ModelSpec(formula, output="numpy")
 
@@ -410,18 +414,29 @@ class BasisBuilder:
         # transformations like center, scale, standardize
         spec = spec.get_model_matrix(self.data, context=context).model_spec
 
+        # get column names. There may be a more efficient way to do it
+        # that does not require building the model matrix a second time, but this
+        # works robustly for now: we take the names that formulaic creates
+        column_names = list(
+            fo.ModelSpec(formula, output="pandas")
+            .get_model_matrix(self.data, context=context)
+            .columns
+        )[1:]
+
         required = sorted(str(var) for var in spec.required_variables)
         df_subset = self.data.loc[:, required]
         df_colnames = df_subset.columns
 
         variables = dict()
 
+        mappings = {}
         for col in df_colnames:
             result = self.registry.get_obs_and_mapping(col)
             variables[col] = result.var
 
             if result.mapping is not None:
                 self.mappings[col] = result.mapping
+                mappings[col] = result.mapping
 
         xvar = lsl.TransientCalc(  # for memory-efficiency
             lambda *args: jnp.vstack(args).T,
@@ -444,13 +459,17 @@ class BasisBuilder:
                 basis = basis[:, 1:]
             return jnp.asarray(basis, dtype=float)
 
-        basis = Basis(
+        basis = LinBasis(
             xvar,
             basis_fn=basis_fn,
             name=None,  # to use automatic naming based on xvar.name.
             use_callback=True,
             cache_basis=True,
         )
+
+        basis.model_spec = spec
+        basis.mappings = mappings
+        basis.column_names = column_names
 
         return basis
 
@@ -494,7 +513,7 @@ class BasisBuilder:
         diagonal_penalty: bool = False,
         scale_penalty: bool = False,
         basis_name: str = "B",
-    ) -> MRFSpec:
+    ) -> MRFBasis:
         """
         Polys: Dictionary of arrays. The keys of the dict are the region labels.
             The corresponding values define the region by defining polygons.
@@ -641,7 +660,7 @@ class BasisBuilder:
 
         penalty_arr = jnp.asarray(np.astype(smooth_penalty, "float"))
 
-        basis = Basis(
+        basis = MRFBasis(
             value=var,
             basis_fn=basis_fun,
             name=basis_name + "(" + x + ")",
@@ -675,7 +694,9 @@ class BasisBuilder:
 
             nb_out = {k: to_label(v) for k, v in nb_out.items()}
 
-        return MRFSpec(basis, mapping, nb_out, label_order)
+        basis.mrf_spec = MRFSpec(mapping, nb_out, label_order)
+
+        return basis
 
 
 @dataclass
@@ -754,7 +775,7 @@ class TermBuilder:
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
-    ) -> BasisDot:
+    ) -> LinTerm:
         r"""
         Supported:
         - {a+1} for quoted Python
@@ -800,9 +821,13 @@ class TermBuilder:
             formula, name=xname, include_intercept=include_intercept, context=context
         )
 
-        term = BasisDot(
+        term = LinTerm(
             basis, prior=prior, name=name, inference=inference, coef_name=coef_name
         )
+
+        term.model_spec = basis.model_spec
+        term.mappings = basis.mappings
+        term.column_names = basis.column_names
 
         return term
 
@@ -1118,7 +1143,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale
             )
 
-        spec = self.bases.mrf(
+        basis = self.bases.mrf(
             x=x,
             k=k,
             polys=polys,
@@ -1132,7 +1157,7 @@ class TermBuilder:
 
         fname = self.names.create(name="mrf")
         term = MRFTerm.f(
-            spec.basis,
+            basis,
             fname=fname,
             scale=scale,
             inference=inference,
@@ -1141,12 +1166,12 @@ class TermBuilder:
         )
 
         term.polygons = polys
-        term.neighbors = spec.nb
-        if spec.ordered_labels is not None:
-            term.ordered_labels = spec.ordered_labels
+        term.neighbors = basis.mrf_spec.nb
+        if basis.mrf_spec.ordered_labels is not None:
+            term.ordered_labels = basis.mrf_spec.ordered_labels
 
-        term.labels = list(spec.mapping.labels_to_integers_map)
-        term.mapping = spec.mapping
+        term.labels = list(basis.mrf_spec.mapping.labels_to_integers_map)
+        term.mapping = basis.mrf_spec.mapping
 
         return term
 
