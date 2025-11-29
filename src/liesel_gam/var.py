@@ -573,11 +573,6 @@ class Term(UserVar):
         Returns
         -------
         The modified term instance (self).
-
-        Raises
-        ------
-        ValueError
-            If ``type=='custom'`` and ``constraint_matrix`` is not provided.
         """
         self.basis.constrain(constraint)
         self.coef.value = jnp.zeros(self.nbases)
@@ -1144,11 +1139,6 @@ class Basis(UserVar):
         Returns
         -------
         The modified basis instance (self).
-
-        Raises
-        ------
-        ValueError
-            If ``type=='custom'`` and ``constraint_matrix`` is not provided.
         """
         if not self.value.ndim == 2:
             raise ValueError(
