@@ -51,6 +51,7 @@ class PandasRegistry:
         self,
         data: pd.DataFrame,
         na_action: Literal["error", "drop", "ignore"] = "error",
+        prefix_names_by: str = "",
     ):
         """Initialize the variable registry.
 
@@ -66,6 +67,7 @@ class PandasRegistry:
         self.data = self._validate_data(data)
         self._var_cache: dict[str, lsl.Var] = {}
         self._derived_cache: dict[str, lsl.Var] = {}
+        self.prefix = prefix_names_by
 
     def _validate_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate data and handle NaN values according to policy."""
@@ -206,13 +208,15 @@ class PandasRegistry:
                 f"Available variables: {sorted(available)}"
             )
 
+        varname = self.prefix + name
+
         # check if already cached
         if name in self._var_cache:
             var = self._var_cache[name]
         else:
             # get raw values
             values = self._to_jax(self.data[name].to_numpy(), name)
-            var = lsl.Var.new_obs(values, name=name)
+            var = lsl.Var.new_obs(values, name=varname)
             self._var_cache[name] = var
 
         return var
@@ -499,7 +503,8 @@ class PandasRegistry:
             # convert categorical variables to integer codes
             category_codes = mapping.labels_to_integers(series)
             jax_codes = self._to_jax(category_codes, name)
-            var = lsl.Var.new_obs(jax_codes, name=name)
+            varname = self.prefix + name
+            var = lsl.Var.new_obs(jax_codes, name=varname)
             self._var_cache[name] = var
 
             # now some exception handling

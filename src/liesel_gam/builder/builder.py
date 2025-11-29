@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
 import formulaic as fo
@@ -698,34 +699,37 @@ class BasisBuilder:
         return basis
 
 
+@dataclass
+class NameManager:
+    prefix: str = ""
+    created_names: dict[str, int] = field(default_factory=dict)
+
+    def create(self, name: str) -> str:
+        """
+        Appends a counter to the given name for uniqueness.
+        There is an individual counter for each name.
+
+        If a prefix was passed to the builder on init, the prefix is applied to the
+        name.
+        """
+        name = self.prefix + name
+
+        n_names_with_this_prefix = self.created_names.get(name, 0)
+        i = n_names_with_this_prefix + 1
+
+        name_indexed = name + str(i)
+
+        self.created_names[name] = i
+
+        return name_indexed
+
+
 class TermBuilder:
-    def __init__(self, registry: PandasRegistry) -> None:
+    def __init__(self, registry: PandasRegistry, prefix_names_by: str = "") -> None:
         self.registry = registry
         self.bases = BasisBuilder(registry)
 
-        self._automatically_assigned_xnames: list[str] = []
-        self._automatically_assigned_fnames: dict[str, list[str]] = dict()
-
-    def _auto_xname(self) -> str:
-        name = "x" + str(len(self._automatically_assigned_xnames) + 1)
-        self._automatically_assigned_xnames.append(name)
-        return name
-
-    def _auto_fname(self, fname: str) -> str:
-        max_i = 10_000
-        i = 1
-        fname_indexed = fname + str(i)
-        if fname not in self._automatically_assigned_fnames:
-            self._automatically_assigned_fnames[fname] = []
-        names_with_this_prefix = self._automatically_assigned_fnames[fname]
-        while fname_indexed in names_with_this_prefix:
-            i += 1
-            fname_indexed = fname + str(i)
-            if i > max_i:
-                raise RuntimeError("Maximum number of iterations reached.")
-
-        self._automatically_assigned_fnames[fname].append(fname_indexed)
-        return fname_indexed
+        self.names = NameManager(prefix=prefix_names_by)
 
     def _init_default_scale(
         self,
@@ -733,8 +737,8 @@ class TermBuilder:
         scale: float | Array,
         value: float | Array = 1.0,
     ) -> ScaleIG:
-        scale_name = self._auto_fname("$\\tau$")
-        variance_name = self._auto_fname("$\\tau^2$")
+        scale_name = self.names.create("$\\tau$")
+        variance_name = self.names.create("$\\tau^2$")
         scale_var = ScaleIG(
             value=value,
             concentration=concentration,
@@ -745,13 +749,17 @@ class TermBuilder:
         return scale_var
 
     @classmethod
-    def from_dict(cls, data: dict[str, ArrayLike]) -> TermBuilder:
-        return cls.from_df(pd.DataFrame(data))
+    def from_dict(
+        cls, data: dict[str, ArrayLike], prefix_names_by: str = ""
+    ) -> TermBuilder:
+        return cls.from_df(pd.DataFrame(data), prefix_names_by=prefix_names_by)
 
     @classmethod
-    def from_df(cls, data: pd.DataFrame) -> TermBuilder:
-        registry = PandasRegistry(data, na_action="drop")
-        return cls(registry)
+    def from_df(cls, data: pd.DataFrame, prefix_names_by: str = "") -> TermBuilder:
+        registry = PandasRegistry(
+            data, na_action="drop", prefix_names_by=prefix_names_by
+        )
+        return cls(registry, prefix_names_by=prefix_names_by)
 
     def labels_to_integers(self, newdata: dict) -> dict:
         return labels_to_integers(newdata, self.bases.mappings)
@@ -804,7 +812,7 @@ class TermBuilder:
 
         """
         if xname == "":
-            xname = self._auto_xname()
+            xname = self.names.create("x")
 
         if name == "":
             name = "lin(" + xname + ")"
@@ -852,10 +860,10 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            basis_name=self._auto_fname(fname="B"),
+            basis_name=self.names.create(name="B"),
         )
 
-        fname = self._auto_fname(fname="ps")
+        fname = self.names.create(name="ps")
         term = Term.f(
             basis,
             fname=fname,
@@ -892,10 +900,10 @@ class TermBuilder:
             k=k,
             m=m,
             knots=knots,
-            basis_name=self._auto_fname(fname="B"),
+            basis_name=self.names.create(name="B"),
         )
 
-        fname = self._auto_fname(fname="ti")
+        fname = self.names.create(name="ti")
         term = Term.f(
             basis,
             fname=fname,
@@ -930,10 +938,10 @@ class TermBuilder:
             k=k,
             m=m,
             knots=knots,
-            basis_name=self._auto_fname(fname="B"),
+            basis_name=self.names.create(name="B"),
         )
 
-        fname = self._auto_fname(fname="te")
+        fname = self.names.create(name="te")
         term = Term.f(
             basis,
             fname=fname,
@@ -959,10 +967,10 @@ class TermBuilder:
             )
 
         basis = self.bases.ri(
-            cluster=cluster, basis_name=self._auto_fname(fname="RI"), penalty=penalty
+            cluster=cluster, basis_name=self.names.create(name="RI"), penalty=penalty
         )
 
-        fname = self._auto_fname(fname="ri")
+        fname = self.names.create(name="ri")
         term = RITerm.f(
             basis=basis,
             scale=scale,
@@ -1002,7 +1010,7 @@ class TermBuilder:
             x_var = x
             xname = x_var.basis.x.name
 
-        fname = self._auto_fname(fname="rs")
+        fname = self.names.create(name="rs")
         term = lsl.Var.new_calc(
             lambda x, cluster: x * cluster,
             x=x_var,
@@ -1017,7 +1025,7 @@ class TermBuilder:
         x: str,
         by: Term,
     ) -> lsl.Var:
-        fname = self._auto_fname(fname="rs")
+        fname = self.names.create(name="rs")
         x_var = self.registry.get_obs(x)
 
         term = lsl.Var.new_calc(
@@ -1087,10 +1095,10 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            basis_name=self._auto_fname(fname="B"),
+            basis_name=self.names.create(name="B"),
         )
 
-        fname = self._auto_fname(fname="s")
+        fname = self.names.create(name="s")
         term = Term.f(
             basis,
             fname=fname,
@@ -1144,10 +1152,10 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            basis_name=self._auto_fname(fname="B"),
+            basis_name=self.names.create(name="B"),
         )
 
-        fname = self._auto_fname(fname="mrf")
+        fname = self.names.create(name="mrf")
         term = MRFTerm.f(
             basis,
             fname=fname,
@@ -1190,10 +1198,10 @@ class TermBuilder:
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=penalty,
-            basis_name=self._auto_fname(fname="B"),
+            basis_name=self.names.create(name="B"),
         )
 
-        fname = self._auto_fname(fname="f")
+        fname = self.names.create(name="f")
         term = Term.f(
             basis,
             fname=fname,
