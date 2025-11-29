@@ -1387,7 +1387,7 @@ class ATerm(UserVar):
         fname: str = "f",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
-        bname: str = "B",
+        basis_name: str = "B",
     ) -> Self:
         xnames = []
         for b in bases:
@@ -1400,7 +1400,7 @@ class ATerm(UserVar):
 
         xnames_str = ",".join(xnames)
 
-        basis_name = bname + "(" + xnames_str + ")"
+        basis_name = basis_name + "(" + xnames_str + ")"
 
         name = f"{fname}({xnames_str})"
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"

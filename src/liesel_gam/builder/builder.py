@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
@@ -16,6 +16,7 @@ import smoothcon as scon
 from ryp import r, to_py
 
 from ..var import (
+    ATerm,
     Basis,
     LinBasis,
     LinTerm,
@@ -880,6 +881,40 @@ class TermBuilder:
             inference=inference,
             coef_name=None,
             noncentered=noncentered,
+        )
+        return term
+
+    def ta(
+        self,
+        *bases: Basis,
+        scales: Sequence[ScaleIG | lsl.Var | float | VarIGPrior] | float,
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+    ) -> ATerm:
+        scales_: list[ScaleIG | lsl.Var | float] = []
+        if isinstance(scales, float):
+            for _ in bases:
+                scales_.append(scales)
+        else:
+            for scale in scales:
+                if isinstance(scale, VarIGPrior):
+                    default_scale_ = self._init_default_scale(
+                        scale.concentration, scale.scale
+                    )
+                    default_scale_._variance_param.transform(
+                        bijector=None, inference=gs.MCMCSpec(gs.IWLSKernel)
+                    )
+                    scale_: ScaleIG | lsl.Var | float
+                else:
+                    scale_ = scale
+
+                scales_.append(scale_)
+
+        term = ATerm.f(
+            *bases,
+            scales=scales_,
+            fname=self.names.create("ta"),
+            inference=inference,
+            basis_name=self.names.create("B"),
         )
         return term
 
