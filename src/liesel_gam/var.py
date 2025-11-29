@@ -524,6 +524,37 @@ class Term(UserVar):
 
         return term
 
+    def diagonalize_penalty(self, atol: float = 1e-6) -> Self:
+        """
+        Diagonalize the penalty via an eigenvalue decomposition.
+
+        This method computes a transformation that diagonalizes
+        the penalty matrix and updates the internal basis function such that
+        subsequent evaluations use the accordingly transformed basis. The penalty is
+        updated to the diagonalized version.
+
+        Returns
+        -------
+        The modified term instance (self).
+        """
+        self.basis.diagonalize_penalty(atol)
+        return self
+
+    def scale_penalty(self) -> Self:
+        """
+        Scale the penalty matrix by its infinite norm.
+
+        The penalty matrix is divided by its infinity norm (max absolute row
+        sum) so that its values are numerically well-conditioned for
+        downstream use. The updated penalty replaces the previous one.
+
+        Returns
+        -------
+        The modified term instance (self).
+        """
+        self.basis.scale_penalty()
+        return self
+
     def constrain(
         self,
         constraint: ArrayLike
