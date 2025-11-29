@@ -58,6 +58,44 @@ class CategoryMapping:
         mapping = {val: i for i, val in enumerate(unique_labels)}
         return cls(mapping)
 
+    def to_integers(
+        self, labels_or_integers: np.typing.ArrayLike | Sequence[int] | Sequence[str]
+    ) -> np.typing.NDArray[np.int_]:
+        arr = np.asarray(labels_or_integers)
+
+        # Case 1: Already an integer array
+        if np.issubdtype(arr.dtype, np.integer):
+            valid_integers = np.array(list(self.integers_to_labels_map.keys()))
+            if not np.isin(arr, valid_integers).all():
+                invalid = arr[~np.isin(arr, valid_integers)]
+                raise ValueError(
+                    f"Unknown integer codes: {invalid.tolist()} "
+                    f"(valid integers: {valid_integers.tolist()})"
+                )
+            return arr.astype(int, copy=False)
+
+        # Case 2: Otherwise treat as labels
+        return self.labels_to_integers(arr)
+
+    def to_labels(
+        self, labels_or_integers: np.typing.ArrayLike | Sequence[int] | Sequence[str]
+    ) -> np.typing.NDArray[Any]:
+        arr = np.asarray(labels_or_integers)
+
+        # Case 1: It is an integer array
+        if np.issubdtype(arr.dtype, np.integer):
+            return self.integers_to_labels(arr)
+
+        # Case 2: Otherwise treat as labels
+        valid_labels = np.array(list(self.labels_to_integers_map.keys()))
+        if not np.isin(arr, valid_labels).all():
+            invalid = arr[~np.isin(arr, valid_labels)]
+            raise ValueError(
+                f"Unknown labels: {invalid.tolist()} "
+                f"(valid labels: {valid_labels.tolist()})"
+            )
+        return arr
+
     def labels_to_integers(
         self, labels: np.typing.ArrayLike | Sequence[str]
     ) -> np.typing.NDArray[np.int_]:

@@ -558,7 +558,9 @@ class MRFTerm(Term):
         self._labels = value
 
     @property
-    def mapping(self) -> CategoryMapping | None:
+    def mapping(self) -> CategoryMapping:
+        if self._mapping is None:
+            raise ValueError("No mapping defined.")
         return self._mapping
 
     @mapping.setter
