@@ -26,7 +26,7 @@ class TestLinearConstraintEVD:
     @pytest.mark.parametrize("seed", range(10))
     def test_sumzero_coef(self, seed) -> None:
         Cbar = co.LinearConstraintEVD.sumzero_coef(nparam)
-        a = normal(key(seed), Cbar.shape[-1])
+        a = normal(key(seed), (Cbar.shape[-1],))
 
         b = Cbar @ a
 
@@ -35,7 +35,7 @@ class TestLinearConstraintEVD:
     @pytest.mark.parametrize("seed", range(10))
     def test_sumzero_term(self, seed) -> None:
         Cbar = co.LinearConstraintEVD.sumzero_term(basis)
-        a = normal(key(seed), Cbar.shape[-1])
+        a = normal(key(seed), (Cbar.shape[-1],))
 
         fx = basis @ Cbar @ a
 
@@ -44,7 +44,7 @@ class TestLinearConstraintEVD:
     @pytest.mark.parametrize("seed", range(10))
     def test_sumzero_term2(self, seed) -> None:
         Cbar = co.LinearConstraintEVD.sumzero_term2(basis)
-        a = normal(key(seed), Cbar.shape[-1])
+        a = normal(key(seed), (Cbar.shape[-1],))
 
         fx = basis @ Cbar @ a
 
@@ -53,7 +53,7 @@ class TestLinearConstraintEVD:
     @pytest.mark.parametrize("seed", range(10))
     def test_constant_and_linear(self, seed) -> None:
         Cbar = co.LinearConstraintEVD.constant_and_linear(x, basis)
-        a = normal(key(seed), Cbar.shape[-1])
+        a = normal(key(seed), (Cbar.shape[-1],))
 
         fx = basis @ Cbar @ a
 
