@@ -1,3 +1,5 @@
+from collections.abc import Mapping, Sequence
+
 import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
@@ -5,6 +7,7 @@ import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key as jkey
+from jax.typing import ArrayLike
 from ryp import r, to_py
 
 import liesel_gam as gam
@@ -237,7 +240,7 @@ class Test1dSmoothClusteredSummary:
         assert "q_0.1" in su2.columns
         assert "q_0.9" in su2.columns
 
-    def test_labels(self, columb: pd.DataFrame) -> None:
+    def test_labels_mapping(self, columb: pd.DataFrame) -> None:
         """
         If there is no mapping defined on the cluster,
         the integer codes are taken as they are as the cluster labels.
@@ -259,6 +262,39 @@ class Test1dSmoothClusteredSummary:
         su1 = gam.summarise_1d_smooth_clustered(term, samples=samples, labels=labels)
         assert su1.shape[0] == 200
         assert all(su1["district"].unique() == df["district"].unique())
+
+    def test_labels_list(self, columb: pd.DataFrame) -> None:
+        """
+        If there is no mapping defined on the cluster,
+        the integer codes are taken as they are as the cluster labels.
+
+        If there is no mapping defined on the cluster and a custom mapping is given,
+        the custom mapping is taken.
+        """
+        df = columb.iloc[:10, :].copy()
+        df["district"] = pd.Categorical(df["district"].to_list())
+
+        tb = gam.TermBuilder.from_df(df)
+        smooth = tb.s("x")
+        term = tb.rs(smooth, cluster="district")
+        model = lsl.Model([term])
+        samples = model.sample((4, 20), jkey(0))
+
+        newdata = {
+            "x": jnp.linspace(-1, 2, 3),
+            "district": columb["district"].to_numpy()[:3],
+        }
+
+        with pytest.raises(ValueError):
+            gam.summarise_1d_smooth_clustered(
+                term, samples=samples, labels=["a", "b", "c"]
+            )
+
+        su1 = gam.summarise_1d_smooth_clustered(
+            term, samples=samples, newdata=newdata, labels=["a", "b", "c"]
+        )
+        assert su1.shape[0] == 3
+        assert su1["district"].to_list() == ["a", "b", "c"]
 
     def test_random_slope(self, columb: pd.DataFrame) -> None:
         df = columb.iloc[:10, :].copy()
@@ -479,3 +515,111 @@ class TestLinSummary:
         su = gam.summarise_lin(term=term, samples=samples, indices=[1, 0])
         assert su.shape[0] == 2
         assert su["x"].to_list() == ["area", "x"]
+
+
+class TestClusterSummary:
+    def test_runs(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_cluster(term=term, samples=samples)
+        assert su.shape[0] == 49
+
+    def test_newdata_labels(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        newdata = {term.basis.x.name: ["1", "3", "4"]}
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_cluster(term=term, samples=samples, newdata=newdata)
+        assert su.shape[0] == 3
+
+    def test_newdata_codes(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        newdata = {term.basis.x.name: [0, 1, 4]}
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_cluster(term=term, samples=samples, newdata=newdata)
+        assert su.shape[0] == 3
+
+    def test_hdi_prob(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_cluster(term=term, samples=samples, hdi_prob=0.9)
+
+        su2 = gam.summarise_cluster(term=term, samples=samples, hdi_prob=0.99)
+
+        assert sum(su1["hdi_low"] > su2["hdi_low"]) > 30
+        assert sum(su1["hdi_high"] < su2["hdi_high"]) > 30
+
+    def test_quantiles(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su1 = gam.summarise_cluster(term=term, samples=samples)
+        assert "q_0.05" in su1.columns
+        assert "q_0.95" in su1.columns
+        assert "q_0.5" in su1.columns
+
+        su2 = gam.summarise_cluster(term=term, samples=samples, ci_quantiles=(0.1, 0.9))
+        assert "q_0.1" in su2.columns
+        assert "q_0.9" in su2.columns
+
+    def test_labels_mapping(self, columb: pd.DataFrame) -> None:
+        """
+        If there is no mapping defined on the cluster,
+        the integer codes are taken as they are as the cluster labels.
+
+        If there is no mapping defined on the cluster and a custom mapping is given,
+        the custom mapping is taken.
+        """
+        df = columb.iloc[:10, :].copy()
+        df["district"] = pd.Categorical(df["district"].to_list())
+
+        tb = gam.TermBuilder.from_df(df)
+        term = tb.ri("district")
+        model = lsl.Model([term])
+        samples = model.sample((4, 20), jkey(0))
+
+        labels = term.mapping  # type: ignore
+        term._mapping = None  # type: ignore
+        su1 = gam.summarise_cluster(term, samples=samples, labels=labels)
+        assert su1.shape[0] == 10
+        assert all(su1["district"].unique() == df["district"].unique())
+
+    def test_labels_list(self, columb: pd.DataFrame) -> None:
+        """
+        If there is no mapping defined on the cluster,
+        the integer codes are taken as they are as the cluster labels.
+
+        If there is no mapping defined on the cluster and a custom mapping is given,
+        the custom mapping is taken.
+        """
+        df = columb.iloc[:10, :].copy()
+        df["district"] = pd.Categorical(df["district"].to_list())
+
+        tb = gam.TermBuilder.from_df(df)
+        term = tb.ri("district")
+        model = lsl.Model([term])
+        samples = model.sample((4, 20), jkey(0))
+
+        newdata: Mapping[str, ArrayLike | Sequence[str] | Sequence[int]] = {
+            term.basis.x.name: [0, 1, 4]
+        }
+        su = gam.summarise_cluster(
+            term=term, samples=samples, newdata=newdata, labels=["a", "b", "c"]
+        )
+        assert su.shape[0] == 3
+        assert su["district"].to_list() == ["a", "b", "c"]
+
+        newdata = {term.basis.x.name: ["0", "1", "4"]}
+        su = gam.summarise_cluster(
+            term=term, samples=samples, newdata=newdata, labels=["a", "b", "c"]
+        )
+        assert su.shape[0] == 3
+        assert su["district"].to_list() == ["a", "b", "c"]
