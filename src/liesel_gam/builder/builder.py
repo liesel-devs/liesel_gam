@@ -13,6 +13,7 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import smoothcon as scon
+import tensorflow_probability.substrates.jax.bijectors as tfb
 from ryp import r, to_py
 
 from ..var import (
@@ -887,31 +888,44 @@ class TermBuilder:
     def ta(
         self,
         *bases: Basis,
-        scales: Sequence[ScaleIG | lsl.Var | float | VarIGPrior] | float,
+        scales: Sequence[ScaleIG | lsl.Var | float | VarIGPrior]
+        | float
+        | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
     ) -> ATerm:
-        scales_: list[ScaleIG | lsl.Var | float] = []
-        if isinstance(scales, float):
+        scales_: list[ScaleIG | lsl.Var | VarIGPrior | Array] = []
+        if isinstance(scales, VarIGPrior):
             for _ in bases:
-                scales_.append(scales)
-        else:
+                default_scale_ = self._init_default_scale(
+                    scales.concentration, scales.scale
+                )
+                default_scale_._variance_param.transform(
+                    bijector=tfb.Softplus(), inference=gs.MCMCSpec(gs.HMCKernel)
+                )
+                scales_.append(default_scale_)
+
+        elif not isinstance(scales, float):
             for scale in scales:
                 if isinstance(scale, VarIGPrior):
                     default_scale_ = self._init_default_scale(
                         scale.concentration, scale.scale
                     )
                     default_scale_._variance_param.transform(
-                        bijector=None, inference=gs.MCMCSpec(gs.IWLSKernel)
+                        bijector=tfb.Softplus(), inference=gs.MCMCSpec(gs.HMCKernel)
                     )
-                    scale_: ScaleIG | lsl.Var | float
-                else:
+                    scale_: ScaleIG | lsl.Var | Array = default_scale_
+                elif isinstance(scale, lsl.Var):
                     scale_ = scale
+                else:
+                    scale_ = jnp.asarray(scale)
 
                 scales_.append(scale_)
+        else:
+            pass
 
         term = ATerm.f(
             *bases,
-            scales=scales_,
+            scales=scales_ if not isinstance(scales, float) else scales,
             fname=self.names.create("ta"),
             inference=inference,
             basis_name=self.names.create("B"),

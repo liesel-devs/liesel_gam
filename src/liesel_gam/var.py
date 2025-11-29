@@ -1405,12 +1405,15 @@ class ATerm(UserVar):
         _update_on_init: bool = True,
     ):
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
+        scales_: list[ScaleIG | lsl.Var | Array | VarIGPrior | float] = []
         if isinstance(scales, float):
-            scales_: Sequence[ScaleIG | lsl.Var | Array | VarIGPrior] = [
-                scales for _ in bases
-            ]
+            for _ in bases:
+                scales_.append(scales)
         else:
-            scales_ = [_init_scale_ig(scale) for scale in scales]
+            for scale in scales:
+                scale_ = _init_scale_ig(scale)
+                assert scale_ is not None
+                scales_.append(scale_)
 
         _rowwise_kron = jax.vmap(jnp.kron)
 
