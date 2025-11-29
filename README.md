@@ -446,7 +446,7 @@ model.predict(newdata={"x8": new_custom_basis}, predict=["h(x8)"])
 
 ### Noncentered parameterization
 
-Sometimes sampling from the posterior can be made more easy by sampling from a
+Sometimes sampling from the posterior can be facilitated by sampling from a
 reparameterized model, particularly using a "noncentered" parameterization
 (see [Stan documentation](https://mc-stan.org/docs/2_18/stan-users-guide/reparameterization-section.html)).
 
