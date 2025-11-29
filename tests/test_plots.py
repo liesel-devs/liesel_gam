@@ -623,3 +623,80 @@ class TestClusterSummary:
         )
         assert su.shape[0] == 3
         assert su["district"].to_list() == ["a", "b", "c"]
+
+
+class TestRegionSummary:
+    def test_runs(self, tb: gam.TermBuilder, polys) -> None:
+        term = tb.mrf("district", polys=polys)
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_regions(term=term, samples=samples)
+        assert su.shape[0] == 1202
+        assert su.observed.sum() == 1202
+        assert not any(su.value.isna())
+
+    def test_which(self, tb: gam.TermBuilder, polys) -> None:
+        term = tb.mrf("district", polys=polys)
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_regions(term=term, samples=samples, which=["mean", "sd"])
+        assert su.shape[0] == 1202 * 2
+        assert su.observed.sum() == 1202 * 2
+        assert not any(su.value.isna())
+        assert su.variable.unique().tolist() == ["mean", "sd"]
+
+    def test_polys_as_arg(self, tb: gam.TermBuilder, polys) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_regions(term=term, samples=samples, polys=polys)
+        assert su.shape[0] == 1202
+        assert su.observed.sum() == 1202
+        assert not any(su.value.isna())
+
+        term._mapping = None
+        with pytest.raises(ValueError):
+            gam.summarise_regions(term=term, samples=samples, polys=polys)
+
+    def test_incomplete_polys_as_arg(self, tb: gam.TermBuilder, polys) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        polys_ = {}
+        poly_keys = list(polys)
+        poly_vals = list(polys.values())
+        for i in range(10):
+            polys_[poly_keys[i]] = poly_vals[i]
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_regions(term=term, samples=samples, polys=polys_)
+        assert su.shape[0] == 340
+        assert su.observed.sum() == 340
+        assert not any(su.value.isna())
+
+    def test_polys_for_unknown_region(self, tb: gam.TermBuilder, polys) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        polys_ = {}
+        poly_keys = list(polys)
+        poly_vals = list(polys.values())
+        for i in range(10):
+            polys_[poly_keys[i]] = poly_vals[i]
+
+        polys_["test"] = poly_vals[i + 1]
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        with pytest.raises(ValueError):
+            gam.summarise_regions(term=term, samples=samples, polys=polys_)
+
+    def test_no_polys(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        with pytest.raises(ValueError):
+            gam.summarise_regions(term=term, samples=samples)

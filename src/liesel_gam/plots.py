@@ -436,7 +436,9 @@ def summarise_cluster(
             labels_str, categories=categories
         )
     else:
-        predictions_summary[term.basis.x.name] = term.basis.x.value
+        predictions_summary[term.basis.x.name] = pd.Categorical(
+            np.asarray(term.basis.x.value)
+        )
 
     predictions_summary["observed"] = observed
 
@@ -452,7 +454,7 @@ def summarise_regions(
     labels: CategoryMapping | Sequence[str] | None = None,
     ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
-) -> p9.ggplot:
+) -> pd.DataFrame:
     polygons = None
     if polys is not None:
         polygons = polys
@@ -466,15 +468,9 @@ def summarise_regions(
 
     if not polygons:
         raise ValueError(
-            "When passing a term with term.polygons=None, polygons must "
-            "be supplied manually."
+            "When passing a term without polygons, polygons must be supplied manually "
+            "through the argument 'polys'"
         )
-
-    if labels is None:
-        try:
-            labels = term.mapping  # type: ignore
-        except AttributeError:
-            labels = None
 
     df = summarise_cluster(
         term=term,
@@ -487,6 +483,15 @@ def summarise_regions(
     region = term.basis.x.name
     if isinstance(which, str):
         which = [which]
+
+    unique_labels_in_df = df[term.basis.x.name].unique().tolist()
+    assert polygons is not None
+    for region_label in polygons:
+        if region_label not in unique_labels_in_df:
+            raise ValueError(
+                f"Label '{region_label}' found in polys, but not in cluster summary. "
+                f"Known labels: {unique_labels_in_df}"
+            )
 
     poly_df = polys_to_df(polygons)
 
@@ -522,47 +527,30 @@ def plot_regions(
     observed_color: str = "none",
     unobserved_color: str = "red",
 ) -> p9.ggplot:
-    polygons = None
-    if polys is not None:
-        polygons = polys
-    else:
-        try:
-            # using type ignore here, since the case of term not having the attribute
-            # polygons is handled by the try except
-            polygons = term.polygons  # type: ignore
-        except AttributeError:
-            pass
-
-    if not polygons:
-        raise ValueError(
-            "When passing a term with term.polygons=None, polygons must "
-            "be supplied manually."
-        )
-
-    if labels is None:
-        try:
-            labels = term.mapping  # type: ignore
-        except AttributeError:
-            labels = None
-
-    df = summarise_cluster(
+    plot_df = summarise_regions(
         term=term,
         samples=samples,
         newdata=newdata,
+        which=which,
+        polys=polys,
         labels=labels,
         ci_quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
     )
-    region = term.basis.x.name
-    p = plot_polys(
-        region=region,
-        which=which,
-        df=df,
-        polys=polygons,
-        show_unobserved=show_unobserved,
-        observed_color=observed_color,
-        unobserved_color=unobserved_color,
+    p = (
+        p9.ggplot(plot_df)
+        + p9.aes("V0", "V1", group="label", fill="value")
+        + p9.aes(color="observed")
+        + p9.facet_wrap("~variable", labeller="label_both")
+        + p9.scale_color_manual({True: observed_color, False: unobserved_color})
+        + p9.guides(color=p9.guide_legend(override_aes={"fill": None}))
     )
+    if show_unobserved:
+        p = p + p9.geom_polygon()
+    else:
+        p = p + p9.geom_polygon(data=plot_df.query("observed == True"))
+        p = p + p9.geom_polygon(data=plot_df.query("observed == False"), fill="none")
+
     p += p9.labs(title=f"Plot of {term.name}")
     return p
 
