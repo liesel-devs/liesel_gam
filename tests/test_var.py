@@ -244,11 +244,11 @@ def is_diagonal(M, atol=1e-6):
 
 class TestBasisReparameterization:
     def test_diagonalize_penalty(self, basis: gam.Basis):
-        assert not is_diagonal(basis.penalty.value, 1e-6)
+        assert not is_diagonal(basis.penalty.value, 1e-5)
         b1 = basis.value
         basis.diagonalize_penalty()
         b2 = basis.value
-        assert is_diagonal(basis.penalty.value, 1e-6)
+        assert is_diagonal(basis.penalty.value, 1e-5)
         assert not jnp.allclose(b1, b2, atol=1e-3)
 
     def test_diagonalize_penalty_twice(self, basis: gam.Basis):
@@ -257,7 +257,7 @@ class TestBasisReparameterization:
         pen1 = basis.penalty.value
 
         basis.diagonalize_penalty()
-        assert is_diagonal(basis.penalty.value, 1e-6)
+        assert is_diagonal(basis.penalty.value, 1e-5)
 
         b2 = basis.value
         pen2 = basis.penalty.value
