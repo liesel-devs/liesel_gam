@@ -450,3 +450,32 @@ class TestNDSmoothSummary:
         samples = term.coef.sample((4, 20), jkey(0))
         su1 = gam.summarise_nd_smooth(term=term, samples=samples, ngrid=10)
         assert su1.shape[0] == 100
+
+
+class TestLinSummary:
+    def test_runs(self, tb: gam.TermBuilder) -> None:
+        term = tb.lin("x + area", prior=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0))
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_lin(term=term, samples=samples)
+        assert su.shape[0] == 2
+
+    def test_indices(self, tb: gam.TermBuilder) -> None:
+        term = tb.lin("x + area + y", prior=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0))
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = gam.summarise_lin(term=term, samples=samples, indices=[0, 1])
+        assert su.shape[0] == 2
+
+        su = gam.summarise_lin(term=term, samples=samples, indices=[0, 1, 2])
+        assert su.shape[0] == 3
+
+        su = gam.summarise_lin(term=term, samples=samples, indices=[2])
+        assert su.shape[0] == 1
+        assert su["x"].to_list() == ["y"]
+
+        su = gam.summarise_lin(term=term, samples=samples, indices=[1, 0])
+        assert su.shape[0] == 2
+        assert su["x"].to_list() == ["area", "x"]

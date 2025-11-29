@@ -587,7 +587,7 @@ def summarise_lin(
 ) -> pd.DataFrame:
     if indices is not None:
         coef_samples = samples[term.coef.name][..., indices]
-        colnames = term.column_names[slice(indices)]
+        colnames = [term.column_names[i] for i in indices]
     else:
         coef_samples = samples[term.coef.name]
         colnames = term.column_names
