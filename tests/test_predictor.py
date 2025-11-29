@@ -5,17 +5,21 @@ import pytest
 import liesel_gam as gam
 
 term1 = gam.SmoothTerm.new_ig(
-    basis=gam.Basis.new_linear(1.0, xname="x1"), penalty=jnp.eye(1), name="s(x1)"
+    basis=gam.Basis.new_linear(jnp.array(1.0), xname="x1"),
+    penalty=jnp.eye(1),
+    name="s(x1)",
 )
 
-term1.coef.value = 1.0
+term1.coef.value = jnp.array(1.0)
 term1.update()
 
 term2 = gam.SmoothTerm.new_ig(
-    basis=gam.Basis.new_linear(1.0, xname="x1"), penalty=jnp.eye(1), name="s(x2)"
+    basis=gam.Basis.new_linear(jnp.array(1.0), xname="x1"),
+    penalty=jnp.eye(1),
+    name="s(x2)",
 )
 
-term2.coef.value = 2.0
+term2.coef.value = jnp.array(2.0)
 term2.update()
 
 
