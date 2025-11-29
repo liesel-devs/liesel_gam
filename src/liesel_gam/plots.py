@@ -578,6 +578,32 @@ def plot_forest(
         raise TypeError(f"term has unsupported type {type(term)}.")
 
 
+def summarise_lin(
+    term: LinTerm,
+    samples: Mapping[str, jax.Array],
+    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    indices: Sequence[int] | None = None,
+) -> pd.DataFrame:
+    if indices is not None:
+        coef_samples = samples[term.coef.name][..., indices]
+        colnames = term.column_names[slice(indices)]
+    else:
+        coef_samples = samples[term.coef.name]
+        colnames = term.column_names
+
+    df = (
+        gs.SamplesSummary.from_array(
+            coef_samples, quantiles=ci_quantiles, hdi_prob=hdi_prob
+        )
+        .to_dataframe()
+        .reset_index()
+    )
+
+    df["x"] = colnames
+    return df
+
+
 def plot_forest_lin(
     term: LinTerm,
     samples: Mapping[str, jax.Array],
@@ -587,18 +613,13 @@ def plot_forest_lin(
     hdi_prob: float = 0.9,
     indices: Sequence[int] | None = None,
 ) -> p9.ggplot:
-    coef_samples = samples[term.coef.name]
-    df = (
-        gs.SamplesSummary.from_array(
-            coef_samples, quantiles=ci_quantiles, hdi_prob=hdi_prob
-        )
-        .to_dataframe()
-        .reset_index()
+    df = summarise_lin(
+        term=term,
+        samples=samples,
+        ci_quantiles=ci_quantiles,
+        hdi_prob=hdi_prob,
+        indices=indices,
     )
-    df["x"] = term.column_names
-
-    if indices is not None:
-        df = df.iloc[indices, :]
 
     df[ymin] = df[ymin].astype(df["mean"].dtype)
     df[ymax] = df[ymax].astype(df["mean"].dtype)
