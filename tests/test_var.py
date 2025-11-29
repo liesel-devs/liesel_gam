@@ -231,12 +231,62 @@ class TestSmoothTerm:
         assert not jnp.isnan(term.coef.log_prob)
         assert term.coef.log_prob is not None
 
+    def test_init_2d_scale(self) -> None:
+        x = jnp.linspace(0, 1, 10)
+        with pytest.raises(ValueError):
+            gam.SmoothTerm(
+                basis=gam.Basis(jnp.c_[x, x], xname="x"),
+                penalty=jnp.eye(2),
+                scale=lsl.Var(jnp.ones(2)),
+                name="t",
+            )
+
+        with pytest.raises(ValueError):
+            gam.SmoothTerm(
+                basis=gam.Basis(jnp.c_[x, x], xname="x"),
+                penalty=jnp.eye(2),
+                scale=jnp.ones(2),
+                name="t",
+            )
+
+        gam.SmoothTerm(
+            basis=gam.Basis(jnp.c_[x, x], xname="x"),
+            penalty=jnp.eye(2),
+            scale=lsl.Var(jnp.ones(2)),
+            name="t",
+            validate_scalar_scale=False,
+        )
+
+        gam.SmoothTerm(
+            basis=gam.Basis(jnp.c_[x, x], xname="x"),
+            penalty=jnp.eye(2),
+            scale=jnp.ones(2),
+            name="t",
+            validate_scalar_scale=False,
+        )
+
+        with pytest.raises(ValueError):
+            gam.SmoothTerm(
+                basis=gam.Basis(jnp.c_[x, x, x], xname="x"),
+                penalty=jnp.eye(2),
+                scale=lsl.Var(jnp.ones(2)),
+                name="t",
+            )
+
+        with pytest.raises(ValueError):
+            gam.SmoothTerm(
+                basis=gam.Basis(jnp.c_[x, x, x], xname="x"),
+                penalty=jnp.eye(2),
+                scale=jnp.ones(2),
+                name="t",
+            )
+
     def test_no_name(self) -> None:
         x = jnp.linspace(0, 1, 10)
         term = gam.SmoothTerm(
             basis=gam.Basis(jnp.c_[x, x]),
             penalty=jnp.eye(2),
-            scale=lsl.Var(1.0),
+            scale=lsl.Var(jnp.array(1.0)),
         )
 
         assert term.name == ""

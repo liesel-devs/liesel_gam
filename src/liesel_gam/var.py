@@ -9,7 +9,6 @@ import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
 from formulaic import ModelSpec
-from jax.typing import ArrayLike
 
 from liesel_gam.builder.category_mapping import CategoryMapping
 
@@ -17,12 +16,13 @@ from .dist import MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs
 
 InferenceTypes = Any
-Array = Any
+Array = jax.Array
+ArrayLike = jax.typing.ArrayLike
 
 
 class VarIGPrior(NamedTuple):
-    concentration: float | Array
-    scale: float | Array
+    concentration: float
+    scale: float
 
 
 def _append_name(name: str, append: str) -> str:
@@ -116,7 +116,8 @@ def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Di
 
 
 def term_prior(
-    scale: lsl.Var | Array | None, penalty: lsl.Var | lsl.Value | Array | None
+    scale: lsl.Var | Array | None,
+    penalty: lsl.Var | lsl.Value | Array | None,
 ) -> lsl.Dist | None:
     """
     Returns
@@ -165,14 +166,19 @@ class ScaleIG(UserVar):
 
     def __init__(
         self,
-        value: Array,
-        concentration: float | lsl.Var | lsl.Node | jax.Array,
-        scale: float | lsl.Var | lsl.Node | jax.Array,
+        value: float | Array,
+        concentration: float | lsl.Var | lsl.Node | ArrayLike,
+        scale: float | lsl.Var | lsl.Node | ArrayLike,
         name: str = "",
         variance_name: str = "",
         inference: InferenceTypes = None,
     ):
         value = jnp.asarray(value)
+        if value.size != 1:
+            raise ValueError(
+                f"Expected scalar value for ScaleIG, got size {value.size}."
+            )
+
         concentration_node = _ensure_value(
             concentration, name=_append_name(name, "_concentration")
         )
@@ -200,20 +206,68 @@ class ScaleIG(UserVar):
 
 
 def _init_scale_ig(
-    x: ScaleIG | VarIGPrior | lsl.Var | Array | None,
-) -> ScaleIG | lsl.Var | Array | None:
+    x: ScaleIG | VarIGPrior | lsl.Var | ArrayLike | None,
+    validate_scalar: bool = False,
+) -> ScaleIG | lsl.Var | None:
     if isinstance(x, VarIGPrior):
-        concentration = x.concentration
-        scale_ = x.scale
-        scale_var: ScaleIG | lsl.Var | Array | None = ScaleIG(
-            value=1.0,
+        concentration = jnp.asarray(x.concentration)
+        scale_ = jnp.asarray(x.scale)
+
+        if validate_scalar:
+            if not concentration.size == 1:
+                raise ValueError(
+                    "Expected scalar hyperparameter 'concentration', "
+                    f"got size {concentration.size}"
+                )
+
+            if not scale_.size == 1:
+                raise ValueError(
+                    f"Expected scalar hyperparameter 'scale', got size {scale_.size}"
+                )
+
+        scale_var: ScaleIG | lsl.Var | None = ScaleIG(
+            value=jnp.array(1.0),
             concentration=concentration,
             scale=scale_,
         )
-    else:
+    elif isinstance(x, ScaleIG | lsl.Var):
+        if isinstance(x, ScaleIG):
+            x._variance_param.value = jnp.asarray(x._variance_param.value)
+            x.update()
+        elif x.strong:
+            x.value = jnp.asarray(x.value)
+
         scale_var = x
+        if validate_scalar:
+            size = jnp.asarray(scale_var.value).size
+            if not size == 1:
+                raise ValueError(f"Expected scalar scale, got size {size}")
+    elif x is not None:
+        scale_var = lsl.Var.new_value(jnp.asarray(x))
+        if validate_scalar:
+            size = scale_var.value.size
+            if not size == 1:
+                raise ValueError(f"Expected scalar scale, got size {size}")
+    elif x is None:
+        scale_var = x
+    else:
+        raise TypeError(f"Unexpected type for scale: {type(x)}")
 
     return scale_var
+
+
+def _validate_scalar_or_p_scale(scale_value: Array, p):
+    try:
+        is_scalar = scale_value.size == 1
+    except AttributeError:
+        raise TypeError(
+            f"Expected scale value to be an array, got type {type(scale_value)}"
+        )
+    is_p = scale_value.size == p
+    if not (is_scalar or is_p):
+        raise ValueError(
+            f"Expected scale to have size 1 or {p}, got size {scale_value.size}"
+        )
 
 
 class Term(UserVar):
@@ -278,13 +332,14 @@ class Term(UserVar):
         self,
         basis: Basis,
         penalty: lsl.Var | lsl.Value | Array | None,
-        scale: ScaleIG | VarIGPrior | lsl.Var | Array | None,
+        scale: ScaleIG | VarIGPrior | lsl.Var | ArrayLike | None,
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         _update_on_init: bool = True,
+        validate_scalar_scale: bool = True,
     ):
-        scale = _init_scale_ig(scale)
+        scale = _init_scale_ig(scale, validate_scalar=validate_scalar_scale)
 
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
@@ -302,6 +357,8 @@ class Term(UserVar):
         else:
             nparam = self.nbases
 
+        if scale is not None:
+            _validate_scalar_or_p_scale(scale.value, nparam)
         self.coef = lsl.Var.new_param(
             jnp.zeros(nparam), prior, inference=inference, name=coef_name
         )
@@ -346,7 +403,7 @@ class Term(UserVar):
 
         assert self.coef.dist_node is not None
 
-        self.coef.dist_node["scale"] = lsl.Value(1.0)
+        self.coef.dist_node["scale"] = lsl.Value(jnp.array(1.0))
 
         if self.scale.name and self.coef.name:
             scaled_name = self.scale.name + "*" + self.coef.name
@@ -379,7 +436,7 @@ class Term(UserVar):
         cls,
         basis: Basis,
         fname: str = "f",
-        scale: ScaleIG | lsl.Var | Array | VarIGPrior | None = None,
+        scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         noncentered: bool = False,
@@ -434,6 +491,7 @@ class Term(UserVar):
             inference=inference,
             coef_name=coef_name,
             name=name,
+            validate_scalar_scale=not noncentered,
         )
 
         if noncentered:
@@ -505,7 +563,10 @@ class Term(UserVar):
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
         scale_name = scale_name or "$\\tau$"
         scale = ScaleIG(
-            scale_value, concentration=ig_concentration, scale=ig_scale, name=scale_name
+            jnp.asarray(scale_value),
+            concentration=ig_concentration,
+            scale=ig_scale,
+            name=scale_name,
         )
 
         term = cls(
@@ -581,11 +642,12 @@ class IndexingTerm(Term):
         self,
         basis: Basis,
         penalty: lsl.Var | lsl.Value | Array | None,
-        scale: ScaleIG | VarIGPrior | lsl.Var | Array | None,
+        scale: ScaleIG | VarIGPrior | lsl.Var | ArrayLike | None,
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         _update_on_init: bool = True,
+        validate_scalar_scale: bool = True,
     ):
         if not basis.value.ndim == 1:
             raise ValueError(f"IndexingTerm requires 1d basis, got {basis.value.ndim=}")
@@ -603,6 +665,7 @@ class IndexingTerm(Term):
             inference=inference,
             coef_name=coef_name,
             _update_on_init=False,
+            validate_scalar_scale=validate_scalar_scale,
         )
 
         # mypy warns that self.value_node might be a lsl.Node, which does not have the
@@ -671,12 +734,15 @@ class Intercept(UserVar):
     def __init__(
         self,
         name: str,
-        value: Array | float = 0.0,
+        value: ArrayLike | float = 0.0,
         distribution: lsl.Dist | None = None,
         inference: InferenceTypes = None,
     ) -> None:
         super().__init__(
-            value=value, distribution=distribution, name=name, inference=inference
+            value=jnp.asarray(value),
+            distribution=distribution,
+            name=name,
+            inference=inference,
         )
         self.parameter = True
 
