@@ -151,7 +151,7 @@ class BasisBuilder:
             x_var = self.registry.get_numeric_obs(x_name)
             x_vars.append(x_var)
 
-        Xname = ",".join(x)
+        Xname = self.registry.prefix + ",".join(x)
 
         Xvar = lsl.TransientCalc(
             lambda *x: jnp.column_stack(x),
@@ -222,7 +222,7 @@ class BasisBuilder:
 
         x1_var = self.registry.get_numeric_obs(x1)
         x2_var = self.registry.get_numeric_obs(x2)
-        x1x2_name = f"{x1},{x2}"
+        x1x2_name = self.registry.prefix + f"{x1},{x2}"
         x1_x2_var = lsl.TransientCalc(
             lambda x1, x2: jnp.stack((x1, x2), axis=1),
             x1=x1_var,
@@ -296,7 +296,7 @@ class BasisBuilder:
         x1_var = self.registry.get_numeric_obs(x1)
         x2_var = self.registry.get_numeric_obs(x2)
 
-        x1x2_name = f"{x1},{x2}"
+        x1x2_name = self.registry.prefix + f"{x1},{x2}"
 
         x1_x2_var = lsl.TransientCalc(
             lambda x1, x2: jnp.c_[x1, x2],
