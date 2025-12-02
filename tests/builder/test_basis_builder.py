@@ -613,20 +613,47 @@ class TestMRFBasis:
         basis2 = bases.mrf("district", nb=neighbors)
         _, neighbors2, labels2 = basis2.mrf_spec
 
-        basis3 = bases.mrf("district", penalty=basis.penalty.value)
+        with pytest.raises(ValueError):
+            bases.mrf("district", penalty=basis.penalty.value)
+        basis3 = bases.mrf(
+            "district", penalty=basis.penalty.value, penalty_labels=labels
+        )
         _, neighbors3, labels3 = basis3.mrf_spec
 
         basis4 = bases.mrf("district", polys=columb_polys, nb=neighbors)
         _, neighbors4, labels4 = basis4.mrf_spec
 
-        basis5 = bases.mrf("district", polys=columb_polys, penalty=basis.penalty.value)
+        with pytest.raises(ValueError):
+            bases.mrf("district", polys=columb_polys, penalty=basis.penalty.value)
+        basis5 = bases.mrf(
+            "district",
+            polys=columb_polys,
+            penalty=basis.penalty.value,
+            penalty_labels=labels,
+        )
         _, neighbors5, labels5 = basis5.mrf_spec
 
-        basis6 = bases.mrf("district", nb=neighbors, penalty=basis.penalty.value)
+        with pytest.raises(ValueError):
+            bases.mrf("district", nb=neighbors, penalty=basis.penalty.value)
+
+        basis6 = bases.mrf(
+            "district", nb=neighbors, penalty=basis.penalty.value, penalty_labels=labels
+        )
         _, neighbors6, labels6 = basis6.mrf_spec
 
+        with pytest.raises(ValueError):
+            bases.mrf(
+                "district",
+                polys=columb_polys,
+                nb=neighbors,
+                penalty=basis.penalty.value,
+            )
         basis7 = bases.mrf(
-            "district", polys=columb_polys, nb=neighbors, penalty=basis.penalty.value
+            "district",
+            polys=columb_polys,
+            nb=neighbors,
+            penalty=basis.penalty.value,
+            penalty_labels=labels,
         )
         _, neighbors7, labels7 = basis7.mrf_spec
 
@@ -718,3 +745,29 @@ class TestMRFBasis:
             labels4,
         ]:
             assert lab == labels
+
+    def test_penalty_labels(self):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        # a - c - b
+
+        # c has 2 neighbors: a and b
+        # b has 1 neighbor: c
+        # a has 1 neighbor: c
+
+        K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        basis = bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+        K2 = basis.penalty.value
+
+        assert jnp.allclose(basis.value[:, 0], jnp.array([1.0, 0.0, 0.0, 0.0]))
+        assert jnp.allclose(basis.value[:, 1], jnp.array([0.0, 1.0, 0.0, 0.0]))
+        assert jnp.allclose(basis.value[:, 2], jnp.array([0.0, 0.0, 1.0, 1.0]))
+
+        assert jnp.allclose(K2[:, 0], jnp.array([1.0, 0.0, -1.0]))
+        assert jnp.allclose(K2[:, 1], jnp.array([0.0, 1.0, -1.0]))
+        assert jnp.allclose(K2[:, 2], jnp.array([-1.0, -1.0, 2.0]))
+
+        assert not jnp.allclose(K, K2)

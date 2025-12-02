@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
@@ -13,7 +13,7 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import smoothcon as scon
-from ryp import r, to_py
+from ryp import r, to_py, to_r
 
 from ..var import (
     Basis,
@@ -525,6 +525,7 @@ class BasisBuilder:
         polys: dict[str, ArrayLike] | None = None,
         nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
+        penalty_labels: Sequence[str] | None = None,
         absorb_cons: bool = False,
         diagonal_penalty: bool = False,
         scale_penalty: bool = False,
@@ -556,6 +557,7 @@ class BasisBuilder:
           way, so the returned label order is None.
 
         """
+
         if polys is None and nb is None and penalty is None:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
 
@@ -563,6 +565,17 @@ class BasisBuilder:
         self.mappings[x] = mapping
 
         labels = set(list(mapping.labels_to_integers_map))
+
+        if penalty is not None:
+            if penalty_labels is None:
+                raise ValueError(
+                    "If 'penalty' is supplied, 'penalty_labels' must also be supplied."
+                )
+            if len(penalty_labels) != len(labels):
+                raise ValueError(
+                    f"Variable {x} has {len(labels)} unique entries, but "
+                    f"'penalty_labels' has {len(penalty_labels)}. Both must match."
+                )
 
         xt_args = []
         pass_to_r: dict[str, np.typing.NDArray | dict[str, np.typing.NDArray]] = {}
@@ -630,6 +643,17 @@ class BasisBuilder:
         xt += ",".join(xt_args)
         xt += ")"
 
+        if penalty is not None:
+            # removing penalty from the pass_to_r dict, because we are giving it
+            # special treatment here.
+            # specifically, we have to equip it with row and column names to make
+            # sure that penalty entries get correctly matched to clusters by mgcv
+            penalty_prelim_arr = np.asarray(pass_to_r.pop("penalty"))
+            to_r(penalty_prelim_arr, "penalty")
+            to_r(np.array(penalty_labels), "penalty_labels")
+            r("colnames(penalty) <- penalty_labels")
+            r("rownames(penalty) <- penalty_labels")
+
         spec = f"s({x}, k={k}, bs='mrf', xt={xt})"
 
         # disabling warnings about "mrf should be a factor"
@@ -638,8 +662,8 @@ class BasisBuilder:
         # Things still seem to work, and we ensure further above
         # that we are actually dealing with a categorical variable
         # so I think turning the warnings off temporarily here is fine
-        r("old_warn <- getOption('warn')")
-        r("options(warn = -1)")
+        # r("old_warn <- getOption('warn')")
+        # r("options(warn = -1)")
         observed = mapping.integers_to_labels(var.value)
         regions = list(mapping.labels_to_integers_map)
         df = pd.DataFrame({x: pd.Categorical(observed, categories=regions)})
@@ -652,7 +676,7 @@ class BasisBuilder:
             scale_penalty=scale_penalty,
             pass_to_r=pass_to_r,
         )
-        r("options(warn = old_warn)")
+        # r("options(warn = old_warn)")
 
         x_name = x
 
