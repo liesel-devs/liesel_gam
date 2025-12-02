@@ -51,7 +51,7 @@ def summarise_1d_smooth(
     term: Term,
     samples: dict[str, Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     ngrid: int = 150,
 ):
@@ -70,7 +70,7 @@ def summarise_1d_smooth(
     term_samples = term.predict(samples, newdata=newdata_x)
     term_summary = (
         gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles, hdi_prob=hdi_prob
+            term_samples, name=term.name, quantiles=quantiles, hdi_prob=hdi_prob
         )
         .to_dataframe()
         .reset_index()
@@ -108,7 +108,7 @@ def plot_1d_smooth(
         term=term,
         samples=samples,
         newdata=newdata,
-        ci_quantiles=(0.05, 0.95) if ci_quantiles is None else ci_quantiles,
+        quantiles=(0.05, 0.95) if ci_quantiles is None else ci_quantiles,
         hdi_prob=0.9 if hdi_prob is None else hdi_prob,
         ngrid=ngrid,
     )
@@ -204,7 +204,7 @@ def summarise_nd_smooth(
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
 ):
@@ -223,7 +223,7 @@ def summarise_nd_smooth(
 
     newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
     term_samples = term.predict(samples, newdata=newdata_x)
-    ci_quantiles_ = (0.05, 0.95) if ci_quantiles is None else ci_quantiles
+    ci_quantiles_ = (0.05, 0.95) if quantiles is None else quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
     term_summary = (
         gs.SamplesSummary.from_array(
@@ -256,7 +256,7 @@ def plot_2d_smooth(
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
 ):
@@ -266,7 +266,7 @@ def plot_2d_smooth(
         newdata=newdata,
         ngrid=ngrid,
         which=which,
-        ci_quantiles=ci_quantiles,
+        quantiles=quantiles,
         hdi_prob=hdi_prob,
         newdata_meshgrid=newdata_meshgrid,
     )
@@ -384,7 +384,7 @@ def summarise_cluster(
     | None
     | Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = None,
     labels: CategoryMapping | Sequence[str] | None = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> pd.DataFrame:
     if labels is None:
@@ -415,7 +415,7 @@ def summarise_cluster(
     predictions_summary = (
         gs.SamplesSummary.from_array(
             predictions,
-            quantiles=ci_quantiles,
+            quantiles=quantiles,
             hdi_prob=0.9 if hdi_prob is None else hdi_prob,
         )
         .to_dataframe()
@@ -452,7 +452,7 @@ def summarise_regions(
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
     labels: CategoryMapping | Sequence[str] | None = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> pd.DataFrame:
     polygons = None
@@ -477,7 +477,7 @@ def summarise_regions(
         samples=samples,
         newdata=newdata,
         labels=labels,
-        ci_quantiles=ci_quantiles,
+        quantiles=quantiles,
         hdi_prob=hdi_prob,
     )
     region = term.basis.x.name
@@ -521,7 +521,7 @@ def plot_regions(
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
     labels: CategoryMapping | None = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
     observed_color: str = "none",
@@ -534,7 +534,7 @@ def plot_regions(
         which=which,
         polys=polys,
         labels=labels,
-        ci_quantiles=ci_quantiles,
+        quantiles=quantiles,
         hdi_prob=hdi_prob,
     )
     p = (
@@ -562,7 +562,7 @@ def plot_forest(
     labels: CategoryMapping | None = None,
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    ci_quantiles: tuple[float, float] = (0.05, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
     highlight_unobserved: bool = True,
@@ -601,7 +601,7 @@ def plot_forest(
 def summarise_lin(
     term: LinTerm,
     samples: Mapping[str, jax.Array],
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     indices: Sequence[int] | None = None,
 ) -> pd.DataFrame:
@@ -614,7 +614,7 @@ def summarise_lin(
 
     df = (
         gs.SamplesSummary.from_array(
-            coef_samples, quantiles=ci_quantiles, hdi_prob=hdi_prob
+            coef_samples, quantiles=quantiles, hdi_prob=hdi_prob
         )
         .to_dataframe()
         .reset_index()
@@ -629,14 +629,14 @@ def plot_forest_lin(
     samples: Mapping[str, jax.Array],
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    ci_quantiles: tuple[float, float] = (0.05, 0.95),
     hdi_prob: float = 0.9,
     indices: Sequence[int] | None = None,
 ) -> p9.ggplot:
     df = summarise_lin(
         term=term,
         samples=samples,
-        ci_quantiles=ci_quantiles,
+        quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
         indices=indices,
     )
@@ -665,7 +665,7 @@ def plot_forest_clustered(
     labels: CategoryMapping | None = None,
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    ci_quantiles: tuple[float, float] = (0.05, 0.95),
     hdi_prob: float = 0.9,
     show_unobserved: bool = True,
     highlight_unobserved: bool = True,
@@ -683,7 +683,7 @@ def plot_forest_clustered(
         samples=samples,
         newdata=newdata,
         labels=labels,
-        ci_quantiles=ci_quantiles,
+        quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
     )
     cluster = term.basis.x.name
@@ -872,15 +872,12 @@ def plot_1d_smooth_clustered(
     samples: Mapping[str, jax.Array],
     ngrid: int = 20,
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
-    which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
-    hdi_prob: float = 0.9,
     labels: CategoryMapping | None = None,
     color_scale: str = "viridis",
     newdata_meshgrid: bool = False,
 ):
-    if isinstance(which, str):
-        which = [which]
+    ci_quantiles = (0.05, 0.5, 0.95)
+    hdi_prob = 0.9
 
     term = clustered_term.value_node["x"]
     cluster = clustered_term.value_node["cluster"]

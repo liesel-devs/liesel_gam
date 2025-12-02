@@ -84,9 +84,7 @@ class Test1dSmoothSummary:
         assert "q_0.95" in su1.columns
         assert "q_0.5" in su1.columns
 
-        su2 = gam.summarise_1d_smooth(
-            term=term, samples=samples, ci_quantiles=(0.1, 0.9)
-        )
+        su2 = gam.summarise_1d_smooth(term=term, samples=samples, quantiles=(0.1, 0.9))
         assert "q_0.1" in su2.columns
         assert "q_0.9" in su2.columns
 
@@ -474,7 +472,7 @@ class TestNDSmoothSummary:
             term=term,
             samples=samples,
             which=["q_0.1", "q_0.9"],  # type: ignore
-            ci_quantiles=(0.1, 0.9),
+            quantiles=(0.1, 0.9),
         )
         assert "q_0.1" in su2.variable.to_list()
         assert "q_0.9" in su2.variable.to_list()
@@ -566,7 +564,7 @@ class TestClusterSummary:
         assert "q_0.95" in su1.columns
         assert "q_0.5" in su1.columns
 
-        su2 = gam.summarise_cluster(term=term, samples=samples, ci_quantiles=(0.1, 0.9))
+        su2 = gam.summarise_cluster(term=term, samples=samples, quantiles=(0.1, 0.9))
         assert "q_0.1" in su2.columns
         assert "q_0.9" in su2.columns
 
