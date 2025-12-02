@@ -124,9 +124,12 @@ def validate_formula(formula: str) -> None:
 
 
 class BasisBuilder:
-    def __init__(self, registry: PandasRegistry) -> None:
+    def __init__(
+        self, registry: PandasRegistry, names: NameManager | None = None
+    ) -> None:
         self.registry = registry
         self.mappings: dict[str, CategoryMapping] = {}
+        self.names = NameManager() if names is None else names
 
     @property
     def data(self) -> pd.DataFrame:
@@ -162,7 +165,7 @@ class BasisBuilder:
         basis = Basis(
             value=Xvar,
             basis_fn=basis_fn,
-            name=basis_name + "(" + Xname + ")",
+            name=self.names.create(basis_name) + "(" + Xname + ")",
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=jnp.asarray(penalty),
@@ -235,7 +238,7 @@ class BasisBuilder:
 
         basis = Basis(
             x1_x2_var,
-            name=basis_name + "(" + x1 + "," + x2 + ")",
+            name=self.names.create(basis_name) + "(" + x1 + "," + x2 + ")",
             basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
             penalty=K1 + K2,
             use_callback=True,
@@ -309,7 +312,7 @@ class BasisBuilder:
 
         basis = Basis(
             x1_x2_var,
-            name=basis_name + "(" + x1 + "," + x2 + ")",
+            name=self.names.create(basis_name) + "(" + x1 + "," + x2 + ")",
             basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
             penalty=penalty,
             use_callback=True,
@@ -345,7 +348,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=basis_name + "(" + x + ")",
+            name=self.names.create(basis_name) + "(" + x + ")",
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -383,7 +386,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=basis_name + "(" + x + ")",
+            name=self.names.create(basis_name) + "(" + x + ")",
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -394,7 +397,8 @@ class BasisBuilder:
     def lin(
         self,
         formula: str,
-        name: str = "",
+        xname: str = "",
+        basis_name: str = "B",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinBasis:
@@ -441,7 +445,7 @@ class BasisBuilder:
         xvar = lsl.TransientCalc(  # for memory-efficiency
             lambda *args: jnp.vstack(args).T,
             *list(variables.values()),
-            _name=name,
+            _name=self.names.create(xname) if xname else xname,
         )
 
         def basis_fn(x):
@@ -459,12 +463,17 @@ class BasisBuilder:
                 basis = basis[:, 1:]
             return jnp.asarray(basis, dtype=float)
 
+        if xname:
+            bname = self.names.create(basis_name) + "(" + xvar.name + ")"
+        else:
+            bname = self.names.create(basis_name)
+
         basis = LinBasis(
             xvar,
             basis_fn=basis_fn,
-            name=None,  # to use automatic naming based on xvar.name.
             use_callback=True,
             cache_basis=True,
+            name=bname,
         )
 
         basis.model_spec = spec
@@ -494,7 +503,7 @@ class BasisBuilder:
         basis = Basis(
             value=result.var,
             basis_fn=lambda x: x,
-            name=basis_name + "(" + cluster + ")",
+            name=self.names.create(basis_name) + "(" + cluster + ")",
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
@@ -663,7 +672,7 @@ class BasisBuilder:
         basis = MRFBasis(
             value=var,
             basis_fn=basis_fun,
-            name=basis_name + "(" + x + ")",
+            name=self.names.create(basis_name) + "(" + x + ")",
             cache_basis=True,
             use_callback=True,
             penalty=penalty_arr,
@@ -727,9 +736,8 @@ class NameManager:
 class TermBuilder:
     def __init__(self, registry: PandasRegistry, prefix_names_by: str = "") -> None:
         self.registry = registry
-        self.bases = BasisBuilder(registry)
-
         self.names = NameManager(prefix=prefix_names_by)
+        self.bases = BasisBuilder(registry)
 
     def _init_default_scale(
         self,
@@ -769,9 +777,6 @@ class TermBuilder:
         self,
         formula: str,
         prior: lsl.Dist | None = None,
-        name: str = "",
-        xname: str = "",
-        coef_name: str = "",
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
@@ -811,18 +816,23 @@ class TermBuilder:
         - -1 in formula
 
         """
-        if xname == "":
-            xname = self.names.create("x")
-
-        if name == "":
-            name = "lin(" + xname + ")"
 
         basis = self.bases.lin(
-            formula, name=xname, include_intercept=include_intercept, context=context
+            formula,
+            xname="",
+            basis_name="B",
+            include_intercept=include_intercept,
+            context=context,
         )
 
+        coef_name = "$\\beta_{" + f"{basis.name}" + "}$"
+        if basis.x.name:
+            term_name = self.names.create("lin") + "(" + basis.x.name + ")"
+        else:
+            term_name = self.names.create("lin")
+
         term = LinTerm(
-            basis, prior=prior, name=name, inference=inference, coef_name=coef_name
+            basis, prior=prior, name=term_name, inference=inference, coef_name=coef_name
         )
 
         term.model_spec = basis.model_spec
@@ -860,7 +870,7 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            basis_name=self.names.create(name="B"),
+            basis_name="B",
         )
 
         fname = self.names.create(name="ps")
@@ -900,7 +910,7 @@ class TermBuilder:
             k=k,
             m=m,
             knots=knots,
-            basis_name=self.names.create(name="B"),
+            basis_name="B",
         )
 
         fname = self.names.create(name="ti")
@@ -938,7 +948,7 @@ class TermBuilder:
             k=k,
             m=m,
             knots=knots,
-            basis_name=self.names.create(name="B"),
+            basis_name="B",
         )
 
         fname = self.names.create(name="te")
@@ -966,9 +976,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale
             )
 
-        basis = self.bases.ri(
-            cluster=cluster, basis_name=self.names.create(name="RI"), penalty=penalty
-        )
+        basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
         fname = self.names.create(name="ri")
         term = RITerm.f(
@@ -1095,7 +1103,7 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            basis_name=self.names.create(name="B"),
+            basis_name="B",
         )
 
         fname = self.names.create(name="s")
@@ -1152,7 +1160,7 @@ class TermBuilder:
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
-            basis_name=self.names.create(name="B"),
+            basis_name="B",
         )
 
         fname = self.names.create(name="mrf")
@@ -1198,7 +1206,7 @@ class TermBuilder:
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=penalty,
-            basis_name=self.names.create(name="B"),
+            basis_name="B",
         )
 
         fname = self.names.create(name="f")

@@ -50,31 +50,31 @@ class TestFoBasisLinearNumeric:
     def test_name(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + x_float", name="X")
+        basis = bases.lin("y + x_float", xname="X")
 
-        assert basis.name == "B(X)"
+        assert basis.name == "B1(X1)"
 
     def test_removing_intercept_manually_is_forbidden(self, data):
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(ValueError):
-            bases.lin("-1 + y + x_float", name="X")
+            bases.lin("-1 + y + x_float", xname="X")
 
         with pytest.raises(ValueError):
-            bases.lin("0 + y + x_float", name="X")
+            bases.lin("0 + y + x_float", xname="X")
 
     def test_adding_intercept_manually_is_forbidden(self, data):
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(ValueError):
-            bases.lin("1 + y + x_float", name="X")
+            bases.lin("1 + y + x_float", xname="X")
 
     def test_removing_intercept_manually_does_not_interfere_with_names(self, data):
         # edge case with unfortunate variable name
         data["-1"] = data["x_float"]
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + `-1`", name="X")
+        basis = bases.lin("y + `-1`", xname="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -86,7 +86,7 @@ class TestFoBasisLinearNumeric:
     def test_simple_linear(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + x_float", name="X")
+        basis = bases.lin("y + x_float", xname="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -100,15 +100,15 @@ class TestFoBasisLinearNumeric:
 class TestFoBasisOperators:
     def test_string_literal(self, bases) -> None:
         with pytest.raises(FormulaSyntaxError):
-            bases.lin("y + 'string_literal'", name="X")
+            bases.lin("y + 'string_literal'", xname="X")
 
     def test_numeric_literal(self, bases) -> None:
         with pytest.raises(FormulaSyntaxError):
-            bases.lin("y + 5", name="X")
+            bases.lin("y + 5", xname="X")
 
     def test_special_names_with_backticks(self, bases) -> None:
         # name with space
-        basis = bases.lin("y + `with space`", name="X")
+        basis = bases.lin("y + `with space`", xname="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -119,7 +119,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 1], with_space)
 
         # weird name
-        basis = bases.lin("y + `weird:col*name`", name="X")
+        basis = bases.lin("y + `weird:col*name`", xname="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -135,7 +135,7 @@ class TestFoBasisOperators:
 
         basis = bases.lin(
             "y + subtract_five(x_float)",
-            name="X",
+            xname="X",
             context={"subtract_five": subtract_five},
         )
 
@@ -148,7 +148,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 1], x_float)
 
     def test_quoted_python(self, bases) -> None:
-        basis = bases.lin("y + {x_float-5}", name="X")
+        basis = bases.lin("y + {x_float-5}", xname="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -158,7 +158,7 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 1], x_float)
 
     def test_grouped_operation(self, bases) -> None:
-        basis = bases.lin("y + (x_float-1)", name="X")
+        basis = bases.lin("y + (x_float-1)", xname="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -169,10 +169,10 @@ class TestFoBasisOperators:
 
     def test_wildcard(self, bases) -> None:
         with pytest.raises(FormulaParsingError):
-            bases.lin(".", name="X")
+            bases.lin(".", xname="X")
 
     def test_nth_order_interactions(self, bases) -> None:
-        basis = bases.lin("(y + x_float + x_int)**2", name="X")
+        basis = bases.lin("(y + x_float + x_int)**2", xname="X")
 
         assert basis.value.shape == (84, 6)
 
@@ -187,14 +187,14 @@ class TestFoBasisOperators:
         assert jnp.allclose(basis.value[:, 4], y * x_int)
         assert jnp.allclose(basis.value[:, 5], x_float * x_int)
 
-        basis2 = bases.lin("(y + x_float + x_int)^2", name="X")
+        basis2 = bases.lin("(y + x_float + x_int)^2", xname="X")
 
         assert jnp.allclose(basis.value, basis2.value)
 
     def test_simple_linear_with_double_terms(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + y + x_float", name="X")
+        basis = bases.lin("y + y + x_float", xname="X")
 
         assert basis.value.shape == (84, 2)
 
@@ -207,7 +207,7 @@ class TestFoBasisOperators:
     def test_simple_interaction(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + x_float + y:x_float", name="X")
+        basis = bases.lin("y + x_float + y:x_float", xname="X")
 
         assert basis.value.shape == (84, 3)
 
@@ -221,7 +221,7 @@ class TestFoBasisOperators:
     def test_interaction(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y*x_float", name="X")
+        basis = bases.lin("y*x_float", xname="X")
 
         assert basis.value.shape == (84, 3)
 
@@ -235,7 +235,7 @@ class TestFoBasisOperators:
     def test_interaction_with_double_terms(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + x_float + y:x_float + y*x_float", name="X")
+        basis = bases.lin("y + x_float + y:x_float + y*x_float", xname="X")
 
         assert basis.value.shape == (84, 3)
 
@@ -249,29 +249,29 @@ class TestFoBasisOperators:
     def test_nesting(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis1 = bases.lin("y/x_float", name="X")
-        basis2 = bases.lin("y + y:x_float", name="X")
+        basis1 = bases.lin("y/x_float", xname="X")
+        basis2 = bases.lin("y + y:x_float", xname="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
-        basis1 = bases.lin("(y + x_float) / x_int", name="X")
-        basis2 = bases.lin("y + x_float + y:x_float:x_int", name="X")
+        basis1 = bases.lin("(y + x_float) / x_int", xname="X")
+        basis2 = bases.lin("y + x_float + y:x_float:x_int", xname="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
     def test_inverted_nesting(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis1 = bases.lin("y/x_float", name="X")
-        basis2 = bases.lin("x_float %in% y", name="X")
+        basis1 = bases.lin("y/x_float", xname="X")
+        basis2 = bases.lin("x_float %in% y", xname="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
     def test_remove_term(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis1 = bases.lin("y + x_float - x_float", name="X")
-        basis2 = bases.lin("y", name="X")
+        basis1 = bases.lin("y + x_float - x_float", xname="X")
+        basis2 = bases.lin("y", xname="X")
 
         assert jnp.allclose(basis1.value, basis2.value)
 
@@ -279,24 +279,24 @@ class TestFoBasisOperators:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(FormulaSyntaxError):
-            bases.lin("y +", name="X")
+            bases.lin("y +", xname="X")
 
     def test_split_formula(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(FormulaSyntaxError):
-            bases.lin(r"y + x_float \| x_int", name="X")
+            bases.lin(r"y + x_float \| x_int", xname="X")
 
     def test_tilde_in_formula(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         with pytest.raises(ValueError):
-            bases.lin("y ~ x_float", name="X")
+            bases.lin("y ~ x_float", xname="X")
 
 
 class TestFoBasisTransforms:
     def test_identity_transform(self, bases) -> None:
-        basis = bases.lin("y + I(x_float-5)", name="X")
+        basis = bases.lin("y + I(x_float-5)", xname="X")
         assert basis.value.shape == (84, 2)
 
         y = bases.data["y"].to_numpy()
@@ -307,13 +307,13 @@ class TestFoBasisTransforms:
 
     def test_lookup_q(self, bases) -> None:
         with pytest.raises(FactorEvaluationError):
-            bases.lin("y + Q('with space')", name="X")
+            bases.lin("y + Q('with space')", xname="X")
 
     def test_center(self, bases) -> None:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.lin("y + center(x_float)", name="X")
+        basis = bases.lin("y + center(x_float)", xname="X")
         assert basis.value.shape == (89, 2)
 
         y = bases.data["y"].to_numpy()
@@ -328,7 +328,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.lin("y + scale(x_float)", name="X")
+        basis = bases.lin("y + scale(x_float)", xname="X")
         assert basis.value.shape == (89, 2)
 
         y = bases.data["y"].to_numpy()
@@ -344,7 +344,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.lin("y + standardize(x_float)", name="X")
+        basis = bases.lin("y + standardize(x_float)", xname="X")
         assert basis.value.shape == (89, 2)
 
         y = bases.data["y"].to_numpy()
@@ -360,7 +360,7 @@ class TestFoBasisTransforms:
         data = make_test_df(perturb=False)
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = BasisBuilder(registry)
-        basis = bases.lin("y + scale(x_float)", name="X")
+        basis = bases.lin("y + scale(x_float)", xname="X")
         assert basis.value.shape == (89, 2)
 
         x_float = bases.data["x_float"].to_numpy()
@@ -379,25 +379,25 @@ class TestFoBasisTransforms:
         assert squared_error < 0.02
 
     def test_lag(self, bases) -> None:
-        basis = bases.lin("y + lag(y)", name="X")
+        basis = bases.lin("y + lag(y)", xname="X")
         assert basis.value.shape == (83, 2)
 
         assert jnp.allclose(basis.value[:, 0], bases.data["y"].to_numpy()[1:])
         assert jnp.allclose(basis.value[:, 1], bases.data["y"].to_numpy()[:-1])
 
-        basis = bases.lin("y + lag(y, 2)", name="X")
+        basis = bases.lin("y + lag(y, 2)", xname="X")
         assert basis.value.shape == (82, 2)
         assert jnp.allclose(basis.value[:, 0], bases.data["y"].to_numpy()[2:])
         assert jnp.allclose(basis.value[:, 1], bases.data["y"].to_numpy()[:-2])
 
     def test_exp(self, bases) -> None:
-        basis = bases.lin("y + exp(y)", name="X")
+        basis = bases.lin("y + exp(y)", xname="X")
         assert basis.value.shape == (84, 2)
 
         assert jnp.allclose(basis.value[:, 1], np.exp(bases.data["y"].to_numpy()))
 
     def test_poly(self, bases) -> None:
-        basis = bases.lin("poly(y, degree=3, raw=True)", name="X")
+        basis = bases.lin("poly(y, degree=3, raw=True)", xname="X")
         assert basis.value.shape == (84, 3)
 
         y = bases.data["y"].to_numpy()
@@ -406,27 +406,27 @@ class TestFoBasisTransforms:
         assert jnp.allclose(basis.value[:, 2], y**3)
 
     def test_bs(self, bases) -> None:
-        basis = bases.lin("bs(y, df=6, degree=3)", name="X")
+        basis = bases.lin("bs(y, df=6, degree=3)", xname="X")
         assert basis.value.shape == (84, 6)
 
     def test_cs(self, bases) -> None:
-        basis = bases.lin("cs(y, df=6)", name="X")
+        basis = bases.lin("cs(y, df=6)", xname="X")
         assert basis.value.shape == (84, 6)
 
     def test_cc(self, bases) -> None:
-        basis = bases.lin("cc(y, df=6)", name="X")
+        basis = bases.lin("cc(y, df=6)", xname="X")
         assert basis.value.shape == (84, 6)
 
     def test_cr(self, bases) -> None:
-        basis = bases.lin("cc(y, df=6)", name="X")
+        basis = bases.lin("cc(y, df=6)", xname="X")
         assert basis.value.shape == (84, 6)
 
     def test_te(self, bases) -> None:
         with pytest.raises(FactorEvaluationError):
-            bases.lin("te(y, x_float)", name="X")
+            bases.lin("te(y, x_float)", xname="X")
 
     def test_hashed(self, bases) -> None:
-        basis = bases.lin("hashed(y, levels=5)", name="X")
+        basis = bases.lin("hashed(y, levels=5)", xname="X")
         assert basis.value.shape == (84, 5)
 
 
@@ -434,7 +434,7 @@ class TestFoBasisLinearCategorical:
     def test_simple_categorical_unordered(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("C(cat_unordered)", name="X")
+        basis = bases.lin("C(cat_unordered)", xname="X")
 
         mapping = bases.mappings["cat_unordered"].labels_to_integers_map
 
@@ -459,7 +459,7 @@ class TestFoBasisLinearCategorical:
     def test_simple_categorical_ordered(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("C(cat_ordered)", name="X")
+        basis = bases.lin("C(cat_ordered)", xname="X")
 
         mapping = bases.mappings["cat_ordered"].labels_to_integers_map
 
@@ -487,7 +487,7 @@ class TestFoBasisLinearCategorical:
         )
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("C(x)", name="X")
+        basis = bases.lin("C(x)", xname="X")
         assert basis.value.shape == (2, 2)
 
     def test_category_with_unobserved_label_logging(self, caplog) -> None:
@@ -498,7 +498,7 @@ class TestFoBasisLinearCategorical:
         bases = gb.BasisBuilder(registry)
 
         with caplog.at_level(logging.INFO, logger="liesel_gam"):
-            basis = bases.lin("C(x)", name="X")
+            basis = bases.lin("C(x)", xname="X")
 
         assert basis.value.shape == (2, 2)
         assert "categories without observations" in caplog.text
