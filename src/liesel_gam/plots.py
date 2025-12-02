@@ -84,8 +84,8 @@ def plot_1d_smooth(
     term: Term,
     samples: dict[str, Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
-    hdi_prob: float = 0.9,
+    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
+    hdi_prob: float | None = None,
     show_n_samples: int | None = 50,
     seed: int | KeyArray = 1,
     ngrid: int = 150,
@@ -108,8 +108,8 @@ def plot_1d_smooth(
         term=term,
         samples=samples,
         newdata=newdata,
-        ci_quantiles=ci_quantiles,
-        hdi_prob=hdi_prob,
+        ci_quantiles=(0.05, 0.95) if ci_quantiles is None else ci_quantiles,
+        hdi_prob=0.9 if hdi_prob is None else hdi_prob,
         ngrid=ngrid,
     )
 
