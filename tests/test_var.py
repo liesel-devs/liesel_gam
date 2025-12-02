@@ -4,8 +4,19 @@ import liesel.goose as gs
 import liesel.model as lsl
 import pytest
 import scipy
+from jax import Array
+from jax.random import key, uniform
+from liesel.contrib.splines import basis_matrix, equidistant_knots
 
 import liesel_gam as gam
+
+
+def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
+    """
+    Builds an (nparam x nparam) P-spline penalty matrix.
+    """
+    D = jnp.diff(jnp.identity(nparam), random_walk_order, axis=0)
+    return D.T @ D
 
 
 class TestBasis:
@@ -207,6 +218,126 @@ class TestBasis:
 
         with pytest.raises(NotImplementedError):
             gam.Basis.new_calc(x)
+
+
+@pytest.fixture
+def basis() -> gam.Basis:
+    x = uniform(key(1), (15,))
+    knots = equidistant_knots(x, n_param=7, order=3)
+
+    def bfn(x):
+        basis = basis_matrix(x, knots, 3)
+        return basis
+
+    nparam = bfn(x).shape[-1]
+    K = pspline_penalty(nparam)
+
+    return gam.Basis(x, basis_fn=bfn, penalty=K, xname="x")
+
+
+def is_diagonal(M, atol=1e-6):
+    # mask for off-diagonal elements
+    off_diag_mask = ~jnp.eye(M.shape[-1], dtype=bool)
+    off_diag_values = M[off_diag_mask]
+    return jnp.all(jnp.abs(off_diag_values) < atol)
+
+
+class TestBasisReparameterization:
+    def test_diagonalize_penalty(self, basis: gam.Basis):
+        assert not is_diagonal(basis.penalty.value, 1e-5)
+        b1 = basis.value
+        basis.diagonalize_penalty()
+        b2 = basis.value
+        assert is_diagonal(basis.penalty.value, 1e-5)
+        assert not jnp.allclose(b1, b2, atol=1e-3)
+
+    def test_diagonalize_penalty_twice(self, basis: gam.Basis):
+        basis.diagonalize_penalty()
+        b1 = basis.value
+        pen1 = basis.penalty.value
+
+        basis.diagonalize_penalty(1e-5)
+        assert is_diagonal(basis.penalty.value, 1e-5)
+
+        b2 = basis.value
+        pen2 = basis.penalty.value
+        assert jnp.allclose(pen1, pen2, atol=1e-5)
+        assert jnp.allclose(b1, b2, atol=1e-5)
+
+    def test_scale_penalty(self, basis: gam.Basis):
+        b1 = basis.value
+        pen1 = basis.penalty.value
+
+        basis.scale_penalty()
+
+        b2 = basis.value
+        pen2 = basis.penalty.value
+
+        assert jnp.linalg.norm(pen2, ord=jnp.inf) == pytest.approx(1.0)
+        assert not jnp.allclose(pen1, pen2, atol=1e-5)
+        assert jnp.allclose(b1, b2, atol=1e-5)
+
+    def test_scale_penalty_twice(self, basis: gam.Basis):
+        basis.scale_penalty()
+        b1 = basis.value
+        pen1 = basis.penalty.value
+
+        basis.scale_penalty()
+
+        b2 = basis.value
+        pen2 = basis.penalty.value
+        assert jnp.allclose(pen1, pen2, atol=1e-6)
+        assert jnp.allclose(b1, b2, atol=1e-6)
+
+    def test_constrain_sumzero_coef(self, basis: gam.Basis):
+        basis.constrain("sumzero_coef")
+        term = gam.Term.f(basis)
+        coef = jax.random.normal(key(42), term.coef.value.shape)
+        constrained_coef = basis.reparam_matrix @ coef
+        assert constrained_coef.sum() == pytest.approx(0.0, abs=1e-5)
+        assert basis.constraint == "sumzero_coef"
+
+    def test_constrain_sumzero_term(self, basis: gam.Basis):
+        basis.constrain("sumzero_term")
+        term = gam.Term.f(basis)
+        term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
+        term.update()
+        assert term.value.sum() == pytest.approx(0.0, abs=1e-5)
+        assert basis.constraint == "sumzero_term"
+
+    def test_constrain_constant_and_linear(self, basis: gam.Basis):
+        basis.constrain("constant_and_linear")
+        term = gam.Term.f(basis)
+        term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
+        fx = term.update().value
+
+        # sum to zero
+        assert fx.sum() == pytest.approx(0.0, abs=1e-4)
+
+        # no linear trend
+        nobs = jnp.shape(basis.value)[0]
+        j = jnp.ones(shape=nobs)
+        X = jnp.c_[j, basis.x.value]
+        A = jnp.linalg.inv(X.T @ X) @ X.T
+
+        g = A @ fx
+        assert g.shape == (2,)
+        assert jnp.allclose(g, 0.0, atol=1e-4)
+        assert basis.constraint == "constant_and_linear"
+
+    def test_constrain_custom(self, basis: gam.Basis):
+        A = jnp.mean(basis.value, axis=0, keepdims=True)
+        basis.constrain(A)
+        term = gam.Term.f(basis)
+        term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
+        term.update()
+        assert term.value.sum() == pytest.approx(0.0, abs=1e-5)
+        assert basis.constraint == "custom"
+
+    def test_constrain_twice(self, basis: gam.Basis):
+        basis.constrain("sumzero_term")
+        with pytest.raises(ValueError):
+            basis.constrain("sumzero_term")
 
 
 class TestIntercept:
