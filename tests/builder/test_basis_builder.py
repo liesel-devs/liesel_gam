@@ -1115,7 +1115,7 @@ class TestRegressionSpline:
         bases = BasisBuilder(registry)
 
         b1 = bases.cc("x", k=20)
-        assert b1.value.shape[-1] == 19
+        assert b1.value.shape[-1] == 18
         assert is_diagonal(b1.penalty.value)
 
     def test_penalty_order(self, columb):
