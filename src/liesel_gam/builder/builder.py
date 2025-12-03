@@ -326,6 +326,7 @@ class BasisBuilder:
     def ps(
         self,
         x: str,
+        *,
         k: int,
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -1076,6 +1077,7 @@ class TermBuilder:
     def ps(
         self,
         x: str,
+        *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
