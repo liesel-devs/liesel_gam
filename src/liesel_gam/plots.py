@@ -621,6 +621,8 @@ def summarise_lin(
     )
 
     df["x"] = colnames
+    df.drop(["variable", "var_fqn", "var_index"], axis=1, inplace=True)
+    df.insert(0, "x", df.pop("x"))
     return df
 
 
@@ -646,9 +648,10 @@ def plot_forest_lin(
 
     p = (
         p9.ggplot(df)
-        + p9.aes("x", "mean", color="mean")
+        + p9.aes("x", "mean")
         + p9.geom_hline(yintercept=0, color="grey")
-        + p9.geom_pointrange(p9.aes(ymin=ymin, ymax=ymax))
+        + p9.geom_linerange(p9.aes(ymin=ymin, ymax=ymax), color="grey")
+        + p9.geom_point()
         + p9.coord_flip()
         + p9.labs(x="x")
     )
@@ -704,9 +707,10 @@ def plot_forest_clustered(
 
     p = (
         p9.ggplot(df)
-        + p9.aes(cluster, "mean", color="mean")
+        + p9.aes(cluster, "mean")
         + p9.geom_hline(yintercept=0, color="grey")
-        + p9.geom_pointrange(p9.aes(ymin=ymin, ymax=ymax))
+        + p9.geom_linerange(p9.aes(ymin=ymin, ymax=ymax), color="grey")
+        + p9.geom_point()
         + p9.coord_flip()
         + p9.labs(x=xlab)
     )
