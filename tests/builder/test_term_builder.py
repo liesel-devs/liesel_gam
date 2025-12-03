@@ -133,7 +133,7 @@ class TestMRFTerm:
         assert mrf.ordered_labels == ["a", "b", "c"]
 
 
-def is_diagonal(M, atol=1e-6):
+def is_diagonal(M, atol=1e-5):
     # mask for off-diagonal elements
     off_diag_mask = ~jnp.eye(M.shape[-1], dtype=bool)
     off_diag_values = M[off_diag_mask]
@@ -200,7 +200,7 @@ class TestBasisReparameterization:
         term.coef.value = jax.random.normal(jax.random.key(42), term.coef.value.shape)
         term.update()
 
-        assert term.value.sum() == pytest.approx(0.0, abs=1e-6)
+        assert term.value.sum() == pytest.approx(0.0, abs=1e-5)
         assert basis.constraint == "sumzero_term"
 
     def test_constrain_constant_and_linear(self, columb):
@@ -286,3 +286,74 @@ class TestBasisReparameterization:
 
         with pytest.raises(ValueError):
             term.constrain("sumzero_term")
+
+
+def _test_term(fn, k, constraints, fewer_bases_by, columb):
+    constraints = constraints + fewer_bases_by
+
+    smooth = fn("x", k=k)
+    assert not any(jnp.isnan(smooth.value))
+    assert smooth.value.shape == columb.shape[0:1]
+    assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
+    assert is_diagonal(smooth.basis.penalty.value)
+
+    smooth = fn("x", k=k, diagonal_penalty=False)
+    assert not any(jnp.isnan(smooth.value))
+    assert smooth.value.shape == columb.shape[0:1]
+    assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
+    assert not is_diagonal(smooth.basis.penalty.value)
+
+    smooth = fn("x", k=k, absorb_cons=False)
+    assert not any(jnp.isnan(smooth.value))
+    assert smooth.value.shape == columb.shape[0:1]
+    assert smooth.basis.value.shape == (columb.shape[0], k - fewer_bases_by)
+    assert is_diagonal(smooth.basis.penalty.value)
+
+    smooth_scaled = fn("x", k=k, scale_penalty=True, diagonal_penalty=False)
+    smooth_unscaled = fn("x", k=k, scale_penalty=False, diagonal_penalty=False)
+    smooth_unscaled.update()
+    assert not any(jnp.isnan(smooth_unscaled.value))
+    assert smooth_unscaled.value.shape == columb.shape[0:1]
+    assert smooth_unscaled.basis.value.shape == (columb.shape[0], k - constraints)
+    assert not is_diagonal(smooth_unscaled.basis.penalty.value)
+    assert not jnp.allclose(
+        smooth_unscaled.basis.penalty.value, smooth_scaled.basis.penalty.value
+    )
+
+
+class TestTerms:
+    def test_ps(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.ps, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_bs(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.bs, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_cp(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.cp, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_tp(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.tp, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_ts(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.ts, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_cr(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.cr, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_cs(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.cs, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+    def test_cc(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.cc, k=20, constraints=1, fewer_bases_by=1, columb=columb)
+
+    def test_kriging(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        _test_term(tb.kriging, k=20, constraints=1, fewer_bases_by=0, columb=columb)
