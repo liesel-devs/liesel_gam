@@ -621,6 +621,8 @@ def summarise_lin(
     )
 
     df["x"] = colnames
+    df.drop(["variable", "var_fqn", "var_index"], axis=1, inplace=True)
+    df.insert(0, "x", df.pop("x"))
     return df
 
 
