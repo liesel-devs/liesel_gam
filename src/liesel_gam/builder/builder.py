@@ -338,7 +338,102 @@ class BasisBuilder:
     ) -> Basis:
         if knots is not None:
             knots = np.asarray(knots)
-        spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree}, {penalty_order}))"
+        spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=self.names.create(basis_name) + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
+        return basis
+
+    def bs(
+        self,
+        x: str,
+        *,
+        k: int,
+        basis_degree: int = 3,
+        penalty_order: int | Sequence[int] = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        """
+        The integrated square of the m[2]th derivative is used as the penalty. So
+        m=c(3,2) is a conventional cubic spline. Any further elements of m, after the
+        first 2, define the order of derivative in further penalties. If m is supplied
+        as a single number, then it is taken to be m[1] and m[2]=m[1]-1, which is only a
+        conventional smoothing spline in the m=3, cubic spline case.
+        """
+        if knots is not None:
+            knots = np.asarray(knots)
+        if isinstance(penalty_order, int):
+            penalty_order_seq: Sequence[str] = [str(penalty_order)]
+        else:
+            penalty_order_seq = [str(p) for p in penalty_order]
+
+        spec = (
+            f"s({x}, bs='bs', k={k}, "
+            f"m=c({basis_degree}, {', '.join(penalty_order_seq)}))"
+        )
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=self.names.create(basis_name) + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
+        return basis
+
+    def cp(
+        self,
+        x: str,
+        *,
+        k: int,
+        basis_degree: int = 3,
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        if knots is not None:
+            knots = np.asarray(knots)
+        spec = f"s({x}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
         smooth = scon.SmoothCon(
             spec,
@@ -1073,6 +1168,49 @@ class TermBuilder:
 
         return term
 
+    def bs(
+        self,
+        x: str,
+        *,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        basis_degree: int = 3,
+        penalty_order: int | Sequence[int] = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.bs(
+            x=x,
+            k=k,
+            basis_degree=basis_degree,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="bs")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
     # P-spline
     def ps(
         self,
@@ -1107,6 +1245,49 @@ class TermBuilder:
         )
 
         fname = self.names.create(name="ps")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def cp(
+        self,
+        x: str,
+        *,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        basis_degree: int = 3,
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.cp(
+            x=x,
+            k=k,
+            basis_degree=basis_degree,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="cp")
         term = Term.f(
             basis,
             fname=fname,
