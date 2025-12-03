@@ -1065,3 +1065,132 @@ class TestThinPlate:
 
         assert not jnp.allclose(b3.value, b2.value)
         assert not jnp.allclose(b3.penalty.value, b2.penalty.value)
+
+
+class TestRegressionSpline:
+    def test_cr(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cr("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_cs(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cs("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_cc(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cc("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_penalty_order(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        for bs in ["cr", "cs"]:
+            b1 = getattr(bases, bs)(
+                "x",
+                k=20,
+                absorb_cons=False,
+                scale_penalty=False,
+                diagonal_penalty=False,
+            )
+            assert b1.value.shape[-1] == 20
+            assert not is_diagonal(b1.penalty.value)
+
+            b2 = getattr(bases, bs)(
+                "x",
+                k=20,
+                penalty_order=2,
+                absorb_cons=False,
+                scale_penalty=False,
+                diagonal_penalty=False,
+            )
+            assert b2.value.shape[-1] == 20
+            assert not is_diagonal(b2.penalty.value)
+
+            assert jnp.allclose(b1.value, b2.value)
+            assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+            b3 = getattr(bases, bs)(
+                "x",
+                k=20,
+                penalty_order=3,
+                absorb_cons=False,
+                scale_penalty=False,
+                diagonal_penalty=False,
+            )
+            assert b3.value.shape[-1] == 20
+            assert not is_diagonal(b3.penalty.value)
+
+            assert jnp.allclose(b1.value, b3.value)
+            assert jnp.allclose(b1.penalty.value, b3.penalty.value)
+
+            with pytest.raises(ValueError):
+                getattr(bases, bs)("x", k=20, penalty_order=-1)
+
+            with pytest.raises(ValueError):
+                getattr(bases, bs)("x", k=20, penalty_order=0)
+
+            with pytest.raises(TypeError):
+                getattr(bases, bs)("x", k=20, penalty_order=2.0)
+
+    def test_penalty_order_cc(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cc(
+            "x",
+            k=20,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert b1.value.shape[-1] == 19
+        assert not is_diagonal(b1.penalty.value)
+
+        b2 = bases.cc(
+            "x",
+            k=20,
+            penalty_order=2,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert b2.value.shape[-1] == 19
+        assert not is_diagonal(b2.penalty.value)
+
+        assert jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+        b3 = bases.cc(
+            "x",
+            k=20,
+            penalty_order=3,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert b3.value.shape[-1] == 19
+        assert not is_diagonal(b3.penalty.value)
+
+        assert jnp.allclose(b1.value, b3.value)
+        assert jnp.allclose(b1.penalty.value, b3.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.cc("x", k=20, penalty_order=-1)
+
+        with pytest.raises(ValueError):
+            bases.cc("x", k=20, penalty_order=0)
+
+        with pytest.raises(TypeError):
+            bases.cc("x", k=20, penalty_order=2.0)

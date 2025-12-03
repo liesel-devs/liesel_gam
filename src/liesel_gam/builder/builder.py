@@ -124,6 +124,15 @@ def validate_formula(formula: str) -> None:
             )
 
 
+def validate_penalty_order(penalty_order: int):
+    if not isinstance(penalty_order, int):
+        raise TypeError(
+            f"'penalty_order' must be int or None, got {type(penalty_order)}"
+        )
+    if not penalty_order > 0:
+        raise ValueError(f"'penalty_order' must be >0, got {penalty_order}")
+
+
 class BasisBuilder:
     def __init__(
         self, registry: PandasRegistry, names: NameManager | None = None
@@ -336,9 +345,137 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
+
         spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=self.names.create(basis_name) + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
+        return basis
+
+    def cr(
+        self,
+        x: str,
+        *,
+        k: int,
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        validate_penalty_order(penalty_order)
+        if knots is not None:
+            knots = np.asarray(knots)
+        spec = f"s({x}, bs='cr', k={k}, m=c({penalty_order}))"
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=self.names.create(basis_name) + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
+        return basis
+
+    def cs(
+        self,
+        x: str,
+        *,
+        k: int,
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        """
+        s(x,bs="cs") specifies a penalized cubic regression spline which has had its
+        penalty modified to shrink towards zero at high enough smoothing parameters (as
+        the smoothing parameter goes to infinity a normal cubic spline tends to a
+        straight line.)
+        """
+        validate_penalty_order(penalty_order)
+        if knots is not None:
+            knots = np.asarray(knots)
+        spec = f"s({x}, bs='cs', k={k}, m=c({penalty_order}))"
+        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        smooth = scon.SmoothCon(
+            spec,
+            data={x: x_array},
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+        )
+
+        x_var = self.registry.get_numeric_obs(x)
+        basis = Basis(
+            x_var,
+            name=self.names.create(basis_name) + "(" + x + ")",
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            penalty=smooth.penalty,
+            use_callback=True,
+            cache_basis=True,
+        )
+
+        if absorb_cons:
+            basis._constraint = "absorbed_via_mgcv"
+        return basis
+
+    def cc(
+        self,
+        x: str,
+        *,
+        k: int,
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        validate_penalty_order(penalty_order)
+        if knots is not None:
+            knots = np.asarray(knots)
+        spec = f"s({x}, bs='cc', k={k}, m=c({penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
         smooth = scon.SmoothCon(
             spec,
@@ -386,8 +523,10 @@ class BasisBuilder:
         if knots is not None:
             knots = np.asarray(knots)
         if isinstance(penalty_order, int):
+            validate_penalty_order(penalty_order)
             penalty_order_seq: Sequence[str] = [str(penalty_order)]
         else:
+            [validate_penalty_order(p) for p in penalty_order]
             penalty_order_seq = [str(p) for p in penalty_order]
 
         spec = (
@@ -431,6 +570,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
@@ -551,12 +691,7 @@ class BasisBuilder:
 
             m_args.append(str(penalty_order_default))
         else:
-            if not isinstance(penalty_order, int):
-                raise TypeError(
-                    f"'penalty_order' must be int or None, got {type(penalty_order)}"
-                )
-            if not penalty_order > 0:
-                raise ValueError(f"'penalty_order' must be >0, got {penalty_order}")
+            validate_penalty_order(penalty_order)
             m_args.append(str(penalty_order))
 
         if remove_null_space_completely:
@@ -601,12 +736,7 @@ class BasisBuilder:
         if not penalty_order:
             m_args.append(str(ceil((d + 1) / 2)))
         else:
-            if not isinstance(penalty_order, int):
-                raise TypeError(
-                    f"'penalty_order' must be int or None, got {type(penalty_order)}"
-                )
-            if not penalty_order > 0:
-                raise ValueError(f"'penalty_order' must be >0, got {penalty_order}")
+            validate_penalty_order(penalty_order)
             m_args.append(str(penalty_order))
 
         m_str = "c(" + ", ".join(m_args) + ")"
@@ -1166,6 +1296,129 @@ class TermBuilder:
         term.mappings = basis.mappings
         term.column_names = basis.column_names
 
+        return term
+
+    def cr(
+        self,
+        x: str,
+        *,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.cr(
+            x=x,
+            k=k,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="cr")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def cs(
+        self,
+        x: str,
+        *,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.cs(
+            x=x,
+            k=k,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="cs")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def cc(
+        self,
+        x: str,
+        *,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.cc(
+            x=x,
+            k=k,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="cc")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
         return term
 
     def bs(
