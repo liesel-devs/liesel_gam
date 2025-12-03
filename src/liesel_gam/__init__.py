@@ -34,7 +34,7 @@ from .var import Term as Term
 
 try:
     to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
-    r("rm(___test___)")
+    r("rm('___test___')")
 except ImportError as e:
     msg1 = "Testing communication between R and Python failed. "
     msg2 = "Probably, you need to install the R package 'arrow' using "
