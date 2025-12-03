@@ -431,6 +431,32 @@ class TestFoBasisTransforms:
 
 
 class TestFoBasisLinearCategorical:
+    def test_include_object_variable_without_c(self, data) -> None:
+        """Behaves exactly like the default using C(name)."""
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("cat_unordered", xname="X")
+
+        mapping = bases.mappings["cat_unordered"].labels_to_integers_map
+
+        ncat = len(mapping)
+        assert basis.value.shape == (84, ncat - 1)
+
+        pd_codes = pd.Categorical(bases.data["cat_unordered"]).codes
+        bases_codes = bases.mappings["cat_unordered"].labels_to_integers(
+            bases.data["cat_unordered"]
+        )
+
+        assert np.all(pd_codes == bases_codes)
+
+        bool_cat2 = np.asarray(basis.value[:, 0] == 1)
+        cat2 = bases.data[bool_cat2]["cat_unordered"].to_numpy()
+        assert np.all(cat2 == "B")
+
+        bool_cat3 = np.asarray(basis.value[:, 1] == 1)
+        cat3 = bases.data[bool_cat3]["cat_unordered"].to_numpy()
+        assert np.all(cat3 == "C")
+
     def test_simple_categorical_unordered(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
