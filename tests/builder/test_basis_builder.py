@@ -771,3 +771,297 @@ class TestMRFBasis:
         assert jnp.allclose(K2[:, 2], jnp.array([-1.0, -1.0, 2.0]))
 
         assert not jnp.allclose(K, K2)
+
+
+def is_diagonal(M, atol=1e-5):
+    # mask for off-diagonal elements
+    off_diag_mask = ~jnp.eye(M.shape[-1], dtype=bool)
+    off_diag_values = M[off_diag_mask]
+    return jnp.all(jnp.abs(off_diag_values) < atol)
+
+
+class TestS:
+    def test_tp_univariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.s("x", bs="tp", k=8)
+        assert b1.value.shape[-1] == 7
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.s("x", bs="tp", k=8, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 7
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases.s("x", bs="tp", k=8, diagonal_penalty=False, scale_penalty=False)
+        assert b3.value.shape[-1] == 7
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases.s("x", bs="tp", k=8, absorb_cons=False)
+        assert b4.value.shape[-1] == 8
+        assert is_diagonal(b4.penalty.value)
+
+    def test_tp_bivariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.s("x", "y", bs="tp", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.s("x", "y", bs="tp", k=20, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 19
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases.s(
+            "x", "y", bs="tp", k=20, diagonal_penalty=False, scale_penalty=False
+        )
+        assert b3.value.shape[-1] == 19
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases.s("x", "y", bs="tp", k=20, absorb_cons=False)
+        assert b4.value.shape[-1] == 20
+        assert is_diagonal(b4.penalty.value)
+
+    def test_gp_univariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.s("x", bs="gp", k=8)
+        assert b1.value.shape[-1] == 7
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.s("x", bs="gp", k=8, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 7
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases.s("x", bs="gp", k=8, diagonal_penalty=False, scale_penalty=False)
+        assert b3.value.shape[-1] == 7
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases.s("x", bs="gp", k=8, absorb_cons=False)
+        assert b4.value.shape[-1] == 8
+        assert is_diagonal(b4.penalty.value)
+
+    def test_gp_bivariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.s("x", "y", bs="gp", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.s("x", "y", bs="gp", k=20, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 19
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases.s(
+            "x", "y", bs="gp", k=20, diagonal_penalty=False, scale_penalty=False
+        )
+        assert b3.value.shape[-1] == 19
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases.s("x", "y", bs="gp", k=20, absorb_cons=False)
+        assert b4.value.shape[-1] == 20
+        assert is_diagonal(b4.penalty.value)
+
+
+class TestKriging:
+    def test_default(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_kernel_names(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        names = [
+            "power_exponential",
+            "matern1.5",
+            "matern2.5",
+            "matern3.5",
+        ]
+        b = bases.kriging("x", "y", k=20, kernel_name="spherical")
+        assert b.value.shape[-1] == 19
+        assert is_diagonal(b.penalty.value)
+
+        for kname in names:
+            b2 = bases.kriging("x", "y", k=20, kernel_name=kname)
+            assert b2.value.shape[-1] == 19
+            assert is_diagonal(b2.penalty.value)
+            assert not jnp.allclose(b.value, b2.value)
+            assert jnp.allclose(b.penalty.value, b2.penalty.value)
+
+    def test_linear_trend(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.kriging("x", "y", k=20, linear_trend=False)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert not jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_range(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.kriging("x", "y", k=20, range=3.0)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_power_exponential_power(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20, kernel_name="power_exponential")
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.kriging(
+                "x",
+                "y",
+                k=20,
+                kernel_name="power_exponential",
+                power_exponential_power=3.0,
+            )
+
+        b2 = bases.kriging(
+            "x",
+            "y",
+            k=20,
+            kernel_name="power_exponential",
+            power_exponential_power=2.0,
+        )
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_knots(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        knots = jnp.linspace(columb["x"].min(), columb["x"].max(), 20)
+
+        b1 = bases.kriging("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.kriging("x", k=20, knots=knots)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+
+class TestThinPlate:
+    def test_default(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.tp("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_penalty_order(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.tp("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.tp("x", "y", k=20, penalty_order=2)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+        b3 = bases.tp("x", "y", k=20, penalty_order=3)
+        assert b3.value.shape[-1] == 19
+        assert is_diagonal(b3.penalty.value)
+
+        assert not jnp.allclose(b1.value, b3.value)
+        assert not jnp.allclose(b1.penalty.value, b3.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.tp("x", "y", k=20, penalty_order=-1)
+
+        with pytest.raises(ValueError):
+            bases.tp("x", "y", k=20, penalty_order=0)
+
+        with pytest.raises(TypeError):
+            bases.tp("x", "y", k=20, penalty_order=2.0)
+
+    def test_remove_null_space(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.tp("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.tp("x", "y", k=20, remove_null_space_completely=True)
+        assert b2.value.shape[-1] == 17
+        assert is_diagonal(b2.penalty.value)
+
+    def test_knots(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        knots = jnp.linspace(columb["x"].min(), columb["x"].max(), 20)
+
+        b1 = bases.tp("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.tp("x", k=20, knots=knots)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_ts(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.ts("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.ts("x", "y", k=20)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        b3 = bases.tp("x", "y", k=20)
+        assert b3.value.shape[-1] == 19
+        assert is_diagonal(b3.penalty.value)
+
+        assert not jnp.allclose(b3.value, b2.value)
+        assert not jnp.allclose(b3.penalty.value, b2.penalty.value)

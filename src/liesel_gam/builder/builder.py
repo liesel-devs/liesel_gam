@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from math import ceil
 from typing import Any, Literal, get_args
 
 import formulaic as fo
@@ -34,7 +35,7 @@ InferenceTypes = Any
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
 
-BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp"]
+BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp", "gp"]
 
 
 logger = logging.getLogger(__name__)
@@ -325,7 +326,7 @@ class BasisBuilder:
     def ps(
         self,
         x: str,
-        k: int = 20,
+        k: int,
         basis_degree: int = 3,
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -363,9 +364,9 @@ class BasisBuilder:
 
     def s(
         self,
-        x: str,
-        k: int = -1,
-        bs: BasisTypes = "ps",
+        *x: str,
+        k: int,
+        bs: BasisTypes,
         m: str = "NA",
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -377,28 +378,220 @@ class BasisBuilder:
             knots = np.asarray(knots)
         _validate_bs(bs)
         bs_arg = f"'{bs}'"
-        spec = f"s({x}, bs={bs_arg}, k={k}, m={m})"
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        spec = f"s({','.join(x)}, bs={bs_arg}, k={k}, m={m})"
+
+        obs_vars = {}
+        for xname in x:
+            obs_vars[xname] = self.registry.get_numeric_obs(xname)
+        obs_values = {k: np.asarray(v.value) for k, v in obs_vars.items()}
+
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data=pd.DataFrame.from_dict(obs_values),
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
+        xname = ",".join([v.name for v in obs_vars.values()])
+
+        if len(obs_vars) > 1:
+            xvar: lsl.Var | lsl.TransientCalc = (
+                lsl.TransientCalc(  # for memory-efficiency
+                    lambda *args: jnp.vstack(args).T,
+                    *list(obs_vars.values()),
+                    _name=self.names.create(xname),
+                )
+            )
+        else:
+            xvar = obs_vars[xname]
+
+        def basis_fn(x):
+            df = pd.DataFrame(x, columns=list(obs_vars))
+            return jnp.asarray(smooth.predict(df))
+
         basis = Basis(
-            x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            xvar,
+            name=self.names.create(basis_name) + "(" + xname + ")",
+            basis_fn=basis_fn,
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
         )
         if absorb_cons:
             basis._constraint = "absorbed_via_mgcv"
+        return basis
+
+    def tp(
+        self,
+        *x: str,
+        k: int,
+        penalty_order: int | None = None,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+        remove_null_space_completely: bool = False,
+    ) -> Basis:
+        """
+        For penalty_order:
+        m = penalty_order
+        Quote from MGCV docs
+        The default is to set m (the order of derivative in the thin plate spline
+        penalty) to the smallest value satisfying 2m > d+1 where d is the number of
+        covariates of the term: this yields ‘visually smooth’ functions.
+        In any case 2m>d must be satisfied.
+        """
+        d = len(x)
+        m_args = []
+        if penalty_order is None:
+            penalty_order_default = ceil((d + 1) / 2)
+            i = 0
+            while not 2 * penalty_order_default > (d + 1) and i < 20:
+                penalty_order_default += 1
+                i += 1
+
+            m_args.append(str(penalty_order_default))
+        else:
+            if not isinstance(penalty_order, int):
+                raise TypeError(
+                    f"'penalty_order' must be int or None, got {type(penalty_order)}"
+                )
+            if not penalty_order > 0:
+                raise ValueError(f"'penalty_order' must be >0, got {penalty_order}")
+            m_args.append(str(penalty_order))
+
+        if remove_null_space_completely:
+            m_args.append("0")
+        m_str = "c(" + ", ".join(m_args) + ")"
+
+        basis = self.s(
+            *x,
+            k=k,
+            bs="tp",
+            m=m_str,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name=basis_name,
+        )
+        return basis
+
+    def ts(
+        self,
+        *x: str,
+        k: int,
+        penalty_order: int | None = None,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        """
+        For penalty_order:
+        m = penalty_order
+        Quote from MGCV docs
+        The default is to set m (the order of derivative in the thin plate spline
+        penalty) to the smallest value satisfying 2m > d+1 where d is the number of
+        covariates of the term: this yields ‘visually smooth’ functions.
+        In any case 2m>d must be satisfied.
+        """
+        d = len(x)
+        m_args = []
+        if not penalty_order:
+            m_args.append(str(ceil((d + 1) / 2)))
+        else:
+            if not isinstance(penalty_order, int):
+                raise TypeError(
+                    f"'penalty_order' must be int or None, got {type(penalty_order)}"
+                )
+            if not penalty_order > 0:
+                raise ValueError(f"'penalty_order' must be >0, got {penalty_order}")
+            m_args.append(str(penalty_order))
+
+        m_str = "c(" + ", ".join(m_args) + ")"
+
+        basis = self.s(
+            *x,
+            k=k,
+            bs="ts",
+            m=m_str,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name=basis_name,
+        )
+        return basis
+
+    def kriging(
+        self,
+        *x: str,
+        k: int,
+        kernel_name: Literal[
+            "spherical",
+            "power_exponential",
+            "matern1.5",
+            "matern2.5",
+            "matern3.5",
+        ] = "matern1.5",
+        linear_trend: bool = True,
+        range: float | None = None,
+        power_exponential_power: float = 1.0,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        basis_name: str = "B",
+    ) -> Basis:
+        """
+
+        - If range=None, the range parameter will be estimated as in Kammann and \
+            Wand (2003)
+        """
+        m_kernel_dict = {
+            "spherical": 1,
+            "power_exponential": 2,
+            "matern1.5": 3,
+            "matern2.5": 4,
+            "matern3.5": 5,
+        }
+        m_linear = 1.0 if linear_trend else -1.0
+
+        m_args = []
+        m_kernel = str(int(m_linear * m_kernel_dict[kernel_name]))
+        m_args.append(m_kernel)
+        if range:
+            m_range = str(range)
+            m_args.append(m_range)
+        if power_exponential_power:
+            if not range:
+                m_args.append(str(-1.0))
+            if not 0.0 < power_exponential_power <= 2.0:
+                raise ValueError(
+                    "'power_exponential_power' must be in (0, 2.0], "
+                    f"got {power_exponential_power}"
+                )
+            m_args.append(str(power_exponential_power))
+
+        m_str = "c(" + ", ".join(m_args) + ")"
+
+        basis = self.s(
+            *x,
+            k=k,
+            bs="gp",
+            m=m_str,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name=basis_name,
+        )
+
         return basis
 
     def lin(
@@ -557,6 +750,11 @@ class BasisBuilder:
           way, so the returned label order is None.
 
         """
+
+        if not isinstance(k, int):
+            raise TypeError(f"'k' must be int, got {type(k)}.")
+        if k < -1:
+            raise ValueError(f"'k' cannot be smaller than -1, got {k=}.")
 
         if polys is None and nb is None and penalty is None:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
@@ -878,7 +1076,7 @@ class TermBuilder:
     def ps(
         self,
         x: str,
-        k: int = 20,
+        k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         basis_degree: int = 3,
@@ -1080,9 +1278,9 @@ class TermBuilder:
     # general smooth with MGCV bases
     def s(
         self,
-        x: str,
-        k: int = -1,
-        bs: BasisTypes = "ps",
+        *x: str,
+        k: int,
+        bs: BasisTypes,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         m: str = "NA",
@@ -1128,7 +1326,7 @@ class TermBuilder:
             )
 
         basis = self.bases.s(
-            x=x,
+            *x,
             k=k,
             bs=bs,
             m=m,
@@ -1139,7 +1337,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="s")
+        fname = self.names.create(name=bs)
         term = Term.f(
             basis,
             fname=fname,
@@ -1243,6 +1441,140 @@ class TermBuilder:
         )
 
         fname = self.names.create(name="f")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def kriging(
+        self,
+        *x: str,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        kernel_name: Literal[
+            "spherical",
+            "power_exponential",
+            "matern1.5",
+            "matern2.5",
+            "matern3.5",
+        ] = "matern1.5",
+        linear_trend: bool = True,
+        range: float | None = None,
+        power_exponential_power: float = 1.0,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.kriging(
+            *x,
+            k=k,
+            kernel_name=kernel_name,
+            linear_trend=linear_trend,
+            range=range,
+            power_exponential_power=power_exponential_power,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="kriging")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def tp(
+        self,
+        *x: str,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty_order: int | None = None,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+        remove_null_space_completely: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.tp(
+            *x,
+            k=k,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+            remove_null_space_completely=remove_null_space_completely,
+        )
+
+        fname = self.names.create(name="tp")
+        term = Term.f(
+            basis,
+            fname=fname,
+            scale=scale,
+            inference=inference,
+            coef_name=None,
+            noncentered=noncentered,
+        )
+        return term
+
+    def ts(
+        self,
+        *x: str,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        penalty_order: int | None = None,
+        knots: ArrayLike | None = None,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale
+            )
+
+        basis = self.bases.ts(
+            *x,
+            k=k,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=absorb_cons,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
+            basis_name="B",
+        )
+
+        fname = self.names.create(name="ts")
         term = Term.f(
             basis,
             fname=fname,

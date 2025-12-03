@@ -144,7 +144,7 @@ class TestBasisReparameterization:
     def test_diagonalize_penalty(self, columb: pd.DataFrame):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ps(
-            "x", absorb_cons=False, diagonal_penalty=False, scale_penalty=False
+            "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
         p1 = term.basis.penalty.value
         assert not is_diagonal(p1, 1e-3)
@@ -161,7 +161,7 @@ class TestBasisReparameterization:
     def test_scale_penalty(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ps(
-            "x", absorb_cons=False, diagonal_penalty=False, scale_penalty=False
+            "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
         p1 = term.basis.penalty.value
         p1b = term.coef.dist_node["penalty"].value
@@ -177,7 +177,7 @@ class TestBasisReparameterization:
     def test_constrain_sumzero_coef(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ps(
-            "x", absorb_cons=False, diagonal_penalty=False, scale_penalty=False
+            "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
         basis = term.basis
         term.constrain("sumzero_coef")
@@ -192,7 +192,7 @@ class TestBasisReparameterization:
     def test_constrain_sumzero_term(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ps(
-            "x", absorb_cons=False, diagonal_penalty=False, scale_penalty=False
+            "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
         basis = term.basis
         term.constrain("sumzero_term")
@@ -206,7 +206,7 @@ class TestBasisReparameterization:
     def test_constrain_constant_and_linear(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ps(
-            "x", absorb_cons=False, diagonal_penalty=False, scale_penalty=False
+            "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
         basis = term.basis
         term.constrain("constant_and_linear")
@@ -230,7 +230,7 @@ class TestBasisReparameterization:
     def test_constrain_custom(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ps(
-            "x", absorb_cons=False, diagonal_penalty=False, scale_penalty=False
+            "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
         basis = term.basis
 
@@ -244,11 +244,20 @@ class TestBasisReparameterization:
     def test_constrain_after_absorption(self, columb, columb_polys):
         tb = gb.TermBuilder.from_df(columb)
 
-        term = tb.ps("x", absorb_cons=True, diagonal_penalty=False, scale_penalty=False)
+        term = tb.ps(
+            "x", k=20, absorb_cons=True, diagonal_penalty=False, scale_penalty=False
+        )
         with pytest.raises(ValueError):
             term.constrain("sumzero_term")
 
-        term = tb.s("x", absorb_cons=True, diagonal_penalty=False, scale_penalty=False)
+        term = tb.s(
+            "x",
+            k=10,
+            bs="tp",
+            absorb_cons=True,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
         with pytest.raises(ValueError):
             term.constrain("sumzero_term")
 

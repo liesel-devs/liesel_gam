@@ -40,7 +40,7 @@ def tb(columb) -> gam.TermBuilder:
 
 class Test1dSmoothSummary:
     def test_runs(self, tb: gam.TermBuilder) -> None:
-        term = tb.s("x")
+        term = tb.s("x", k=10, bs="ps")
         _ = lsl.Model([term])
 
         samples = term.coef.sample((4, 20), jkey(0))
@@ -48,7 +48,7 @@ class Test1dSmoothSummary:
         assert su.shape[0] == 150
 
     def test_newdata(self, tb: gam.TermBuilder) -> None:
-        term = tb.s("x")
+        term = tb.s("x", k=10, bs="ps")
         _ = lsl.Model([term])
 
         newdata = {term.basis.x.name: jnp.linspace(-1, 2, 13)}
@@ -63,7 +63,7 @@ class Test1dSmoothSummary:
         assert su.shape[0] == 13
 
     def test_hdi_prob(self, tb: gam.TermBuilder) -> None:
-        term = tb.s("x")
+        term = tb.s("x", k=10, bs="ps")
         _ = lsl.Model([term])
 
         samples = term.coef.sample((4, 20), jkey(0))
@@ -75,7 +75,7 @@ class Test1dSmoothSummary:
         assert sum(su1["hdi_high"] < su2["hdi_high"]) > 100
 
     def test_quantiles(self, tb: gam.TermBuilder) -> None:
-        term = tb.s("x")
+        term = tb.s("x", k=10, bs="ps")
         _ = lsl.Model([term])
 
         samples = term.coef.sample((4, 20), jkey(0))
@@ -89,7 +89,7 @@ class Test1dSmoothSummary:
         assert "q_0.9" in su2.columns
 
     def test_ngrid(self, tb: gam.TermBuilder) -> None:
-        term = tb.s("x")
+        term = tb.s("x", k=10, bs="ps")
         _ = lsl.Model([term])
 
         samples = term.coef.sample((4, 20), jkey(0))
@@ -103,7 +103,7 @@ class Test1dSmoothClusteredSummary:
         df["district"] = pd.Categorical(df["district"].to_list())
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -115,7 +115,7 @@ class Test1dSmoothClusteredSummary:
         df = columb.iloc[:10, :].copy()
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -128,7 +128,7 @@ class Test1dSmoothClusteredSummary:
         df = columb.iloc[:10, :].copy()
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -147,7 +147,7 @@ class Test1dSmoothClusteredSummary:
         df = columb.iloc[:10, :].copy()
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -167,7 +167,7 @@ class Test1dSmoothClusteredSummary:
         df = columb.iloc[:10, :].copy()
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -186,7 +186,7 @@ class Test1dSmoothClusteredSummary:
         df = columb.iloc[:10, :].copy()
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -208,7 +208,7 @@ class Test1dSmoothClusteredSummary:
         df["district"] = pd.Categorical(df["district"].to_list())
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -223,7 +223,7 @@ class Test1dSmoothClusteredSummary:
         df["district"] = pd.Categorical(df["district"].to_list())
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -250,7 +250,7 @@ class Test1dSmoothClusteredSummary:
         df["district"] = pd.Categorical(df["district"].to_list())
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
         samples = model.sample((4, 20), jkey(0))
@@ -273,7 +273,7 @@ class Test1dSmoothClusteredSummary:
         df["district"] = pd.Categorical(df["district"].to_list())
 
         tb = gam.TermBuilder.from_df(df)
-        smooth = tb.s("x")
+        smooth = tb.s("x", k=10, bs="ps")
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
         samples = model.sample((4, 20), jkey(0))
