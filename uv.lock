@@ -697,7 +697,7 @@ dev = [
 requires-dist = [
     { name = "formulaic", specifier = ">=1.2.1" },
     { name = "liesel", specifier = ">=0.4.1" },
-    { name = "smoothcon", specifier = ">=0.0.7" },
+    { name = "smoothcon", specifier = ">=0.0.9" },
 ]
 
 [package.metadata.requires-dev]
@@ -1473,7 +1473,7 @@ wheels = [
 
 [[package]]
 name = "smoothcon"
-version = "0.0.7"
+version = "0.0.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1481,9 +1481,9 @@ dependencies = [
     { name = "polars" },
     { name = "ryp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/86/83/7d8dd7802de37bb73154d842b9b8aa8ba2db343a747e176216324453e20b/smoothcon-0.0.7.tar.gz", hash = "sha256:c0f4eb1b3e925e5a1ea480abd71d7ece0fec4fdfa9e3ddd946934d41146be2fd", size = 72866, upload-time = "2025-12-03T20:14:57.947Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/e8/0d380bafccbcd441e661caeb93d552321f04b609c4fb8846fa51015bc50f/smoothcon-0.0.9.tar.gz", hash = "sha256:bd2fd4f62d077555f32ff383cb0cdf7c741036ab87c136a9facad9022737b4ca", size = 72916, upload-time = "2025-12-03T21:06:44.342Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/b1/2c41603ca409080e748cafd4acbbbdfb6062bee181267d8f5061058d8765/smoothcon-0.0.7-py3-none-any.whl", hash = "sha256:3ae3e8f931b4c825bda0ac4cabd44849692e91e936b44f5c5761e6ae6f151726", size = 6649, upload-time = "2025-12-03T20:14:56.948Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/84/d5cf1ae6a23e7a8b7053f52b042efd22df97eab71de7bc933c928d4701dc/smoothcon-0.0.9-py3-none-any.whl", hash = "sha256:52e8f32eba97b4006be3c5df2ed730ea121ec5819d8ef49a36492c17c26c807c", size = 6697, upload-time = "2025-12-03T21:06:42.876Z" },
 ]
 
 [[package]]

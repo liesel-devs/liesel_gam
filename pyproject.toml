@@ -7,7 +7,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "formulaic>=1.2.1",
     "liesel>=0.4.1",
-    "smoothcon>=0.0.8",
+    "smoothcon>=0.0.9",
 ]
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]
