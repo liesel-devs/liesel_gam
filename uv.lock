@@ -697,7 +697,7 @@ dev = [
 requires-dist = [
     { name = "formulaic", specifier = ">=1.2.1" },
     { name = "liesel", specifier = ">=0.4.1" },
-    { name = "smoothcon", git = "https://github.com/liesel-devs/smoothcon.git" },
+    { name = "smoothcon", specifier = ">=0.0.7" },
 ]
 
 [package.metadata.requires-dev]
@@ -1473,13 +1473,17 @@ wheels = [
 
 [[package]]
 name = "smoothcon"
-version = "0.0.6"
-source = { git = "https://github.com/liesel-devs/smoothcon.git#797736ca7e932f6fa390d972a267d432be5d0d1a" }
+version = "0.0.7"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "polars" },
     { name = "ryp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/83/7d8dd7802de37bb73154d842b9b8aa8ba2db343a747e176216324453e20b/smoothcon-0.0.7.tar.gz", hash = "sha256:c0f4eb1b3e925e5a1ea480abd71d7ece0fec4fdfa9e3ddd946934d41146be2fd", size = 72866, upload-time = "2025-12-03T20:14:57.947Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/b1/2c41603ca409080e748cafd4acbbbdfb6062bee181267d8f5061058d8765/smoothcon-0.0.7-py3-none-any.whl", hash = "sha256:3ae3e8f931b4c825bda0ac4cabd44849692e91e936b44f5c5761e6ae6f151726", size = 6649, upload-time = "2025-12-03T20:14:56.948Z" },
 ]
 
 [[package]]
