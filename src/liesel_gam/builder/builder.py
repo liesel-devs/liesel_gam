@@ -1079,10 +1079,25 @@ class NameManager:
 
 
 class TermBuilder:
-    def __init__(self, registry: PandasRegistry, prefix_names_by: str = "") -> None:
+    def __init__(
+        self,
+        registry: PandasRegistry,
+        prefix_names_by: str = "",
+        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+    ) -> None:
         self.registry = registry
         self.names = NameManager(prefix=prefix_names_by)
         self.bases = BasisBuilder(registry, names=self.names)
+        self.default_inference = default_inference
+
+    def _get_inference(
+        self,
+        inference: InferenceTypes | None | Literal["default"] = "default",
+    ) -> InferenceTypes | None:
+        if inference == "default":
+            return self.default_inference
+        else:
+            return inference
 
     def _init_default_scale(
         self,
@@ -1123,7 +1138,7 @@ class TermBuilder:
         self,
         formula: str,
         prior: lsl.Dist | None = None,
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinTerm:
@@ -1179,7 +1194,11 @@ class TermBuilder:
         coef_name = self.names.create_beta_name(term_name)
 
         term = LinTerm(
-            basis, prior=prior, name=term_name, inference=inference, coef_name=coef_name
+            basis,
+            prior=prior,
+            name=term_name,
+            inference=self._get_inference(inference),
+            coef_name=coef_name,
         )
 
         term.model_spec = basis.model_spec
@@ -1194,7 +1213,7 @@ class TermBuilder:
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -1226,7 +1245,7 @@ class TermBuilder:
             penalty=basis.penalty,
             scale=scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1239,7 +1258,7 @@ class TermBuilder:
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -1271,7 +1290,7 @@ class TermBuilder:
             penalty=basis.penalty,
             scale=scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1284,7 +1303,7 @@ class TermBuilder:
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -1316,7 +1335,7 @@ class TermBuilder:
             penalty=basis.penalty,
             scale=scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1329,7 +1348,7 @@ class TermBuilder:
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int | Sequence[int] = 2,
         knots: ArrayLike | None = None,
@@ -1363,7 +1382,7 @@ class TermBuilder:
             penalty=basis.penalty,
             scale=scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1377,7 +1396,7 @@ class TermBuilder:
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1411,7 +1430,7 @@ class TermBuilder:
             penalty=basis.penalty,
             scale=scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1424,7 +1443,7 @@ class TermBuilder:
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1458,7 +1477,7 @@ class TermBuilder:
             penalty=basis.penalty,
             scale=scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1470,7 +1489,7 @@ class TermBuilder:
         self,
         cluster: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> RITerm:
@@ -1488,7 +1507,7 @@ class TermBuilder:
             basis=basis,
             penalty=basis.penalty,
             coef_name=coef_name,
-            inference=inference,
+            inference=self._get_inference(inference),
             scale=scale,
             name=fname,
         )
@@ -1508,14 +1527,14 @@ class TermBuilder:
         x: str | Term | LinTerm,
         cluster: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> lsl.Var:
         ri = self.ri(
             cluster=cluster,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             penalty=penalty,
             noncentered=noncentered,
         )
@@ -1560,7 +1579,7 @@ class TermBuilder:
         k: int,
         bs: BasisTypes,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         m: str = "NA",
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -1624,7 +1643,7 @@ class TermBuilder:
             name=fname,
             coef_name=coef_name,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
         )
         if noncentered:
             term.reparam_noncentered()
@@ -1635,7 +1654,7 @@ class TermBuilder:
         self,
         x: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         k: int = -1,
         polys: dict[str, ArrayLike] | None = None,
         nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
@@ -1682,7 +1701,7 @@ class TermBuilder:
             penalty=basis.penalty,
             name=fname,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1704,7 +1723,7 @@ class TermBuilder:
         *x: str,
         basis_fn: Callable[[Array], Array],
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: ArrayLike | None = None,
@@ -1731,7 +1750,7 @@ class TermBuilder:
             penalty=basis.penalty,
             name=fname,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1743,7 +1762,7 @@ class TermBuilder:
         *x: str,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         kernel_name: Literal[
             "spherical",
             "power_exponential",
@@ -1785,7 +1804,7 @@ class TermBuilder:
             penalty=basis.penalty,
             name=fname,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1797,7 +1816,7 @@ class TermBuilder:
         *x: str,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int | None = None,
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -1830,7 +1849,7 @@ class TermBuilder:
             penalty=basis.penalty,
             name=fname,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1842,7 +1861,7 @@ class TermBuilder:
         *x: str,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int | None = None,
         knots: ArrayLike | None = None,
         absorb_cons: bool = True,
@@ -1873,7 +1892,7 @@ class TermBuilder:
             penalty=basis.penalty,
             name=fname,
             scale=scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if noncentered:
@@ -1884,7 +1903,7 @@ class TermBuilder:
         self,
         *marginals: Term,
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         include_main_effects: bool = False,
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
         _fname: str = "ta",
@@ -1911,7 +1930,7 @@ class TermBuilder:
             *marginals,
             common_scale=common_scale,
             name=fname,
-            inference=inference,
+            inference=self._get_inference(inference),
             coef_name=coef_name,
             include_main_effects=include_main_effects,
         )
@@ -1929,13 +1948,13 @@ class TermBuilder:
         self,
         *marginals: Term,
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
     ) -> TPTerm:
         return self.ta(
             *marginals,
             common_scale=common_scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             scales_inference=scales_inference,
             include_main_effects=False,
             _fname="tx",
@@ -1945,13 +1964,13 @@ class TermBuilder:
         self,
         *marginals: Term,
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
     ) -> TPTerm:
         return self.ta(
             *marginals,
             common_scale=common_scale,
-            inference=inference,
+            inference=self._get_inference(inference),
             scales_inference=scales_inference,
             include_main_effects=True,
             _fname="tf",
