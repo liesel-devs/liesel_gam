@@ -1397,7 +1397,7 @@ class ATerm(UserVar):
         self,
         bases: Sequence[Basis],
         penalties: Sequence[Array],
-        scales: Sequence[ScaleIG | lsl.Var | Array | VarIGPrior] | float,
+        scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
@@ -1405,15 +1405,11 @@ class ATerm(UserVar):
         _update_on_init: bool = True,
     ):
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
-        scales_: list[ScaleIG | lsl.Var | Array | VarIGPrior | float] = []
-        if isinstance(scales, float):
-            for _ in bases:
-                scales_.append(scales)
-        else:
-            for scale in scales:
-                scale_ = _init_scale_ig(scale)
-                assert scale_ is not None
-                scales_.append(scale_)
+        scales_: list[ScaleIG | lsl.Var] = []
+        for scale in scales:
+            scale_ = _init_scale_ig(scale)
+            assert scale_ is not None
+            scales_.append(scale_)
 
         _rowwise_kron = jax.vmap(jnp.kron)
 
@@ -1453,7 +1449,7 @@ class ATerm(UserVar):
     def f(
         cls,
         *bases: Basis,
-        scales: Sequence[ScaleIG | lsl.Var | Array | VarIGPrior] | float,
+        scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
         fname: str = "f",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
