@@ -739,10 +739,30 @@ class IndexingTerm(Term):
             self.coef.update()
             self.update()
 
+    @property
+    def full_basis(self) -> Basis:
+        nclusters = jnp.unique(self.basis.value).size
+        full_basis = Basis(
+            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=nclusters, name=""
+        )
+        return full_basis
+
 
 class RITerm(IndexingTerm):
     _labels = None
     _mapping = None
+
+    @property
+    def full_basis(self) -> Basis:
+        try:
+            nclusters = len(self.mapping.labels_to_integers_map)
+        except ValueError:
+            nclusters = jnp.unique(self.basis.value).size
+
+        full_basis = Basis(
+            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=nclusters, name=""
+        )
+        return full_basis
 
     @property
     def labels(self) -> list[str]:
@@ -1384,112 +1404,6 @@ class LinTerm(BasisDot):
         self._column_names = list(value)
 
 
-class ATerm(UserVar):
-    """
-    General anisotropic structured additive tensor product term.
-
-    A structured additive term represents a smooth or structured effect in a
-    generalized additive model. The term wraps a design/basis matrix together
-    with a prior/penalty and a set of coefficients. The object exposes the
-    coefficient variable and evaluates the term as the matrix-vector product
-    of the basis and the coefficients.
-
-    The term evaluates to ``basis @ coef``.
-    """
-
-    def __init__(
-        self,
-        bases: Sequence[Basis],
-        penalties: Sequence[Array],
-        scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
-        name: str = "",
-        inference: InferenceTypes = None,
-        coef_name: str | None = None,
-        basis_name: str = "",
-        _update_on_init: bool = True,
-    ):
-        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
-        scales_: list[ScaleIG | lsl.Var] = []
-        for scale in scales:
-            scale_ = _init_scale_ig(scale)
-            assert scale_ is not None
-            scales_.append(scale_)
-
-        _rowwise_kron = jax.vmap(jnp.kron)
-
-        def rowwise_kron(*bases):
-            return reduce(_rowwise_kron, bases)
-
-        basis = lsl.Var.new_calc(rowwise_kron, *bases, name=basis_name)
-
-        nbases = jnp.shape(basis.value)[-1]
-
-        mvnds = MultivariateNormalStructured.get_locscale_constructor(
-            penalties=penalties
-        )
-
-        scales_var = lsl.Calc(lambda *x: jnp.stack(x, axis=-1), *scales_)
-
-        prior = lsl.Dist(distribution=mvnds, loc=jnp.zeros(nbases), scales=scales_var)
-
-        self.nbases = nbases
-        self.basis = basis
-        self.coef = lsl.Var.new_param(
-            jnp.zeros(nbases), prior, inference=inference, name=coef_name
-        )
-        self.scale = scales_var
-        calc = lsl.Calc(
-            lambda basis, coef: jnp.dot(basis, coef),
-            basis=basis,
-            coef=self.coef,
-            _update_on_init=_update_on_init,
-        )
-
-        super().__init__(calc, name=name)
-        if _update_on_init:
-            self.coef.update()
-
-    @classmethod
-    def f(
-        cls,
-        *bases: Basis,
-        scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
-        fname: str = "f",
-        inference: InferenceTypes = None,
-        coef_name: str | None = None,
-        basis_name: str = "B",
-    ) -> Self:
-        xnames = []
-        for b in bases:
-            if not b.x.name:
-                raise ValueError(f"basis.x of {b} with name {b.name} must be named.")
-            xnames.append(b.x.name)
-
-            if not b.name:
-                raise ValueError("All bases must be named.")
-
-        xnames_str = ",".join(xnames)
-
-        basis_name = basis_name + "(" + xnames_str + ")"
-
-        name = f"{fname}({xnames_str})"
-        coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
-
-        penalties = [b.penalty.value for b in bases]
-
-        term = cls(
-            bases=bases,
-            penalties=penalties,
-            scales=scales,
-            inference=inference,
-            coef_name=coef_name,
-            name=name,
-            basis_name=basis_name,
-        )
-
-        return term
-
-
 class TPTerm(UserVar):
     """
     General anisotropic structured additive tensor product term.
@@ -1508,7 +1422,7 @@ class TPTerm(UserVar):
 
     def __init__(
         self,
-        *marginals: Term,
+        *marginals: Term | IndexingTerm | RITerm | MRFTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         name: str = "",
         inference: InferenceTypes = None,
@@ -1519,7 +1433,7 @@ class TPTerm(UserVar):
     ):
         self._validate_marginals(marginals)
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
-        bases = [t.basis for t in marginals]
+        bases = self._get_bases(marginals)
         penalties = [b.penalty.value for b in bases]
 
         if common_scale is None:
@@ -1587,6 +1501,18 @@ class TPTerm(UserVar):
             self.coef.update()
 
     @staticmethod
+    def _get_bases(
+        marginals: Sequence[Term | RITerm | MRFTerm | IndexingTerm],
+    ) -> list[Basis]:
+        bases = []
+        for t in marginals:
+            if hasattr(t, "full_basis"):
+                bases.append(t.full_basis)
+            else:
+                bases.append(t.basis)
+        return bases
+
+    @staticmethod
     def _validate_marginals(marginals: Sequence[Term]):
         for t in marginals:
             if t.scale is None:
@@ -1596,10 +1522,12 @@ class TPTerm(UserVar):
                 t.coef.dist_node["penalty"]  # type: ignore
             except Exception as e:
                 raise ValueError(f"Invalid penalty for {t}") from e
-            if t.basis.value.ndim != 2:
+
+        for i, b in enumerate(TPTerm._get_bases(marginals)):
+            if b.value.ndim != 2:
                 raise ValueError(
                     "Expected 2-dimensional basis, but the basis "
-                    f"of {t} has shape {t.basis.value.shape}"
+                    f"of {marginals[i]} has shape {b.value.shape}"
                 )
 
     @property
@@ -1654,7 +1582,7 @@ class TPTerm(UserVar):
         inference: InferenceTypes = None,
         _update_on_init: bool = True,
     ) -> Self:
-        xnames = list(cls._input_obs([t.basis for t in marginals]))
+        xnames = list(cls._input_obs(cls._get_bases(marginals)))
         name = fname + "(" + ",".join(xnames) + ")"
 
         coef_name = "$\\beta_{" + name + "}$"

@@ -396,3 +396,26 @@ class TestGetParameter:
         b = lsl.Var.new_calc(jnp.exp, a)
         c = _get_parameter(b)
         assert c is a
+
+
+class TestRITerm:
+    def test_full_basis(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        ri = tb.ri("district")
+        assert ri.full_basis.value.shape == (49, 49)
+
+
+class TestTPTerm:
+    def test_ps_ri(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        ri = tb.ri("district")
+        ps = tb.ps("x", k=10)
+        ta = tb.tx(ri, ps)
+        assert ta.basis.value.shape == (49, 9 * 49)
+
+    def test_ps_mrf(self, columb, columb_polys):
+        tb = gb.TermBuilder.from_df(columb)
+        mrf = tb.mrf("district", polys=columb_polys)
+        ps = tb.ps("x", k=10)
+        ta = tb.tx(mrf, ps)
+        assert ta.basis.value.shape == (49, 9 * 48)
