@@ -1160,8 +1160,7 @@ class TermBuilder:
 
         .. warning:: If you use bs, cr, cs, or cc, be aware that these will not
             lead to terms that include a penalty. In most cases, you probably want
-            to use :meth:`~.TermBuilder.s`, :meth:`~.TermBuilder.ps`, and so on
-            instead.
+            to use :meth:`~.TermBuilder.ps` or other penalized smooths instead.
 
         Not supported:
 
@@ -1418,6 +1417,58 @@ class TermBuilder:
         )
 
         fname = self.names.fname("ps", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
+            scale=scale,
+            name=fname,
+            inference=self._get_inference(inference),
+            coef_name=coef_name,
+        )
+        if noncentered:
+            term.reparam_noncentered()
+        return term
+
+    def np(
+        self,
+        x: str,
+        *,
+        k: int,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None | Literal["default"] = "default",
+        basis_degree: int = 3,
+        penalty_order: int = 2,
+        knots: ArrayLike | None = None,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
+        noncentered: bool = False,
+    ) -> Term:
+        basis = self.bases.ps(
+            x=x,
+            k=k,
+            basis_degree=basis_degree,
+            penalty_order=penalty_order,
+            knots=knots,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+            basis_name="B",
+        )
+
+        basis.constrain("constant_and_linear")
+        if scale_penalty:
+            basis.scale_penalty()
+        if diagonal_penalty:
+            basis.diagonalize_penalty()
+
+        fname = self.names.fname("np", basis)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(

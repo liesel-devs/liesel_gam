@@ -517,6 +517,7 @@ as dedicated methods, including:
 - Univariate smooths
   - `.ps` Penalized B-splines, i.e. P-splines
   - `.cp` Cyclic P-splines
+  - `.np` Exclusively nonlinear P-splines (without any linear trend)
   - `.bs` B-splines
   - `.cr` Cubic regression splines
   - `.cs` Cubic regression splines with shrinkage
