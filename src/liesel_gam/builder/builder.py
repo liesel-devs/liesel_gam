@@ -363,7 +363,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -824,7 +824,7 @@ class BasisBuilder:
         self,
         formula: str,
         xname: str = "",
-        basis_name: str = "B",
+        basis_name: str = "X",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinBasis:
@@ -871,7 +871,7 @@ class BasisBuilder:
         xvar = lsl.TransientCalc(  # for memory-efficiency
             lambda *args: jnp.vstack(args).T,
             *list(variables.values()),
-            _name=self.names.create(xname) if xname else xname,
+            _name=self.names.create_lazily(xname) if xname else xname,
         )
 
         def basis_fn(x):
@@ -890,9 +890,9 @@ class BasisBuilder:
             return jnp.asarray(basis, dtype=float)
 
         if xname:
-            bname = self.names.create(basis_name) + "(" + xvar.name + ")"
+            bname = self.names.create_lazily(basis_name + "(" + xvar.name + ")")
         else:
-            bname = self.names.create(basis_name)
+            bname = self.names.create_lazily(basis_name)
 
         basis = LinBasis(
             xvar,
@@ -1170,7 +1170,7 @@ class NameManager:
     prefix: str = ""
     created_names: dict[str, int] = field(default_factory=dict)
 
-    def create(self, name: str) -> str:
+    def create(self, name: str, apply_prefix: bool = True) -> str:
         """
         Appends a counter to the given name for uniqueness.
         There is an individual counter for each name.
@@ -1178,32 +1178,68 @@ class NameManager:
         If a prefix was passed to the builder on init, the prefix is applied to the
         name.
         """
-        name = self.prefix + name
+        if apply_prefix:
+            name = self.prefix + name
 
-        n_names_with_this_prefix = self.created_names.get(name, 0)
-        i = n_names_with_this_prefix + 1
+        i = self.created_names.get(name, 0)
 
         name_indexed = name + str(i)
 
-        self.created_names[name] = i
+        self.created_names[name] = i + 1
 
         return name_indexed
+
+    def create_lazily(self, name: str, apply_prefix: bool = True) -> str:
+        if apply_prefix:
+            name = self.prefix + name
+
+        i = self.created_names.get(name, 0)
+
+        if i > 0:
+            name_indexed = name + str(i)
+        else:
+            name_indexed = name
+
+        self.created_names[name] = i + 1
+
+        return name_indexed
+
+    def fname(self, f: str, basis: Basis) -> str:
+        return self.create_lazily(f"{f}({basis.x.name})")
+
+    def create_param_name(self, term_name: str, param_name: str) -> str:
+        if term_name:
+            param_name = f"${param_name}" + "_{" + f"{term_name}" + "}$"
+            return self.create_lazily(param_name, apply_prefix=False)
+        else:
+            param_name = f"${param_name}$"
+            return self.create_lazily(param_name, apply_prefix=True)
+
+    def create_beta_name(self, term_name: str) -> str:
+        return self.create_param_name(term_name=term_name, param_name="\\beta")
+
+    def create_tau_name(self, term_name: str) -> str:
+        return self.create_param_name(term_name=term_name, param_name="\\tau")
+
+    def create_tau2_name(self, term_name: str) -> str:
+        return self.create_param_name(term_name=term_name, param_name="\\tau^2")
 
 
 class TermBuilder:
     def __init__(self, registry: PandasRegistry, prefix_names_by: str = "") -> None:
         self.registry = registry
         self.names = NameManager(prefix=prefix_names_by)
-        self.bases = BasisBuilder(registry)
+        self.bases = BasisBuilder(registry, names=self.names)
 
     def _init_default_scale(
         self,
         concentration: float | Array,
         scale: float | Array,
         value: float | Array = 1.0,
+        term_name: str = "",
     ) -> ScaleIG:
-        scale_name = self.names.create("$\\tau$")
-        variance_name = self.names.create("$\\tau^2$")
+        scale_name = self.names.create_tau_name(term_name)
+        variance_name = self.names.create_tau2_name(term_name)
         scale_var = ScaleIG(
             value=value,
             concentration=concentration,
@@ -1277,16 +1313,17 @@ class TermBuilder:
         basis = self.bases.lin(
             formula,
             xname="",
-            basis_name="B",
+            basis_name="X",
             include_intercept=include_intercept,
             context=context,
         )
 
-        coef_name = "$\\beta_{" + f"{basis.name}" + "}$"
         if basis.x.name:
-            term_name = self.names.create("lin") + "(" + basis.x.name + ")"
+            term_name = self.names.create_lazily("lin" + "(" + basis.x.name + ")")
         else:
-            term_name = self.names.create("lin")
+            term_name = self.names.create_lazily("lin" + "(" + basis.name + ")")
+
+        coef_name = self.names.create_beta_name(term_name)
 
         term = LinTerm(
             basis, prior=prior, name=term_name, inference=inference, coef_name=coef_name
@@ -1480,11 +1517,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.ps(
             x=x,
             k=k,
@@ -1497,15 +1529,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="ps")
-        term = Term.f(
-            basis,
-            fname=fname,
+        fname = self.names.fname("ps", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
             scale=scale,
+            name=fname,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def cp(

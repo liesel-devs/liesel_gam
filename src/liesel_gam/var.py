@@ -768,12 +768,12 @@ class BasisDot(UserVar):
         prior: lsl.Dist | None = None,
         name: str = "",
         inference: InferenceTypes = None,
-        coef_name: str = "",
+        coef_name: str | None = None,
         _update_on_init: bool = True,
     ):
         self.basis = basis
         self.nbases = self.basis.nbases
-        coef_name = _append_name(name, "_coef")
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
         self.coef = lsl.Var.new_param(
             jnp.zeros(self.basis.nbases), prior, inference=inference, name=coef_name
