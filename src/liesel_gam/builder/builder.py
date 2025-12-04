@@ -1889,6 +1889,10 @@ class TermBuilder:
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
         _fname: str = "ta",
     ) -> TPTerm:
+        """
+        Will remove any default gibbs samplers and replace them with scales_inferece
+        on a transformed version.
+        """
         inputs = ",".join(list(TPTerm._input_obs([t.basis for t in marginals])))
         fname = self.names.create_lazily(f"{_fname}(" + inputs + ")")
         coef_name = self.names.create_beta_name(fname)

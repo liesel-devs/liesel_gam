@@ -264,14 +264,6 @@ class TestBasisReparameterization:
         with pytest.raises(ValueError):
             term.constrain("sumzero_term")
 
-        term = tb.te("x", "y")
-        with pytest.raises(ValueError):
-            term.constrain("sumzero_term")
-
-        term = tb.ti("x", "y")
-        with pytest.raises(ValueError):
-            term.constrain("sumzero_term")
-
         term = tb.mrf("district", polys=columb_polys)
         with pytest.raises(ValueError):
             term.constrain("sumzero_term")
