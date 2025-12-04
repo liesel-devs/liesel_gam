@@ -13,6 +13,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.13"]
+        notebook-dir: ["basic", "composite", "lin", "multivariate", "univariate"]
 
     steps:
       - name: Check out repository
@@ -52,4 +53,4 @@ jobs:
 
 
       - name: Run pytest
-        run: uv run pytest notebooks --nbval-lax --nbval-current-env
+        run: uv run pytest notebooks/${{ matrix.notebook-dir }} --nbval-lax --nbval-current-env
