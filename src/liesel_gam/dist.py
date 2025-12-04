@@ -610,6 +610,8 @@ class MultivariateNormalStructured(tfd.Distribution):
 
     @cached_property
     def _sqrt_cov(self) -> Array:
+        # TODO this is inefficient, because it does not make use of the sparsity
+        # at the moment, at least it makes sampling possible. But we should update it.
         prec = self._op.materialize_precision()
         eigenvalues, evecs = jnp.linalg.eigh(prec)
         sqrt_eval = jnp.sqrt(1 / eigenvalues)
