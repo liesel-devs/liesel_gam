@@ -9,7 +9,6 @@ from tensorflow_probability.substrates.jax import tf2jax as tf
 
 import liesel_gam as gam
 from liesel_gam import dist as gd
-from liesel_gam.dist import _compute_masks
 
 
 class TestMultivariateNormalSingular:
