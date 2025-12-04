@@ -26,9 +26,12 @@ tb = gam.TermBuilder.from_df(data)             # data: a pandas DataFrame
 
 loc = gam.AdditivePredictor(name="loc")
 
-loc += tb.lin("x1 + x2*x3 + C(x4, contr.sum)") # Linear term
-loc += tb.s("x5", bs="ps", k=20)               # P-spline
-loc += tb.te("x6", "x7", k=(6, 8))             # Tensor product
+loc += tb.lin("x1 + x2*x3 + C(x4, contr.sum)")  # Linear term
+loc += tb.ps("x5", k=20)                        # P-spline
+loc += tb.tf(                                   # Full tensor product
+    tb.ps("x6", k=8),  # first marginal
+    tb.ps("x7", k=8)   # second marginal
+)
 
 y = lsl.Var.new_obs(
     data["y"].to_numpy(),
@@ -164,7 +167,7 @@ scale_pred += tb.lin("x1") # using a simpler model for the scale predictor here
 Next, we add a smooth term.
 
 ```python
-loc_pred += tb.s("x5", bs="ps", k=20)
+loc_pred += tb.ps("x5", k=20)
 ```
 
 ### MCMC algorithm setup
@@ -216,7 +219,7 @@ Example usage:
 
 ```python
 gam.plot_1d_smooth(
-    term=model.vars["s1(x)"],  # the Term object, here retrieved from the model
+    term=model.vars["ps(x)"],  # the Term object, here retrieved from the model
     samples=samples            # the MCMC samples drawn via liesel.goose
 )
 ```
@@ -297,18 +300,12 @@ object in the `inference` argument:
 ```python
 import liesel.goose as gs
 
-loc_pred += tb.s(
-    "x5",
-    bs="ps",
-    k=20,
-    inference=gs.MCMCSpec(gs.NUTSKernel)
-)
+loc_pred += tb.ps("x5", k=20, inference=gs.MCMCSpec(gs.NUTSKernel))
 ```
 
 This way, you can also use Liesel to set up general custom Metropolis-Hastings
 kernels ([gs.MHKernel](https://docs.liesel-project.org/en/latest/generated/liesel.goose.MHKernel.html))
-or Gibbs kernels
-([gs.GibbsKernel](https://docs.liesel-project.org/en/latest/generated/liesel.goose.GibbsKernel.html)).
+or Gibbs kernels ([gs.GibbsKernel](https://docs.liesel-project.org/en/latest/generated/liesel.goose.GibbsKernel.html)).
 
 ### Use different priors and MCMC kernels for variance parameters
 
@@ -341,12 +338,7 @@ scale_x5.transform(
     name="log_scale_x5"
 )
 
-loc_pred += tb.s(
-    "x5",
-    bs="ps",
-    k=20,
-    scale=scale_x5
-)
+loc_pred += tb.ps("x5", k=20, scale=scale_x5)
 ```
 
 ### Compose terms to build new models
@@ -357,13 +349,13 @@ to build a varying coefficient model, you can do the following:
 
 ```python
 x1_var = tb.registry.get_obs("x1")
-x2_smooth = tb.s("x2")
+x2_smooth = tb.ps("x2", k=10)
 
 term = lsl.Var.new_calc(
     lambda x, by: x * by,
     x=x1_var,
     by=x2_smooth,
-    name="x1*s(x2)",
+    name="x1*ps(x2)",
 )
 
 loc_pred += term
@@ -458,7 +450,7 @@ For many terms in `liesel_gam` you can enable a noncentered parameterization by
 setting a corresponding argument to `True`:
 
 ```python
-loc_pred += tb.s("x5", bs="ps", k=20, noncentered=True)
+loc_pred += tb.ps("x5", k=20, noncentered=True)
 ```
 
 ### Extract a basis directly
@@ -471,9 +463,8 @@ term initialization methods on the `TermBuilder`.
 ```python
 tb = gam.TermBuilder.from_df(data)
 
-s_basis = tb.bases.s(
+s_basis = tb.bases.ps(
     "x5",
-    bs="ps",
     k=20,
 
     # whether sum-to-zero constraints should be applied by reparameterizing the basis
@@ -521,22 +512,27 @@ here. Check out the documentation for more.
 `gam.TermBuilder` offers a range of smooth terms
 as dedicated methods, including:
 
-- `.ps`: Dedicated method for univariate P-splines
-- `.s`: General method for setting up univariate smooths with an interface heavily inspired by `mgcv`. Allows for different bases specified in the argument `bs`:
-  - `"tp"` (thin plate splines),
-  - `"ts"` (thin plate splines with a null space penalty)
-  - `"cr"` (cubic regression splines)
-  - `"cs"` (cubic regression splines with shrinkage)
-  - `"cc"` (cyclic cubic regression splines)
-  - `"bs"` (B-splines)
-  - `"ps"` (penalized B-splines, i.e. P-splines)
-  - `"cp"` (cyclic P-splines)
-- `.te` and `.ti`: General methods for setting up bivariate tensor product smooths,
-   similar to MGCV. Quote: "te produces a full tensor product smooth, while ti produces a tensor product interaction, appropriate when the main effects (and any lower interactions) are also present."
-- `.mrf`: Markov random fields (discrete-region spatial effects)
-- `.ri`: Random intercept terms.
-- `.rs`: Random slope terms.
-- `.vc`: Varying coefficient terms
+- Linear effects
+  - `.lin` Linear and categorical effects, conveniently defined via formulas.
+- Univariate smooths
+  - `.ps` Penalized B-splines, i.e. P-splines
+  - `.cp` Cyclic P-splines
+  - `.bs` B-splines
+  - `.cr` Cubic regression splines
+  - `.cs` Cubic regression splines with shrinkage
+  - `.cc` Cyclic cubic regression splines
+- Uni- or multivariate smooths
+  - `.tp` Thin plate splines
+  - `.ts` Thin plate splines with a null space penalty
+  - `.kriging` Gaussian process kriging
+- Multivariate smooths. These smooths are initialized directly from marginal smooths.
+  - `.tf` Full tensor products, including main effects. Similar to `mgcv::te`, but with a different API.
+  - `.tx` Tensor product interaction without main effects, appropriate when the main effects are also added to the model. Similar to `mgcv::ti`, but with a different API.
+- Discrete and further composite terms
+  - `.mrf`: Markov random fields (discrete-region spatial effects)
+  - `.ri`: Random intercept terms.
+  - `.rs`: Random slope terms.
+  - `.vc`: Varying coefficient terms
 
 ## Acknowledgements
 
