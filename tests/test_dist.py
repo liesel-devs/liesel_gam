@@ -9,6 +9,7 @@ from tensorflow_probability.substrates.jax import tf2jax as tf
 
 import liesel_gam as gam
 from liesel_gam import dist as gd
+from liesel_gam.dist import _compute_masks
 
 
 class TestMultivariateNormalSingular:
@@ -190,13 +191,14 @@ class TestStructuredPenaltyOperator:
         evals = op._penalties_eigvalues
 
         ldet1 = op.log_pdet()
+        masks = op._masks
 
         def ldet(scales):
             op = gd.StructuredPenaltyOperator(
                 scales=scales,
                 penalties=pens,
                 penalties_eigvalues=evals,
-                masks=None,
+                masks=masks,
             )
             return op.log_pdet()
 
