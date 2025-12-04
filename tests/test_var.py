@@ -7,8 +7,17 @@ import scipy
 from jax import Array
 from jax.random import key, uniform
 from liesel.contrib.splines import basis_matrix, equidistant_knots
+from ryp import r, to_py
 
 import liesel_gam as gam
+
+
+@pytest.fixture(scope="module")
+def columb():
+    r("library(mgcv)")
+    r("data(columb)")
+    columb = to_py("columb", format="pandas")
+    return columb
 
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
@@ -514,3 +523,59 @@ class TestSmoothTerm:
         assert not jnp.isnan(proposal[tau2.name])
         assert proposal[tau2.name] > 0.0
         assert proposal[tau2.name].size == 1
+
+
+class TestTPTerm:
+    def test_init(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+
+        ta = gam.TPTerm.f(s1, s2)
+
+        assert ta.coef.value.shape == (9 * 9,)
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+
+    def test_tp(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.tp("x", "area", k=10)
+        s2 = tb.ps("y", k=10)
+
+        ta = gam.TPTerm.f(s1, s2)
+
+        assert ta.coef.value.shape == (9 * 9,)
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+    def test_basis(self, columb):
+        x = lsl.Var.new_obs(jnp.expand_dims(columb["x"].to_numpy(), -1), name="x")
+        exp_x = lsl.Var.new_calc(jnp.exp, x, name="exp(x)")
+        Bx = gam.Basis(exp_x, penalty=jnp.eye(1))
+        By = gam.Basis(
+            jnp.expand_dims(columb["y"].to_numpy(), -1), xname="y", penalty=jnp.eye(1)
+        )
+
+        t1 = gam.Term.f(Bx, scale=1.0)
+        t2 = gam.Term.f(By, scale=1.0)
+
+        ta = gam.TPTerm(t1, t2)
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+
+    def test_invalid_scale(self, columb):
+        x = lsl.Var.new_obs(jnp.expand_dims(columb["x"].to_numpy(), -1), name="x")
+        exp_x = lsl.Var.new_calc(jnp.exp, x, name="exp(x)")
+        Bx = gam.Basis(exp_x, penalty=jnp.eye(1))
+        By = gam.Basis(
+            jnp.expand_dims(columb["y"].to_numpy(), -1), xname="y", penalty=jnp.eye(1)
+        )
+
+        t1 = gam.Term.f(Bx, scale=1.0)
+        t2 = gam.Term.f(By)
+
+        with pytest.raises(ValueError):
+            gam.TPTerm(t1, t2)

@@ -1484,3 +1484,184 @@ class ATerm(UserVar):
         )
 
         return term
+
+
+class TPTerm(UserVar):
+    """
+    General anisotropic structured additive tensor product term.
+
+    A bivariate tensor product can have:
+
+    1. One scale parameter (when using ita)
+    2. Two scale parameters (when using include_main_effects)
+    3. Three scale parameters (when using common_scale and include_main_effects,
+        or adding main effects separately)
+    4. Four scale parameters (when adding main effects separately)
+
+    Option four is the most flexible one, since it also allows you to use different
+    basis dimensions for the main effects and the interaction.
+    """
+
+    def __init__(
+        self,
+        *marginals: Term,
+        common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        basis_name: str | None = None,
+        include_main_effects: bool = False,
+        _update_on_init: bool = True,
+    ):
+        self._validate_marginals(marginals)
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
+        bases = [t.basis for t in marginals]
+        penalties = [b.penalty.value for b in bases]
+
+        if common_scale is None:
+            scales = [t.scale for t in marginals]
+        else:
+            scales = [_init_scale_ig(common_scale) for _ in bases]
+
+        _rowwise_kron = jax.vmap(jnp.kron)
+
+        def rowwise_kron(*bases):
+            return reduce(_rowwise_kron, bases)
+
+        if basis_name is None:
+            basis_name = "B(" + ",".join(list(self._input_obs(bases))) + ")"
+
+        assert basis_name is not None
+        basis = lsl.Var.new_calc(rowwise_kron, *bases, name=basis_name)
+        nbases = jnp.shape(basis.value)[-1]
+
+        mvnds = MultivariateNormalStructured.get_locscale_constructor(
+            penalties=penalties
+        )
+
+        scales_var = lsl.Calc(lambda *x: jnp.stack(x, axis=-1), *scales)
+
+        prior = lsl.Dist(distribution=mvnds, loc=jnp.zeros(nbases), scales=scales_var)
+
+        coef = lsl.Var.new_param(
+            jnp.zeros(nbases),
+            distribution=prior,
+            inference=inference,
+            name=coef_name,
+        )
+
+        self.basis = basis
+        self.marginals = marginals
+        self.bases = bases
+        self.penalties = penalties
+        self.scales = scales
+
+        self.nbases = nbases
+        self.basis = basis
+        self.coef = coef
+        self.scale = scales_var
+        self.include_main_effects = include_main_effects
+
+        if include_main_effects:
+            calc = lsl.Calc(
+                lambda *marginals, basis, coef: sum(marginals) + jnp.dot(basis, coef),
+                basis=basis,
+                coef=self.coef,
+                _update_on_init=_update_on_init,
+            )
+        else:
+            calc = lsl.Calc(
+                lambda basis, coef: jnp.dot(basis, coef),
+                basis=basis,
+                coef=self.coef,
+                _update_on_init=_update_on_init,
+            )
+
+        super().__init__(calc, name=name)
+        if _update_on_init:
+            self.coef.update()
+
+    @staticmethod
+    def _validate_marginals(marginals: Sequence[Term]):
+        for t in marginals:
+            if t.scale is None:
+                raise ValueError(f"Invalid scale for {t}: {t.scale}")
+            try:
+                # ignoring type here because potential errors are handlded
+                t.coef.dist_node["penalty"]  # type: ignore
+            except Exception as e:
+                raise ValueError(f"Invalid penalty for {t}") from e
+            if t.basis.value.ndim != 2:
+                raise ValueError(
+                    "Expected 2-dimensional basis, but the basis "
+                    f"of {t} has shape {t.basis.value.shape}"
+                )
+
+    @property
+    def input_obs(self) -> dict[str, lsl.Var]:
+        return self._input_obs(self.bases)
+
+    @staticmethod
+    def _input_obs(bases: Sequence[Basis]) -> dict[str, lsl.Var]:
+        # this method includes assumptions about how the individual bases are
+        # structured: Basis.x can be a strong observed variable directly, or a
+        # calculator variable that depends on strong observed variables.
+        # If these assumptions are violated, this method may produce unexpected results.
+        # The bases created by BasisBuilder fit theses assumptions.
+        _input_x = {}
+        for b in bases:
+            if isinstance(b.x, lsl.Var):
+                if b.x.strong and b.x.observed:
+                    # case: ordinary univariate marginal basis, like ps
+                    if not b.x.name:
+                        raise ValueError(f"Observed name not found for {b}")
+                    _input_x[b.x.name] = b.x
+                elif b.x.weak:
+                    # currently, I don't expect this case to be present
+                    # but it would make sense
+                    for xi in b.x.all_input_vars():
+                        if xi.observed:
+                            if not xi.name:
+                                raise ValueError(f"Observed name not found for {b}")
+                            _input_x[xi.name] = xi
+
+            else:
+                # case: potentially multivariate marginal, possibly tp,
+                # where basis.x is a calculator that collects the strong inputs.
+                for xj in b.x.all_input_nodes():
+                    if not isinstance(xj, lsl.Var):
+                        if xj.var is not None:
+                            if xj.var.observed:
+                                _input_x[xj.var.name] = xj.var
+                    elif xj.observed:
+                        if not xj.name:
+                            raise ValueError(f"Observed name not found for {b}")
+                        _input_x[xj.name] = xj
+
+        return _input_x
+
+    @classmethod
+    def f(
+        cls,
+        *marginals: Term,
+        common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
+        fname: str = "ta",
+        inference: InferenceTypes = None,
+        _update_on_init: bool = True,
+    ) -> Self:
+        xnames = list(cls._input_obs([t.basis for t in marginals]))
+        name = fname + "(" + ",".join(xnames) + ")"
+
+        coef_name = "$\\beta_{" + name + "}$"
+
+        term = cls(
+            *marginals,
+            common_scale=common_scale,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+            basis_name=None,
+            _update_on_init=_update_on_init,
+        )
+
+        return term

@@ -26,6 +26,7 @@ from ..var import (
     RITerm,
     ScaleIG,
     Term,
+    TPTerm,
     VarIGPrior,
 )
 from .registry import CategoryMapping, PandasRegistry
@@ -2103,4 +2104,32 @@ class TermBuilder:
         )
         if noncentered:
             term.reparam_noncentered()
+        return term
+
+    def ta(
+        self,
+        *marginals: Term,
+        common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        include_main_effects: bool = False,
+    ) -> TPTerm:
+        inputs = ",".join(list(TPTerm._input_obs([t.basis for t in marginals])))
+        fname = self.names.create_lazily("ta(" + inputs + ")")
+        coef_name = self.names.create_beta_name(fname)
+
+        if isinstance(common_scale, VarIGPrior):
+            common_scale = self._init_default_scale(
+                concentration=common_scale.concentration,
+                scale=common_scale.scale,
+                term_name=fname,
+            )
+
+        term = TPTerm(
+            *marginals,
+            common_scale=common_scale,
+            name=fname,
+            inference=inference,
+            coef_name=coef_name,
+            include_main_effects=include_main_effects,
+        )
         return term

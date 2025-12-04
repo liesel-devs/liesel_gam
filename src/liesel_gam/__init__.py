@@ -32,6 +32,7 @@ from .var import LinTerm as LinTerm
 from .var import ScaleIG as ScaleIG
 from .var import SmoothTerm as SmoothTerm
 from .var import Term as Term
+from .var import TPTerm as TPTerm
 
 try:
     to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
