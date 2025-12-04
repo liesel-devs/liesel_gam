@@ -12,7 +12,7 @@ from jax import Array
 from jax.typing import ArrayLike
 
 from .builder.registry import CategoryMapping
-from .var import LinTerm, MRFTerm, RITerm, Term
+from .var import LinTerm, MRFTerm, RITerm, Term, TPTerm
 
 KeyArray = Any
 
@@ -179,8 +179,12 @@ def grid_nd(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, An
 
 
 def input_grid_nd_smooth(
-    term: Term | LinTerm, ngrid: int
+    term: TPTerm | Term | LinTerm, ngrid: int
 ) -> dict[str, jax.typing.ArrayLike]:
+    if isinstance(term, TPTerm):
+        inputs = {k: v.value for k, v in term.input_obs.items()}
+        return grid_nd(inputs, ngrid)
+
     if not isinstance(term.basis.x, lsl.TransientCalc | lsl.Calc):
         raise NotImplementedError(
             "Function not implemented for bases with inputs of "
@@ -199,7 +203,7 @@ PlotVars = Literal[
 
 
 def summarise_nd_smooth(
-    term: Term,
+    term: Term | TPTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
@@ -212,8 +216,6 @@ def summarise_nd_smooth(
         which = [which]
 
     if newdata is None:
-        # TODO: Currently, this branch of the function assumes that Basis.x is a
-        # Calc or TransientCalc. That is not necessarily always the case.
         newdata_x: Mapping[str, ArrayLike] = input_grid_nd_smooth(term, ngrid=ngrid)
     elif newdata_meshgrid:
         full_grid_arrays = [v.flatten() for v in np.meshgrid(*newdata.values())]
@@ -222,7 +224,9 @@ def summarise_nd_smooth(
         newdata_x = newdata
 
     newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
+
     term_samples = term.predict(samples, newdata=newdata_x)
+
     ci_quantiles_ = (0.05, 0.95) if quantiles is None else quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
     term_summary = (
@@ -251,7 +255,7 @@ def summarise_nd_smooth(
 
 
 def plot_2d_smooth(
-    term: Term,
+    term: TPTerm | Term,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
@@ -260,6 +264,23 @@ def plot_2d_smooth(
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
 ):
+    if isinstance(term, TPTerm):
+        names = list(term.input_obs)
+        if len(names) != 2:
+            raise ValueError(
+                f"'plot_2d_smooth' can only handle smooths with two inputs, "
+                f"got {len(names)} for smooth {term}: {names}"
+            )
+
+        for v in term.input_obs.values():
+            if jnp.issubdtype(v.value, jnp.integer):
+                raise TypeError(
+                    "'plot_2d_smooth' expects continuous marginals, got "
+                    f"type {v.value.dtype} for {v}"
+                )
+    else:
+        names = [n.var.name for n in term.basis.x.all_input_nodes()]  # type: ignore
+
     term_summary = summarise_nd_smooth(
         term=term,
         samples=samples,
@@ -271,15 +292,9 @@ def plot_2d_smooth(
         newdata_meshgrid=newdata_meshgrid,
     )
 
-    names = [n.var.name for n in term.basis.x.all_input_nodes()]  # type: ignore
-
     p = (
         p9.ggplot(term_summary)
-        + p9.labs(
-            title=f"Posterior summary of {term.name}",
-            x=term.basis.x.name,
-            y=term.name,
-        )
+        + p9.labs(title=f"Posterior summary of {term.name}")
         + p9.aes(*names, fill="value")
         + p9.facet_wrap("~variable", labeller="label_both")
     )

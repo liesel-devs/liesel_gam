@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key as jkey
+from jax.random import normal
 from jax.typing import ArrayLike
 from ryp import r, to_py
 
@@ -379,20 +380,21 @@ class TestNDSmoothSummary:
         assert df.shape == df.drop_duplicates().shape
 
     def test_runs(self, tb: gam.TermBuilder) -> None:
-        term = tb.ti("x", "area")
+        term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
 
-        samples = term.coef.sample((4, 20), jkey(0))
+        samples = {term.coef.name: normal(jkey(1), (4, 20) + term.coef.value.shape)}
+
         su = gam.summarise_nd_smooth(term=term, samples=samples)
         assert su.shape[0] == 400
 
     def test_newdata_meshgrid(self, tb: gam.TermBuilder) -> None:
-        term = tb.ti("x", "area")
+        term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
 
         newdata = {"x": jnp.linspace(-1, 2, 13), "area": jnp.linspace(-1, 2, 13)}
 
-        samples = term.coef.sample((4, 20), jkey(0))
+        samples = {term.coef.name: normal(jkey(1), (4, 20) + term.coef.value.shape)}
         su = gam.summarise_nd_smooth(
             term=term, samples=samples, newdata=newdata, newdata_meshgrid=True
         )
@@ -408,12 +410,12 @@ class TestNDSmoothSummary:
         assert su.shape[0] == 13 * 13
 
     def test_newdata(self, tb: gam.TermBuilder) -> None:
-        term = tb.ti("x", "area")
+        term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
 
         newdata = {"x": jnp.linspace(-1, 2, 13), "area": jnp.linspace(-1, 2, 13)}
 
-        samples = term.coef.sample((4, 20), jkey(0))
+        samples = {term.coef.name: normal(jkey(1), (4, 20) + term.coef.value.shape)}
         su = gam.summarise_nd_smooth(term=term, samples=samples, newdata=newdata)
         assert su.shape[0] == 13
 
@@ -426,10 +428,10 @@ class TestNDSmoothSummary:
         assert su.shape[0] == 13
 
     def test_hdi_prob(self, tb: gam.TermBuilder) -> None:
-        term = tb.ti("x", "area")
+        term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
 
-        samples = term.coef.sample((4, 20), jkey(0))
+        samples = {term.coef.name: normal(jkey(1), (4, 20) + term.coef.value.shape)}
         su1 = gam.summarise_nd_smooth(
             term=term, samples=samples, hdi_prob=0.9, which=["hdi_low", "hdi_high"]
         )
@@ -457,10 +459,10 @@ class TestNDSmoothSummary:
         )
 
     def test_quantiles(self, tb: gam.TermBuilder) -> None:
-        term = tb.ti("x", "area")
+        term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
 
-        samples = term.coef.sample((4, 20), jkey(0))
+        samples = {term.coef.name: normal(jkey(1), (4, 20) + term.coef.value.shape)}
         su1 = gam.summarise_nd_smooth(
             term=term, samples=samples, which=["q_0.05", "q_0.5", "q_0.95"]
         )
@@ -478,10 +480,10 @@ class TestNDSmoothSummary:
         assert "q_0.9" in su2.variable.to_list()
 
     def test_ngrid(self, tb: gam.TermBuilder) -> None:
-        term = tb.ti("x", "area")
+        term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
 
-        samples = term.coef.sample((4, 20), jkey(0))
+        samples = {term.coef.name: normal(jkey(1), (4, 20) + term.coef.value.shape)}
         su1 = gam.summarise_nd_smooth(term=term, samples=samples, ngrid=10)
         assert su1.shape[0] == 100
 

@@ -185,155 +185,6 @@ class BasisBuilder:
 
         return basis
 
-    def te(
-        self,
-        x1: str,
-        x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = -1,
-        m: str = "NA",
-        knots: ArrayLike | None = None,
-        basis_name: str = "B",
-    ) -> Basis:
-        if knots is not None:
-            knots = np.asarray(knots)
-        _validate_bs(bs)
-        absorb_cons: bool = True
-        diagonal_penalty: bool = True
-        scale_penalty: bool = True
-
-        x1_array = jnp.asarray(self.registry.data[x1].to_numpy())
-        x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
-
-        if isinstance(k, int):
-            if k == -1:
-                k1: str | int = "NA"
-                k2: str | int = "NA"
-            else:
-                k1 = k
-                k2 = k
-        elif len(k) == 2:
-            k1, k2 = k
-        else:
-            raise ValueError(f"{k=} not supported.")
-
-        if isinstance(bs, str):
-            bs_arg = f"'{bs}'"
-        elif len(bs) == 2:
-            bs_arg = f"c('{bs[0]}', '{bs[1]}')"
-        else:
-            raise ValueError(f"{bs=} not supported.")
-
-        spec = f"te({x1}, {x2}, bs={bs_arg}, k=c({k1}, {k2}), m={m})"
-
-        smooth = scon.SmoothCon(
-            spec,
-            data={x1: x1_array, x2: x2_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
-
-        x1_var = self.registry.get_numeric_obs(x1)
-        x2_var = self.registry.get_numeric_obs(x2)
-        x1x2_name = self.registry.prefix + f"{x1},{x2}"
-        x1_x2_var = lsl.TransientCalc(
-            lambda x1, x2: jnp.stack((x1, x2), axis=1),
-            x1=x1_var,
-            x2=x2_var,
-            _name=x1x2_name,
-        )
-
-        K1 = smooth.single_penalty(0, 0)
-        K2 = smooth.single_penalty(0, 1)
-
-        basis = Basis(
-            x1_x2_var,
-            name=self.names.create(basis_name) + "(" + x1 + "," + x2 + ")",
-            basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
-            penalty=K1 + K2,
-            use_callback=True,
-            cache_basis=True,
-        )
-        basis._constraint = "absorbed_via_mgcv"
-        return basis
-
-    def ti(
-        self,
-        x1: str,
-        x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = -1,
-        m: str = "NA",
-        knots: ArrayLike | None = None,
-        basis_name: str = "B",
-    ) -> Basis:
-        if knots is not None:
-            knots = np.asarray(knots)
-        _validate_bs(bs)
-        absorb_cons: bool = True
-        diagonal_penalty: bool = True
-        scale_penalty: bool = True
-
-        x1_array = jnp.asarray(self.registry.data[x1].to_numpy())
-        x2_array = jnp.asarray(self.registry.data[x2].to_numpy())
-
-        if isinstance(k, int):
-            if k == -1:
-                k1: str | int = "NA"
-                k2: str | int = "NA"
-            else:
-                k1 = k
-                k2 = k
-        elif len(k) == 2:
-            k1, k2 = k
-        else:
-            raise ValueError(f"{k=} not supported.")
-
-        if isinstance(bs, str):
-            bs_arg = f"'{bs}'"
-        elif len(bs) == 2:
-            bs_arg = f"c('{bs[0]}', '{bs[1]}')"
-        else:
-            raise ValueError(f"{bs=} not supported.")
-
-        spec = f"ti({x1}, {x2}, bs={bs_arg}, k=c({k1}, {k2}), m={m})"
-
-        smooth = scon.SmoothCon(
-            spec,
-            data={x1: x1_array, x2: x2_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
-
-        x1_var = self.registry.get_numeric_obs(x1)
-        x2_var = self.registry.get_numeric_obs(x2)
-
-        x1x2_name = self.registry.prefix + f"{x1},{x2}"
-
-        x1_x2_var = lsl.TransientCalc(
-            lambda x1, x2: jnp.c_[x1, x2],
-            x1=x1_var,
-            x2=x2_var,
-            _name=x1x2_name,
-        )
-
-        penalty = _tp_penalty(*_margin_penalties(smooth))
-
-        basis = Basis(
-            x1_x2_var,
-            name=self.names.create(basis_name) + "(" + x1 + "," + x2 + ")",
-            basis_fn=lambda x: jnp.asarray(smooth.predict({x1: x[:, 0], x2: x[:, 1]})),
-            penalty=penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-        basis._constraint = "absorbed_via_mgcv"
-        return basis
-
     def ps(
         self,
         x: str,
@@ -639,7 +490,7 @@ class BasisBuilder:
                 lsl.TransientCalc(  # for memory-efficiency
                     lambda *args: jnp.vstack(args).T,
                     *list(obs_vars.values()),
-                    _name=self.names.create(xname),
+                    _name=self.names.create_lazily(xname),
                 )
             )
         else:
@@ -1614,84 +1465,6 @@ class TermBuilder:
             term.reparam_noncentered()
         return term
 
-    # ANOVA part of isotropic tensor product interaction
-    # allows MGCV bases
-    def ti(
-        self,
-        x1: str,
-        x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = -1,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
-        m: str = "NA",
-        knots: ArrayLike | None = None,
-        noncentered: bool = False,
-    ) -> Term:
-        basis = self.bases.ti(
-            x1=x1,
-            x2=x2,
-            bs=bs,
-            k=k,
-            m=m,
-            knots=knots,
-            basis_name="B",
-        )
-
-        fname = self.names.create_lazily(name="ti")
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
-        term = Term.f(
-            basis,
-            fname=fname,
-            scale=scale,
-            inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
-        )
-        return term
-
-    def te(
-        self,
-        x1: str,
-        x2: str,
-        bs: BasisTypes | tuple[BasisTypes, BasisTypes] = "ps",
-        k: int | tuple[int, int] = -1,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
-        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
-        m: str = "NA",
-        knots: ArrayLike | None = None,
-        noncentered: bool = False,
-    ) -> Term:
-        basis = self.bases.te(
-            x1=x1,
-            x2=x2,
-            bs=bs,
-            k=k,
-            m=m,
-            knots=knots,
-            basis_name="B",
-        )
-
-        fname = self.names.create_lazily(name="te")
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
-        term = Term.f(
-            basis,
-            fname=fname,
-            scale=scale,
-            inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
-        )
-        return term
-
     # random intercept
     def ri(
         self,
@@ -2127,7 +1900,7 @@ class TermBuilder:
                 term_name=fname,
             )
 
-        if common_scale is not None:
+        if common_scale is not None and not isinstance(common_scale, float):
             _replace_star_gibbs_with(common_scale, scales_inference)
 
         term = TPTerm(
@@ -2140,6 +1913,10 @@ class TermBuilder:
         )
 
         for scale in term.scales:
+            if not isinstance(scale, lsl.Var):
+                raise TypeError(
+                    f"Expected scale to be a liesel.model.Var, got {type(scale)}"
+                )
             _replace_star_gibbs_with(scale, scales_inference)
 
         return term
@@ -2201,8 +1978,22 @@ def _get_parameter(var: lsl.Var) -> lsl.Var:
 def _replace_star_gibbs_with(var: lsl.Var, inference: InferenceTypes | None) -> lsl.Var:
     param = _get_parameter(var)
     if param.inference is not None:
-        is_star_gibbs = param.inference.kernel.__name__ == "StarVarianceGibbs"
-        if not is_star_gibbs:
+        if isinstance(param.inference, gs.MCMCSpec):
+            try:
+                is_star_gibbs = param.inference.kernel.__name__ == "StarVarianceGibbs"  # type: ignore
+                if not is_star_gibbs:
+                    return var
+            except AttributeError:
+                # in this case, we assume that the inference has been set intentionally
+                # so we don't change anything
+                return var
+        else:
+            # in this case, we assume that the inference has been set intentionally
+            # so we don't change anything
             return var
-    param.transform(bijector=None, inference=inference, name="h(" + param.name + ")")
+    if param.name:
+        trafo_name = "h(" + param.name + ")"
+    else:
+        trafo_name = None
+    param.transform(bijector=None, inference=inference, name=trafo_name)
     return var

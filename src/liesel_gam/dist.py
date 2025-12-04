@@ -507,6 +507,16 @@ class MultivariateNormalStructured(tfd.Distribution):
             msg3 = f"Event dimension implied by penalties: {n_penalties}"
             raise ValueError(msg1 + msg2 + msg3)
 
+    def _batch_shape(self):
+        variances = self._op.variances  # shape (B..., K)
+        batch_shape = tuple(variances.shape[:-1])
+        return tf.TensorShape(batch_shape)
+
+    def _batch_shape_tensor(self):
+        variances = self._op.variances  # shape (B..., K)
+        batch_shape = tuple(variances.shape[:-1])
+        return jnp.array(batch_shape, dtype=self._loc.dtype)
+
     def _event_shape(self):
         return tf.TensorShape((jnp.shape(self._loc)[-1],))
 
@@ -597,3 +607,34 @@ class MultivariateNormalStructured(tfd.Distribution):
             return dist
 
         return construct_dist
+
+    @cached_property
+    def _sqrt_cov(self) -> Array:
+        prec = self._op.materialize_precision()
+        eigenvalues, evecs = jnp.linalg.eigh(prec)
+        sqrt_eval = jnp.sqrt(1 / eigenvalues)
+        assert self._op._masks is not None
+        sqrt_eval = sqrt_eval.at[..., ~self._op._masks].set(0.0)
+
+        event_shape = sqrt_eval.shape[-1]
+        shape = sqrt_eval.shape + (event_shape,)
+
+        r = tuple(range(event_shape))
+        diags = jnp.zeros(shape).at[..., r, r].set(sqrt_eval)
+        return evecs @ diags
+
+    def _sample_n(self, n, seed=None) -> Array:
+        shape = [n] + self.batch_shape + self.event_shape
+
+        # The added dimension at the end here makes sure that matrix multiplication
+        # with the "sqrt pcov" matrices works out correctly.
+        z = jax.random.normal(key=seed, shape=shape + [1])
+
+        # Add a dimension at 0 for the sample size.
+        sqrt_cov = jnp.expand_dims(self._sqrt_cov, 0)
+        centered_samples = jnp.reshape(sqrt_cov @ z, shape)
+
+        # Add a dimension at 0 for the sample size.
+        loc = jnp.expand_dims(self._loc, 0)
+
+        return centered_samples + loc
