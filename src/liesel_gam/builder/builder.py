@@ -175,7 +175,7 @@ class BasisBuilder:
         basis = Basis(
             value=Xvar,
             basis_fn=basis_fn,
-            name=self.names.create(basis_name) + "(" + Xname + ")",
+            name=self.names.create_lazily(basis_name + "(" + Xname + ")"),
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=jnp.asarray(penalty),
@@ -403,7 +403,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -449,7 +449,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -489,7 +489,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -546,7 +546,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -587,7 +587,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -649,7 +649,7 @@ class BasisBuilder:
 
         basis = Basis(
             xvar,
-            name=self.names.create(basis_name) + "(" + xname + ")",
+            name=self.names.create_lazily(basis_name + "(" + xname + ")"),
             basis_fn=basis_fn,
             penalty=smooth.penalty,
             use_callback=True,
@@ -929,7 +929,7 @@ class BasisBuilder:
         basis = Basis(
             value=result.var,
             basis_fn=lambda x: x,
-            name=self.names.create(basis_name) + "(" + cluster + ")",
+            name=self.names.create_lazily(basis_name + "(" + cluster + ")"),
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
@@ -1127,7 +1127,7 @@ class BasisBuilder:
         basis = MRFBasis(
             value=var,
             basis_fn=basis_fun,
-            name=self.names.create(basis_name) + "(" + x + ")",
+            name=self.names.create_lazily(basis_name + "(" + x + ")"),
             cache_basis=True,
             use_callback=True,
             penalty=penalty_arr,
@@ -1349,11 +1349,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.cr(
             x=x,
             k=k,
@@ -1365,15 +1360,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="cr")
-        term = Term.f(
-            basis,
-            fname=fname,
+        fname = self.names.fname("cr", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
             scale=scale,
+            name=fname,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def cs(
@@ -1390,11 +1394,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.cs(
             x=x,
             k=k,
@@ -1406,15 +1405,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="cs")
-        term = Term.f(
-            basis,
-            fname=fname,
+        fname = self.names.fname("cs", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
             scale=scale,
+            name=fname,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def cc(
@@ -1431,11 +1439,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.cc(
             x=x,
             k=k,
@@ -1447,15 +1450,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="cc")
-        term = Term.f(
-            basis,
-            fname=fname,
+        fname = self.names.fname("cc", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
             scale=scale,
+            name=fname,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def bs(
@@ -1473,11 +1485,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.bs(
             x=x,
             k=k,
@@ -1490,15 +1497,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="bs")
-        term = Term.f(
-            basis,
-            fname=fname,
+        fname = self.names.fname("bs", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
             scale=scale,
+            name=fname,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     # P-spline
@@ -1564,11 +1580,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.cp(
             x=x,
             k=k,
@@ -1581,15 +1592,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="cp")
-        term = Term.f(
-            basis,
-            fname=fname,
+        fname = self.names.fname("cp", basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
+            basis=basis,
+            penalty=basis.penalty,
             scale=scale,
+            name=fname,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     # ANOVA part of isotropic tensor product interaction
@@ -1606,11 +1626,6 @@ class TermBuilder:
         knots: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.ti(
             x1=x1,
             x2=x2,
@@ -1621,7 +1636,12 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="ti")
+        fname = self.names.create_lazily(name="ti")
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
         term = Term.f(
             basis,
             fname=fname,
@@ -1644,11 +1664,6 @@ class TermBuilder:
         knots: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.te(
             x1=x1,
             x2=x2,
@@ -1659,7 +1674,12 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="te")
+        fname = self.names.create_lazily(name="te")
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
         term = Term.f(
             basis,
             fname=fname,
@@ -1679,21 +1699,27 @@ class TermBuilder:
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> RITerm:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
-        fname = self.names.create(name="ri")
-        term = RITerm.f(
+        fname = self.names.fname("ri", basis)
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+
+        term = RITerm(
             basis=basis,
-            scale=scale,
+            penalty=basis.penalty,
+            coef_name=coef_name,
             inference=inference,
-            noncentered=noncentered,
-            fname=fname,
+            scale=scale,
+            name=fname,
         )
+
+        if noncentered:
+            term.reparam_noncentered()
 
         mapping = self.bases.mappings[cluster]
         term.mapping = mapping
@@ -1726,12 +1752,12 @@ class TermBuilder:
             x_var = x
             xname = x_var.basis.x.name
 
-        fname = self.names.create(name="rs")
+        fname = self.names.create_lazily("rs(" + xname + "|" + cluster + ")")
         term = lsl.Var.new_calc(
             lambda x, cluster: x * cluster,
             x=x_var,
             cluster=ri,
-            name=fname + "(" + xname + "|" + cluster + ")",
+            name=fname,
         )
         return term
 
@@ -1741,14 +1767,14 @@ class TermBuilder:
         x: str,
         by: Term,
     ) -> lsl.Var:
-        fname = self.names.create(name="rs")
+        fname = self.names.create_lazily(x + "*" + by.name)
         x_var = self.registry.get_obs(x)
 
         term = lsl.Var.new_calc(
             lambda x, by: x * by,
             x=x_var,
             by=by,
-            name=fname + "(" + x + "*" + by.name + ")",
+            name=fname,
         )
         return term
 
@@ -1797,11 +1823,6 @@ class TermBuilder:
         - fz (factor smooth interaction)
         - fs (random factor smooth interaction)
         """
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.s(
             *x,
             k=k,
@@ -1814,15 +1835,24 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name=bs)
-        term = Term.f(
+        fname = self.names.fname(bs, basis=basis)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
             basis,
-            fname=fname,
+            penalty=basis.penalty,
+            name=fname,
+            coef_name=coef_name,
             scale=scale,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     # markov random field
@@ -1854,11 +1884,6 @@ class TermBuilder:
         mgcv does not concern itself with your category ordering. It *will* order
         categories alphabetically. Penalty columns have to take this into account.
         """
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.mrf(
             x=x,
             k=k,
@@ -1871,15 +1896,22 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="mrf")
-        term = MRFTerm.f(
+        fname = self.names.fname("mrf", basis)
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+        coef_name = self.names.create_beta_name(fname)
+        term = MRFTerm(
             basis,
-            fname=fname,
+            penalty=basis.penalty,
+            name=fname,
             scale=scale,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
 
         term.polygons = polys
         term.neighbors = basis.mrf_spec.nb
@@ -1903,11 +1935,6 @@ class TermBuilder:
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.basis(
             *x,
             basis_fn=basis_fn,
@@ -1917,15 +1944,23 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="f")
-        term = Term.f(
+        fname = self.names.fname("f", basis)
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
             basis,
-            fname=fname,
+            penalty=basis.penalty,
+            name=fname,
             scale=scale,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def kriging(
@@ -1950,11 +1985,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.kriging(
             *x,
             k=k,
@@ -1969,15 +1999,22 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="kriging")
-        term = Term.f(
+        fname = self.names.fname("kriging", basis)
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
             basis,
-            fname=fname,
+            penalty=basis.penalty,
+            name=fname,
             scale=scale,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def tp(
@@ -1994,11 +2031,6 @@ class TermBuilder:
         noncentered: bool = False,
         remove_null_space_completely: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.tp(
             *x,
             k=k,
@@ -2011,15 +2043,23 @@ class TermBuilder:
             remove_null_space_completely=remove_null_space_completely,
         )
 
-        fname = self.names.create(name="tp")
-        term = Term.f(
+        fname = self.names.fname("tp", basis)
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
             basis,
-            fname=fname,
+            penalty=basis.penalty,
+            name=fname,
             scale=scale,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term
 
     def ts(
@@ -2035,11 +2075,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
     ) -> Term:
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale
-            )
-
         basis = self.bases.ts(
             *x,
             k=k,
@@ -2051,13 +2086,21 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.create(name="ts")
-        term = Term.f(
+        fname = self.names.fname("ts", basis)
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.create_beta_name(fname)
+        term = Term(
             basis,
-            fname=fname,
+            penalty=basis.penalty,
+            name=fname,
             scale=scale,
             inference=inference,
-            coef_name=None,
-            noncentered=noncentered,
+            coef_name=coef_name,
         )
+        if noncentered:
+            term.reparam_noncentered()
         return term

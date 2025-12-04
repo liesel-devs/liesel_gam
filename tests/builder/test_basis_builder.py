@@ -50,9 +50,9 @@ class TestFoBasisLinearNumeric:
     def test_name(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
-        basis = bases.lin("y + x_float", xname="X")
+        basis = bases.lin("y + x_float", xname="y,x", basis_name="B")
 
-        assert basis.name == "B1(X1)"
+        assert basis.name == "B(y,x)"
 
     def test_removing_intercept_manually_is_forbidden(self, data):
         registry = gb.PandasRegistry(data, na_action="drop")

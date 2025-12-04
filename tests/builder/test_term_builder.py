@@ -2,6 +2,7 @@ import logging
 
 import jax
 import jax.numpy as jnp
+import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import pytest
@@ -292,6 +293,14 @@ def _test_term(fn, k, constraints, fewer_bases_by, columb):
     constraints = constraints + fewer_bases_by
 
     smooth = fn("x", k=k)
+    model = lsl.Model([smooth])
+    fname = fn.__name__
+    assert f"{fname}(x)" in model.vars
+    assert "B(x)" in model.vars
+    assert "$\\tau^2_{" + fname + "(x)}$" in model.vars
+    assert "$\\tau_{" + fname + "(x)}$" in model.vars
+    assert "$\\beta_{" + fname + "(x)}$" in model.vars
+
     assert not any(jnp.isnan(smooth.value))
     assert smooth.value.shape == columb.shape[0:1]
     assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
