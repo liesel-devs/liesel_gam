@@ -8,7 +8,9 @@ import pandas as pd
 import pytest
 from ryp import r, to_py
 
+import liesel_gam as gam
 import liesel_gam.builder as gb
+from liesel_gam.builder.builder import _get_parameter
 
 from .make_df import make_test_df
 
@@ -366,3 +368,39 @@ class TestTerms:
     def test_kriging(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         _test_term(tb.kriging, k=20, constraints=1, fewer_bases_by=0, columb=columb)
+
+
+class TestGetParameter:
+    def test_scale_ig(self):
+        scale = gam.ScaleIG(1.0, 0.01, 0.01)
+        var = _get_parameter(scale)
+        assert var is scale._variance_param
+        assert not var.model
+
+    def test_strong(self):
+        a = lsl.Var.new_param(1.0, name="a")
+        b = _get_parameter(a)
+        assert a is b
+
+        a = lsl.Var.new_param(1.0)
+        b = _get_parameter(a)
+        assert a is b
+        assert not b.name
+
+    def test_no_param(self):
+        a = lsl.Var.new_value(1.0, name="a")
+        with pytest.raises(ValueError):
+            _get_parameter(a)
+
+    def test_multiple_params(self):
+        a = lsl.Var.new_param(1.0, name="a")
+        b = lsl.Var.new_param(1.0, name="b")
+        c = lsl.Var.new_calc(lambda a, b: a + b, a, b)
+        with pytest.raises(ValueError):
+            _get_parameter(c)
+
+    def test_weak(self):
+        a = lsl.Var.new_param(1.0, name="a")
+        b = lsl.Var.new_calc(jnp.exp, a)
+        c = _get_parameter(b)
+        assert c is a

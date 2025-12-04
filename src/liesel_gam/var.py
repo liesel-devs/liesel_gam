@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Sequence
 from functools import reduce
 from typing import Any, Literal, NamedTuple, Self
@@ -200,6 +201,9 @@ class ScaleIG(UserVar):
     def setup_gibbs_inference(
         self, coef: lsl.Var, penalty: jax.typing.ArrayLike | None = None
     ) -> ScaleIG:
+        init_gibbs = copy.copy(init_star_ig_gibbs)
+        init_gibbs.__name__ = "StarVarianceGibbs"
+
         self._variance_param.inference = gs.MCMCSpec(
             init_star_ig_gibbs,
             kernel_kwargs={"coef": coef, "scale": self, "penalty": penalty},
@@ -1565,6 +1569,7 @@ class TPTerm(UserVar):
         if include_main_effects:
             calc = lsl.Calc(
                 lambda *marginals, basis, coef: sum(marginals) + jnp.dot(basis, coef),
+                *marginals,
                 basis=basis,
                 coef=self.coef,
                 _update_on_init=_update_on_init,

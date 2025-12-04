@@ -14,6 +14,7 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import smoothcon as scon
+from liesel.model.model import TemporaryModel
 from ryp import r, to_py, to_r
 
 from ..var import (
@@ -2112,9 +2113,11 @@ class TermBuilder:
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
         inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
         include_main_effects: bool = False,
+        scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
+        _fname: str = "ta",
     ) -> TPTerm:
         inputs = ",".join(list(TPTerm._input_obs([t.basis for t in marginals])))
-        fname = self.names.create_lazily("ta(" + inputs + ")")
+        fname = self.names.create_lazily(f"{_fname}(" + inputs + ")")
         coef_name = self.names.create_beta_name(fname)
 
         if isinstance(common_scale, VarIGPrior):
@@ -2124,6 +2127,9 @@ class TermBuilder:
                 term_name=fname,
             )
 
+        if common_scale is not None:
+            _replace_star_gibbs_with(common_scale, scales_inference)
+
         term = TPTerm(
             *marginals,
             common_scale=common_scale,
@@ -2132,4 +2138,71 @@ class TermBuilder:
             coef_name=coef_name,
             include_main_effects=include_main_effects,
         )
+
+        for scale in term.scales:
+            _replace_star_gibbs_with(scale, scales_inference)
+
         return term
+
+    def tx(
+        self,
+        *marginals: Term,
+        common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
+    ) -> TPTerm:
+        return self.ta(
+            *marginals,
+            common_scale=common_scale,
+            inference=inference,
+            scales_inference=scales_inference,
+            include_main_effects=False,
+            _fname="tx",
+        )
+
+    def tf(
+        self,
+        *marginals: Term,
+        common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
+        inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
+    ) -> TPTerm:
+        return self.ta(
+            *marginals,
+            common_scale=common_scale,
+            inference=inference,
+            scales_inference=scales_inference,
+            include_main_effects=True,
+            _fname="tf",
+        )
+
+
+def _get_parameter(var: lsl.Var) -> lsl.Var:
+    if var.strong:
+        if var.parameter:
+            return var
+        else:
+            raise ValueError(f"{var} is strong, but not a parameter.")
+
+    with TemporaryModel(var, to_float32=False) as model:
+        params = model.parameters
+        if not params:
+            raise ValueError(f"No parameter found in the graph of {var}.")
+        if len(params) > 1:
+            raise ValueError(
+                f"In the graph of {var}, there are {len(params)} parameters, "
+                "so we cannot return a unique parameter."
+            )
+        param = list(model.parameters.values())[0]
+
+    return param
+
+
+def _replace_star_gibbs_with(var: lsl.Var, inference: InferenceTypes | None) -> lsl.Var:
+    param = _get_parameter(var)
+    if param.inference is not None:
+        is_star_gibbs = param.inference.kernel.__name__ == "StarVarianceGibbs"
+        if not is_star_gibbs:
+            return var
+    param.transform(bijector=None, inference=inference, name="h(" + param.name + ")")
+    return var
