@@ -4,6 +4,7 @@ from ryp import r, to_r
 from .__about__ import __version__ as __version__
 from .builder import BasisBuilder as BasisBuilder
 from .builder import CategoryMapping as CategoryMapping
+from .builder import PandasRegistry as PandasRegistry
 from .builder import TermBuilder as TermBuilder
 from .builder import VarIGPrior as VarIGPrior
 from .builder import series_is_categorical as series_is_categorical
