@@ -1956,7 +1956,9 @@ class TermBuilder:
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         include_main_effects: bool = False,
-        scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
+        scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
+            gs.HMCKernel
+        ),
         _fname: str = "ta",
     ) -> TPTerm:
         """
@@ -1975,7 +1977,9 @@ class TermBuilder:
             )
 
         if common_scale is not None and not isinstance(common_scale, float):
-            _replace_star_gibbs_with(common_scale, scales_inference)
+            _replace_star_gibbs_with(
+                common_scale, self._get_inference(scales_inference)
+            )
 
         term = TPTerm(
             *marginals,
