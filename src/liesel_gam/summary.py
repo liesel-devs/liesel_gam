@@ -11,7 +11,7 @@ from jax import Array
 from jax.typing import ArrayLike
 
 from .registry import CategoryMapping
-from .term import LinTerm, MRFTerm, RITerm, Term, TPTerm
+from .term import LinTerm, MRFTerm, RITerm, StrctTensorProdTerm, StrctTerm
 
 KeyArray = Any
 
@@ -47,7 +47,7 @@ def summarise_by_samples(
 
 
 def summarise_1d_smooth(
-    term: Term,
+    term: StrctTerm,
     samples: dict[str, Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -89,9 +89,9 @@ def grid_nd(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, An
 
 
 def input_grid_nd_smooth(
-    term: TPTerm | Term | LinTerm, ngrid: int
+    term: StrctTensorProdTerm | StrctTerm | LinTerm, ngrid: int
 ) -> dict[str, jax.typing.ArrayLike]:
-    if isinstance(term, TPTerm):
+    if isinstance(term, StrctTensorProdTerm):
         inputs = {k: v.value for k, v in term.input_obs.items()}
         return grid_nd(inputs, ngrid)
 
@@ -113,7 +113,7 @@ PlotVars = Literal[
 
 
 def summarise_nd_smooth(
-    term: Term | TPTerm,
+    term: StrctTerm | StrctTensorProdTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
@@ -202,7 +202,7 @@ def _convert_to_integers(
 
 
 def summarise_cluster(
-    term: RITerm | MRFTerm | Term,
+    term: RITerm | MRFTerm | StrctTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position
     | None
@@ -270,7 +270,7 @@ def summarise_cluster(
 
 
 def summarise_regions(
-    term: RITerm | MRFTerm | Term,
+    term: RITerm | MRFTerm | StrctTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -385,7 +385,7 @@ def summarise_1d_smooth_clustered(
     term = clustered_term.value_node["x"]
     cluster = clustered_term.value_node["cluster"]
 
-    assert isinstance(term, Term | lsl.Var)
+    assert isinstance(term, StrctTerm | lsl.Var)
     assert isinstance(cluster, RITerm | MRFTerm)
 
     if labels is None:
@@ -394,7 +394,7 @@ def summarise_1d_smooth_clustered(
         except (AttributeError, ValueError):
             labels = None
 
-    if isinstance(term, Term):
+    if isinstance(term, StrctTerm):
         x = term.basis.x
     else:
         x = term
@@ -415,7 +415,7 @@ def summarise_1d_smooth_clustered(
                 x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)
             }
         else:
-            assert isinstance(term, Term | LinTerm), (
+            assert isinstance(term, StrctTerm | LinTerm), (
                 f"Wrong type for term: {type(term)}"
             )
             ncols = jnp.shape(term.basis.value)[-1]
@@ -432,7 +432,7 @@ def summarise_1d_smooth_clustered(
         if isinstance(x, lsl.Node) or x.strong:
             xgrid = {x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)}
         else:
-            assert isinstance(term, Term | LinTerm), (
+            assert isinstance(term, StrctTerm | LinTerm), (
                 f"Wrong type for term: {type(term)}"
             )
             ncols = jnp.shape(term.basis.value)[-1]

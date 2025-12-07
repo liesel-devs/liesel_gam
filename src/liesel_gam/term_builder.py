@@ -17,7 +17,7 @@ from ryp import r, to_py
 from .basis_builder import BasisBuilder
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
-from .term import LinTerm, MRFTerm, RITerm, Term, TPTerm
+from .term import LinTerm, MRFTerm, RITerm, StrctTensorProdTerm, StrctTerm
 from .var import ScaleIG, VarIGPrior
 
 InferenceTypes = Any
@@ -207,7 +207,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.cr(
             x=x,
             k=k,
@@ -227,7 +227,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -252,7 +252,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.cs(
             x=x,
             k=k,
@@ -272,7 +272,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -297,7 +297,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.cc(
             x=x,
             k=k,
@@ -317,7 +317,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -343,7 +343,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.bs(
             x=x,
             k=k,
@@ -364,7 +364,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -391,7 +391,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.ps(
             x=x,
             k=k,
@@ -412,7 +412,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -437,7 +437,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.ps(
             x=x,
             k=k,
@@ -464,7 +464,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -490,7 +490,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.cp(
             x=x,
             k=k,
@@ -511,7 +511,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
             scale=scale,
@@ -563,7 +563,7 @@ class TermBuilder:
     # random scaling
     def rs(
         self,
-        x: str | Term | LinTerm,
+        x: str | StrctTerm | LinTerm,
         cluster: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
         inference: InferenceTypes | None | Literal["default"] = "default",
@@ -598,7 +598,7 @@ class TermBuilder:
     def vc(
         self,
         x: str,
-        by: Term,
+        by: StrctTerm,
     ) -> lsl.Var:
         fname = self.names.create(x + "*" + by.name)
         x_var = self.registry.get_obs(x)
@@ -625,7 +625,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         """
         Works:
         - tp (thin plate splines)
@@ -676,7 +676,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
@@ -767,7 +767,7 @@ class TermBuilder:
         cache_basis: bool = True,
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.basis(
             *x,
             basis_fn=basis_fn,
@@ -784,7 +784,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
@@ -817,7 +817,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.kriging(
             *x,
             k=k,
@@ -838,7 +838,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
@@ -863,7 +863,7 @@ class TermBuilder:
         scale_penalty: bool = True,
         noncentered: bool = False,
         remove_null_space_completely: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.tp(
             *x,
             k=k,
@@ -883,7 +883,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
@@ -907,7 +907,7 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         basis = self.bases.ts(
             *x,
             k=k,
@@ -926,7 +926,7 @@ class TermBuilder:
             )
 
         coef_name = self.names.beta(fname)
-        term = Term(
+        term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
@@ -940,7 +940,7 @@ class TermBuilder:
 
     def ta(
         self,
-        *marginals: Term,
+        *marginals: StrctTerm,
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         include_main_effects: bool = False,
@@ -948,12 +948,14 @@ class TermBuilder:
             gs.HMCKernel
         ),
         _fname: str = "ta",
-    ) -> TPTerm:
+    ) -> StrctTensorProdTerm:
         """
         Will remove any default gibbs samplers and replace them with scales_inferece
         on a transformed version.
         """
-        inputs = ",".join(list(TPTerm._input_obs([t.basis for t in marginals])))
+        inputs = ",".join(
+            list(StrctTensorProdTerm._input_obs([t.basis for t in marginals]))
+        )
         fname = self.names.create(f"{_fname}(" + inputs + ")")
         coef_name = self.names.beta(fname)
 
@@ -969,7 +971,7 @@ class TermBuilder:
                 common_scale, self._get_inference(scales_inference)
             )
 
-        term = TPTerm(
+        term = StrctTensorProdTerm(
             *marginals,
             common_scale=common_scale,
             name=fname,
@@ -989,11 +991,11 @@ class TermBuilder:
 
     def tx(
         self,
-        *marginals: Term,
+        *marginals: StrctTerm,
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
-    ) -> TPTerm:
+    ) -> StrctTensorProdTerm:
         return self.ta(
             *marginals,
             common_scale=common_scale,
@@ -1005,11 +1007,11 @@ class TermBuilder:
 
     def tf(
         self,
-        *marginals: Term,
+        *marginals: StrctTerm,
         common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
-    ) -> TPTerm:
+    ) -> StrctTensorProdTerm:
         return self.ta(
             *marginals,
             common_scale=common_scale,

@@ -28,8 +28,8 @@ from .term import BasisDot as BasisDot
 from .term import Intercept as Intercept
 from .term import LinTerm as LinTerm
 from .term import SmoothTerm as SmoothTerm
-from .term import Term as Term
-from .term import TPTerm as TPTerm
+from .term import StrctTensorProdTerm as StrctTensorProdTerm
+from .term import StrctTerm as StrctTerm
 from .term_builder import TermBuilder as TermBuilder
 from .var import ScaleIG as ScaleIG
 from .var import VarIGPrior as VarIGPrior

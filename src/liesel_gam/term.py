@@ -133,7 +133,7 @@ def _validate_scalar_or_p_scale(scale_value: Array, p):
         )
 
 
-class Term(UserVar):
+class StrctTerm(UserVar):
     """
     General structured additive term.
 
@@ -376,7 +376,7 @@ class Term(UserVar):
         scale_name: str | None = None,
         coef_name: str | None = None,
         noncentered: bool = False,
-    ) -> Term:
+    ) -> StrctTerm:
         """
         Construct a smooth term with an inverse-gamma prior on the variance.
 
@@ -502,10 +502,10 @@ class Term(UserVar):
         return self
 
 
-SmoothTerm = Term
+SmoothTerm = StrctTerm
 
 
-class MRFTerm(Term):
+class MRFTerm(StrctTerm):
     _neighbors = None
     _polygons = None
     _ordered_labels = None
@@ -555,7 +555,7 @@ class MRFTerm(Term):
         self._ordered_labels = value
 
 
-class IndexingTerm(Term):
+class IndexingTerm(StrctTerm):
     def __init__(
         self,
         basis: Basis,
@@ -741,7 +741,7 @@ class LinTerm(BasisDot):
         self._column_names = list(value)
 
 
-class TPTerm(UserVar):
+class StrctTensorProdTerm(UserVar):
     """
     General anisotropic structured additive tensor product term.
 
@@ -759,7 +759,7 @@ class TPTerm(UserVar):
 
     def __init__(
         self,
-        *marginals: Term | IndexingTerm | RITerm | MRFTerm,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         name: str = "",
         inference: InferenceTypes = None,
@@ -839,7 +839,7 @@ class TPTerm(UserVar):
 
     @staticmethod
     def _get_bases(
-        marginals: Sequence[Term | RITerm | MRFTerm | IndexingTerm],
+        marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm],
     ) -> list[Basis]:
         bases = []
         for t in marginals:
@@ -850,7 +850,7 @@ class TPTerm(UserVar):
         return bases
 
     @staticmethod
-    def _validate_marginals(marginals: Sequence[Term]):
+    def _validate_marginals(marginals: Sequence[StrctTerm]):
         for t in marginals:
             if t.scale is None:
                 raise ValueError(f"Invalid scale for {t}: {t.scale}")
@@ -860,7 +860,7 @@ class TPTerm(UserVar):
             except Exception as e:
                 raise ValueError(f"Invalid penalty for {t}") from e
 
-        for i, b in enumerate(TPTerm._get_bases(marginals)):
+        for i, b in enumerate(StrctTensorProdTerm._get_bases(marginals)):
             if b.value.ndim != 2:
                 raise ValueError(
                     "Expected 2-dimensional basis, but the basis "
@@ -913,7 +913,7 @@ class TPTerm(UserVar):
     @classmethod
     def f(
         cls,
-        *marginals: Term,
+        *marginals: StrctTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         fname: str = "ta",
         inference: InferenceTypes = None,

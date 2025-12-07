@@ -22,13 +22,13 @@ from .summary import (
     summarise_nd_smooth,
     summarise_regions,
 )
-from .term import LinTerm, MRFTerm, RITerm, Term, TPTerm
+from .term import LinTerm, MRFTerm, RITerm, StrctTensorProdTerm, StrctTerm
 
 KeyArray = Any
 
 
 def plot_1d_smooth(
-    term: Term,
+    term: StrctTerm,
     samples: dict[str, Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
@@ -125,7 +125,7 @@ PlotVars = Literal[
 
 
 def plot_2d_smooth(
-    term: TPTerm | Term,
+    term: StrctTensorProdTerm | StrctTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
@@ -134,7 +134,7 @@ def plot_2d_smooth(
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
 ):
-    if isinstance(term, TPTerm):
+    if isinstance(term, StrctTensorProdTerm):
         names = list(term.input_obs)
         if len(names) != 2:
             raise ValueError(
@@ -226,7 +226,7 @@ def plot_polys(
 
 
 def plot_regions(
-    term: RITerm | MRFTerm | Term,
+    term: RITerm | MRFTerm | StrctTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -345,7 +345,7 @@ def plot_forest_lin(
 
 
 def plot_forest_clustered(
-    term: RITerm | MRFTerm | Term,
+    term: RITerm | MRFTerm | StrctTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
@@ -427,7 +427,7 @@ def plot_1d_smooth_clustered(
     term = clustered_term.value_node["x"]
     cluster = clustered_term.value_node["cluster"]
 
-    assert isinstance(term, Term | lsl.Var)
+    assert isinstance(term, StrctTerm | lsl.Var)
     assert isinstance(cluster, RITerm | MRFTerm)
 
     if labels is None:
@@ -452,7 +452,7 @@ def plot_1d_smooth_clustered(
     else:
         clab = cluster.basis.x.name + " (labels)"
 
-    if isinstance(term, Term):
+    if isinstance(term, StrctTerm):
         x = term.basis.x
     else:
         x = term

@@ -299,7 +299,7 @@ class TestBasisReparameterization:
 
     def test_constrain_sumzero_coef(self, basis: gam.Basis):
         basis.constrain("sumzero_coef")
-        term = gam.Term.f(basis)
+        term = gam.StrctTerm.f(basis)
         coef = jax.random.normal(key(42), term.coef.value.shape)
         constrained_coef = basis.reparam_matrix @ coef
         assert constrained_coef.sum() == pytest.approx(0.0, abs=1e-5)
@@ -307,7 +307,7 @@ class TestBasisReparameterization:
 
     def test_constrain_sumzero_term(self, basis: gam.Basis):
         basis.constrain("sumzero_term")
-        term = gam.Term.f(basis)
+        term = gam.StrctTerm.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
         term.update()
         assert term.value.sum() == pytest.approx(0.0, abs=1e-5)
@@ -315,7 +315,7 @@ class TestBasisReparameterization:
 
     def test_constrain_constant_and_linear(self, basis: gam.Basis):
         basis.constrain("constant_and_linear")
-        term = gam.Term.f(basis)
+        term = gam.StrctTerm.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
         fx = term.update().value
 
@@ -336,7 +336,7 @@ class TestBasisReparameterization:
     def test_constrain_custom(self, basis: gam.Basis):
         A = jnp.mean(basis.value, axis=0, keepdims=True)
         basis.constrain(A)
-        term = gam.Term.f(basis)
+        term = gam.StrctTerm.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
         term.update()
         assert term.value.sum() == pytest.approx(0.0, abs=1e-5)

@@ -208,7 +208,7 @@ class TestTPTerm:
         s1 = tb.ps("x", k=10)
         s2 = tb.ps("y", k=10)
 
-        ta = gam.TPTerm.f(s1, s2)
+        ta = gam.StrctTensorProdTerm.f(s1, s2)
 
         assert ta.coef.value.shape == (9 * 9,)
         assert "x" in ta.input_obs
@@ -220,7 +220,7 @@ class TestTPTerm:
         s1 = tb.tp("x", "area", k=10)
         s2 = tb.ps("y", k=10)
 
-        ta = gam.TPTerm.f(s1, s2)
+        ta = gam.StrctTensorProdTerm.f(s1, s2)
 
         assert ta.coef.value.shape == (9 * 9,)
         assert "x" in ta.input_obs
@@ -235,10 +235,10 @@ class TestTPTerm:
             jnp.expand_dims(columb["y"].to_numpy(), -1), xname="y", penalty=jnp.eye(1)
         )
 
-        t1 = gam.Term.f(Bx, scale=1.0)
-        t2 = gam.Term.f(By, scale=1.0)
+        t1 = gam.StrctTerm.f(Bx, scale=1.0)
+        t2 = gam.StrctTerm.f(By, scale=1.0)
 
-        ta = gam.TPTerm(t1, t2)
+        ta = gam.StrctTensorProdTerm(t1, t2)
         assert "x" in ta.input_obs
         assert "y" in ta.input_obs
 
@@ -250,8 +250,8 @@ class TestTPTerm:
             jnp.expand_dims(columb["y"].to_numpy(), -1), xname="y", penalty=jnp.eye(1)
         )
 
-        t1 = gam.Term.f(Bx, scale=1.0)
-        t2 = gam.Term.f(By)
+        t1 = gam.StrctTerm.f(Bx, scale=1.0)
+        t2 = gam.StrctTerm.f(By)
 
         with pytest.raises(ValueError):
-            gam.TPTerm(t1, t2)
+            gam.StrctTensorProdTerm(t1, t2)
