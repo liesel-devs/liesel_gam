@@ -12,7 +12,7 @@ from jax.typing import ArrayLike
 from ryp import r, to_py
 
 import liesel_gam as gam
-from liesel_gam.plots import grid_nd, input_grid_nd_smooth
+from liesel_gam.summary import grid_nd, input_grid_nd_smooth
 
 
 @pytest.fixture(scope="module")
