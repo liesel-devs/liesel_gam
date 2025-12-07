@@ -382,8 +382,8 @@ class TestGetParameter:
 
     def test_no_param(self):
         a = lsl.Var.new_value(1.0, name="a")
-        with pytest.raises(ValueError):
-            _find_parameter(a)
+        b = _find_parameter(a)
+        assert a is b
 
     def test_multiple_params(self):
         a = lsl.Var.new_param(1.0, name="a")
