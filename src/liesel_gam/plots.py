@@ -11,7 +11,7 @@ import plotnine as p9
 from jax import Array
 from jax.typing import ArrayLike
 
-from .builder.registry import CategoryMapping
+from .registry import CategoryMapping
 from .var import LinTerm, MRFTerm, RITerm, Term, TPTerm
 
 KeyArray = Any

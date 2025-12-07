@@ -4,7 +4,6 @@ from ryp import r, to_r
 from .__about__ import __version__ as __version__
 from .builder import BasisBuilder as BasisBuilder
 from .builder import CategoryMapping as CategoryMapping
-from .builder import PandasRegistry as PandasRegistry
 from .builder import TermBuilder as TermBuilder
 from .builder import VarIGPrior as VarIGPrior
 from .builder import series_is_categorical as series_is_categorical
@@ -25,6 +24,7 @@ from .plots import summarise_lin as summarise_lin
 from .plots import summarise_nd_smooth as summarise_nd_smooth
 from .plots import summarise_regions as summarise_regions
 from .predictor import AdditivePredictor as AdditivePredictor
+from .registry import PandasRegistry as PandasRegistry
 from .var import Basis as Basis
 from .var import BasisDot as BasisDot
 from .var import Intercept as Intercept

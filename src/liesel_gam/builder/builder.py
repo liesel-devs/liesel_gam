@@ -17,6 +17,7 @@ from liesel.model.model import TemporaryModel
 from ryp import r, to_py, to_r
 
 from ..names import NameManager
+from ..registry import CategoryMapping, PandasRegistry
 from ..var import (
     Basis,
     LinBasis,
@@ -30,7 +31,6 @@ from ..var import (
     TPTerm,
     VarIGPrior,
 )
-from .registry import CategoryMapping, PandasRegistry
 
 InferenceTypes = Any
 

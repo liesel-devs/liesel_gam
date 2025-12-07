@@ -14,7 +14,7 @@ from ryp import r, to_py
 
 import liesel_gam.builder as gb
 from liesel_gam.builder.builder import BasisBuilder
-from liesel_gam.builder.registry import PandasRegistry
+from liesel_gam.registry import PandasRegistry
 
 from .make_df import make_test_df
 
