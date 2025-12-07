@@ -2,6 +2,7 @@ import pandas as pd
 from ryp import r, to_r
 
 from .__about__ import __version__ as __version__
+from .basis import Basis as Basis
 from .builder import BasisBuilder as BasisBuilder
 from .builder import TermBuilder as TermBuilder
 from .builder import VarIGPrior as VarIGPrior
@@ -25,14 +26,13 @@ from .plots import summarise_nd_smooth as summarise_nd_smooth
 from .plots import summarise_regions as summarise_regions
 from .predictor import AdditivePredictor as AdditivePredictor
 from .registry import PandasRegistry as PandasRegistry
-from .var import Basis as Basis
-from .var import BasisDot as BasisDot
-from .var import Intercept as Intercept
-from .var import LinTerm as LinTerm
+from .term import BasisDot as BasisDot
+from .term import Intercept as Intercept
+from .term import LinTerm as LinTerm
+from .term import SmoothTerm as SmoothTerm
+from .term import Term as Term
+from .term import TPTerm as TPTerm
 from .var import ScaleIG as ScaleIG
-from .var import SmoothTerm as SmoothTerm
-from .var import Term as Term
-from .var import TPTerm as TPTerm
 
 try:
     to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")

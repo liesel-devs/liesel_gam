@@ -6,11 +6,11 @@ from typing import Any, Self, cast
 import liesel.goose as gs
 import liesel.model as lsl
 
-from .var import BasisDot, Term, UserVar
+from .var import UserVar
 
 Array = Any
 
-term_types = Term | BasisDot | lsl.Var
+term_types = lsl.Var
 
 
 class AdditivePredictor(UserVar):

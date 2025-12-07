@@ -16,21 +16,11 @@ import smoothcon as scon
 from liesel.model.model import TemporaryModel
 from ryp import r, to_py, to_r
 
+from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
-from .var import (
-    Basis,
-    LinBasis,
-    LinTerm,
-    MRFBasis,
-    MRFSpec,
-    MRFTerm,
-    RITerm,
-    ScaleIG,
-    Term,
-    TPTerm,
-    VarIGPrior,
-)
+from .term import LinTerm, MRFTerm, RITerm, Term, TPTerm
+from .var import ScaleIG, VarIGPrior
 
 InferenceTypes = Any
 

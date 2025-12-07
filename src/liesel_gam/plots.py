@@ -12,7 +12,7 @@ from jax import Array
 from jax.typing import ArrayLike
 
 from .registry import CategoryMapping
-from .var import LinTerm, MRFTerm, RITerm, Term, TPTerm
+from .term import LinTerm, MRFTerm, RITerm, Term, TPTerm
 
 KeyArray = Any
 
