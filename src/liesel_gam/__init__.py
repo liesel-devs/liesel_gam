@@ -3,9 +3,7 @@ from ryp import r, to_r
 
 from .__about__ import __version__ as __version__
 from .basis import Basis as Basis
-from .builder import BasisBuilder as BasisBuilder
-from .builder import TermBuilder as TermBuilder
-from .builder import VarIGPrior as VarIGPrior
+from .basis_builder import BasisBuilder as BasisBuilder
 from .category_mapping import CategoryMapping as CategoryMapping
 from .category_mapping import series_is_categorical as series_is_categorical
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
@@ -32,7 +30,9 @@ from .term import LinTerm as LinTerm
 from .term import SmoothTerm as SmoothTerm
 from .term import Term as Term
 from .term import TPTerm as TPTerm
+from .term_builder import TermBuilder as TermBuilder
 from .var import ScaleIG as ScaleIG
+from .var import VarIGPrior as VarIGPrior
 
 try:
     to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")

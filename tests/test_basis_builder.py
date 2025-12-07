@@ -12,9 +12,9 @@ from formulaic.errors import (
 )
 from ryp import r, to_py
 
-import liesel_gam.builder as gb
-from liesel_gam.builder import BasisBuilder
+import liesel_gam.term_builder as gb
 from liesel_gam.registry import PandasRegistry
+from liesel_gam.term_builder import BasisBuilder
 
 from .make_df import make_test_df
 

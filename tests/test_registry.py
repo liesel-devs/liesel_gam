@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from liesel_gam.builder import PandasRegistry
+from liesel_gam.term_builder import PandasRegistry
 
 
 @pytest.fixture
