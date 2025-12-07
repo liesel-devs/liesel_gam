@@ -431,6 +431,17 @@ class TestFoBasisTransforms:
 
 
 class TestFoBasisLinearCategorical:
+    def test_boolean(self, data) -> None:
+        """
+        Boolean gets turned into dummy, but not treated inherently as categorical.
+        So it does not have a mapping.
+        """
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("flag_bool", xname="X")
+        assert not bases.mappings
+        assert basis.value.shape == (84, 1)
+
     def test_include_object_variable_without_c(self, data) -> None:
         """Behaves exactly like the default using C(name)."""
         registry = gb.PandasRegistry(data, na_action="drop")
