@@ -5,8 +5,8 @@ from .__about__ import __version__ as __version__
 from .builder import BasisBuilder as BasisBuilder
 from .builder import TermBuilder as TermBuilder
 from .builder import VarIGPrior as VarIGPrior
-from .builder import series_is_categorical as series_is_categorical
 from .category_mapping import CategoryMapping as CategoryMapping
+from .category_mapping import series_is_categorical as series_is_categorical
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs

@@ -16,9 +16,9 @@ import smoothcon as scon
 from liesel.model.model import TemporaryModel
 from ryp import r, to_py, to_r
 
-from ..names import NameManager
-from ..registry import CategoryMapping, PandasRegistry
-from ..var import (
+from .names import NameManager
+from .registry import CategoryMapping, PandasRegistry
+from .var import (
     Basis,
     LinBasis,
     LinTerm,

@@ -11,7 +11,7 @@ from ryp import r, to_py
 
 import liesel_gam as gam
 import liesel_gam.builder as gb
-from liesel_gam.builder.builder import _find_parameter, _has_star_gibbs
+from liesel_gam.builder import _find_parameter, _has_star_gibbs
 
 from .make_df import make_test_df
 
