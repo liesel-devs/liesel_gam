@@ -1977,7 +1977,7 @@ class TermBuilder:
             )
 
         if common_scale is not None and not isinstance(common_scale, float):
-            _replace_star_gibbs_with(
+            _biject_and_replace_star_gibbs_with(
                 common_scale, self._get_inference(scales_inference)
             )
 
@@ -1995,7 +1995,7 @@ class TermBuilder:
                 raise TypeError(
                     f"Expected scale to be a liesel.model.Var, got {type(scale)}"
                 )
-            _replace_star_gibbs_with(scale, scales_inference)
+            _biject_and_replace_star_gibbs_with(scale, scales_inference)
 
         return term
 
@@ -2032,12 +2032,16 @@ class TermBuilder:
         )
 
 
-def _get_parameter(var: lsl.Var) -> lsl.Var:
+def _find_parameter(var: lsl.Var) -> lsl.Var:
+    """
+    Intended for the following use case: 'var' is a parameter that may be a
+    weak transformation of a strong latent parameter, we want to find this
+    strong latent parameter.
+
+    Returns the strong latent parameter, if it can be determined unambiguously.
+    """
     if var.strong:
-        if var.parameter:
-            return var
-        else:
-            raise ValueError(f"{var} is strong, but not a parameter.")
+        return var
 
     with TemporaryModel(var, to_float32=False) as model:
         params = model.parameters
@@ -2053,8 +2057,16 @@ def _get_parameter(var: lsl.Var) -> lsl.Var:
     return param
 
 
-def _replace_star_gibbs_with(var: lsl.Var, inference: InferenceTypes | None) -> lsl.Var:
-    param = _get_parameter(var)
+def _biject_and_replace_star_gibbs_with(
+    var: lsl.Var, inference: InferenceTypes | None
+) -> lsl.Var:
+    """
+    If var is a ScaleIG, it is the square root of a variance
+    parameter that may have a default Gibbs kernel. This function removes any such
+    Gibbs kernel and then transforms the variance parameter using the default event
+    space bijector and sets the inference to the 'inference' supplied to the function.
+    """
+    param = _find_parameter(var)
     if param.inference is not None:
         if isinstance(param.inference, gs.MCMCSpec):
             try:
@@ -2075,3 +2087,45 @@ def _replace_star_gibbs_with(var: lsl.Var, inference: InferenceTypes | None) -> 
         trafo_name = None
     param.transform(bijector=None, inference=inference, name=trafo_name)
     return var
+
+
+def _has_star_gibbs(var: lsl.Var) -> bool:
+    param = _find_parameter(var)
+    if param.inference is None:
+        # no inference means no StarVarianceGibbs
+        return False
+
+    inferences = []
+    if isinstance(param.inference, gs.MCMCSpec):
+        inferences.append(param.inference)
+    elif isinstance(param.inference, Mapping):
+        try:
+            for v in param.inference.values():
+                if isinstance(v, gs.MCMCSpec):
+                    inferences.append(v)
+        except Exception as e:
+            raise TypeError(
+                f"Could not handle type {type(param.inference)}, expected "
+                "liesel.goose.MCMCSpec or dict."
+            ) from e
+    else:
+        raise TypeError(
+            f"Could not handle type {type(param.inference)}, expected "
+            "liesel.goose.MCMCSpec or dict."
+        )
+
+    if not inferences:
+        # no gs.MCMCSpecs present, so there cannot be StarVarianceGibbs
+        return False
+
+    for inference in inferences:
+        try:
+            is_star_gibbs = inference.kernel.__name__ == "StarVarianceGibbs"  # type: ignore
+            if is_star_gibbs:
+                return True  # if we find any StarVarianceGibbs, return True
+        except Exception:
+            # very liberal about errors here
+            pass
+
+    # by this point, we did not find any StarVarianceGibbs
+    return False
