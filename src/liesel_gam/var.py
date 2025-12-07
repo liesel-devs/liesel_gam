@@ -12,7 +12,7 @@ import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
 from formulaic import ModelSpec
 
-from liesel_gam.builder.category_mapping import CategoryMapping
+from liesel_gam.category_mapping import CategoryMapping
 
 from .constraint import LinearConstraintEVD, penalty_to_unit_design
 from .dist import MultivariateNormalSingular, MultivariateNormalStructured

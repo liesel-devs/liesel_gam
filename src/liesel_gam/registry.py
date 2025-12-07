@@ -15,7 +15,7 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 
-from .builder.category_mapping import CategoryMapping, series_is_categorical
+from .category_mapping import CategoryMapping, series_is_categorical
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 import liesel_gam as gam
-from liesel_gam.builder.category_mapping import UnknownCodeError, UnknownLabelError
+from liesel_gam.category_mapping import UnknownCodeError, UnknownLabelError
 
 df = pd.DataFrame(
     {
