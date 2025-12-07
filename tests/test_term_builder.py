@@ -7,11 +7,12 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import pytest
+import tensorflow_probability.substrates.jax.bijectors as tfb
 from ryp import r, to_py
 
 import liesel_gam as gam
 import liesel_gam.term_builder as gb
-from liesel_gam.term_builder import _find_parameter, _has_star_gibbs
+from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
 
@@ -292,7 +293,7 @@ def _test_term(fn, k, constraints, fewer_bases_by, columb):
     fname = fn.__name__
     assert f"{fname}(x)" in model.vars
     assert "B(x)" in model.vars
-    assert "$\\tau^2_{" + fname + "(x)}$" in model.vars
+    assert "$\\tau_{" + fname + "(x)}^2$" in model.vars
     assert "$\\tau_{" + fname + "(x)}$" in model.vars
     assert "$\\beta_{" + fname + "(x)}$" in model.vars
 
@@ -454,3 +455,38 @@ class TestHasStarGibbs:
         v = lsl.Var.new_param(1.0, inference="test")
         with pytest.raises(TypeError, match="Could not handle type"):
             _has_star_gibbs(v)
+
+
+class TestFillName:
+    def test_strong_var_unnamed(self):
+        a = lsl.Var(1.0)
+        b = _format_name(a, fill="test")
+
+        assert a is b
+        assert a.name == "test"
+
+    def test_strong_var_named_without_placeholder(self):
+        a = lsl.Var(1.0, name="myname")
+        _format_name(a, fill="test")
+
+        assert a.name == "myname"
+
+    def test_strong_var_named_with_placeholder(self):
+        a = lsl.Var(1.0, name="{x}")
+        _format_name(a, fill="test")
+
+        assert a.name == "test"
+
+    def test_transformed_var(self):
+        tau2 = lsl.Var.new_param(1.0, name="{x}2")
+        tau = lsl.Var.new_calc(jnp.sqrt, tau2, name="{x}")
+        tau2_transformed = tau2.transform(bijector=tfb.Exp())
+
+        _format_name(tau, fill="tau")
+
+        assert tau.name == "tau"
+        assert tau2.name == "tau2"
+        assert tau2_transformed.name == "tau2_transformed"
+        assert tau.value_node.name == "tau_calc"
+        assert tau2.value_node.name == "tau2_value"
+        assert tau2_transformed.value_node.name == "tau2_transformed_value"

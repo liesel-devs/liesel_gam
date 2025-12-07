@@ -72,11 +72,13 @@ class TermBuilder:
         registry: PandasRegistry,
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
     ) -> None:
         self.registry = registry
         self.names = NameManager(prefix=prefix_names_by)
         self.bases = BasisBuilder(registry, names=self.names)
         self.default_inference = default_inference
+        self._default_scale_fn = default_scale_fn
 
     def _get_inference(
         self,
@@ -87,7 +89,42 @@ class TermBuilder:
         else:
             return inference
 
-    def _init_default_scale(
+    def init_scale(
+        self,
+        scale: lsl.Var | ScaleIG | float | Literal["default"] | VarIGPrior,
+        term_name: str,
+    ) -> lsl.Var:
+        if scale == "default":
+            if isinstance(self._default_scale_fn, VarIGPrior):
+                scale_var: lsl.Var | ScaleIG = ScaleIG(
+                    value=self._default_scale_fn.value,
+                    concentration=self._default_scale_fn.concentration,
+                    scale=self._default_scale_fn.scale,
+                    name="{x}",
+                    variance_name="{x}^2",
+                )
+            else:
+                scale_var = self._default_scale_fn()
+        elif isinstance(scale, VarIGPrior):
+            scale_var = ScaleIG(
+                value=scale.value,
+                concentration=scale.concentration,
+                scale=scale.scale,
+                name="{x}",
+                variance_name="{x}^2",
+            )
+        elif isinstance(scale, float):
+            scale_var = lsl.Var.new_value(scale)
+        elif isinstance(scale, lsl.Var | ScaleIG):
+            scale_var = scale
+        else:
+            raise TypeError(f"Unexpected scale type: {type(scale)}")
+
+        scale_name = self.names.tau(term_name)
+        scale_var = _format_name(scale_var, fill=scale_name)
+        return scale_var
+
+    def _init_default_ig_scale(
         self,
         concentration: float | Array,
         scale: float | Array,
@@ -197,7 +234,7 @@ class TermBuilder:
     def slin(
         self,
         formula: str,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
@@ -216,21 +253,13 @@ class TermBuilder:
         else:
             fname = self.names.create("slin" + "(" + basis.name + ")")
 
-        coef_name = self.names.beta(fname)
-
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
-        coef_name = self.names.beta(fname)
         term = StrctLinTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
-            coef_name=coef_name,
+            coef_name=self.names.beta(fname),
         )
         if noncentered:
             term.reparam_noncentered()
@@ -246,7 +275,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -268,16 +297,11 @@ class TermBuilder:
 
         fname = self.names.fname("cr", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -291,7 +315,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -313,16 +337,11 @@ class TermBuilder:
 
         fname = self.names.fname("cs", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -336,7 +355,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -358,16 +377,11 @@ class TermBuilder:
 
         fname = self.names.fname("cc", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -381,7 +395,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int | Sequence[int] = 2,
@@ -405,16 +419,11 @@ class TermBuilder:
 
         fname = self.names.fname("bs", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -429,7 +438,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -453,16 +462,11 @@ class TermBuilder:
 
         fname = self.names.fname("ps", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -476,7 +480,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -505,16 +509,11 @@ class TermBuilder:
 
         fname = self.names.fname("np", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -528,7 +527,7 @@ class TermBuilder:
         x: str,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -552,16 +551,11 @@ class TermBuilder:
 
         fname = self.names.fname("cp", basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -574,7 +568,7 @@ class TermBuilder:
     def ri(
         self,
         cluster: str,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
@@ -582,11 +576,6 @@ class TermBuilder:
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
         fname = self.names.fname("ri", basis.x.name)
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
 
         term = RITerm(
@@ -594,7 +583,7 @@ class TermBuilder:
             penalty=basis.penalty,
             coef_name=coef_name,
             inference=self._get_inference(inference),
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             name=fname,
         )
 
@@ -612,7 +601,7 @@ class TermBuilder:
         self,
         x: str | StrctTerm | LinTerm,
         cluster: str,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         noncentered: bool = False,
@@ -664,7 +653,7 @@ class TermBuilder:
         *x: str,
         k: int,
         bs: BasisTypes,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         m: str = "NA",
         knots: ArrayLike | None = None,
@@ -717,18 +706,13 @@ class TermBuilder:
 
         fname = self.names.fname(bs, basis.x.name)
 
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
             coef_name=coef_name,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
         )
         if noncentered:
@@ -739,7 +723,7 @@ class TermBuilder:
     def mrf(
         self,
         x: str,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         k: int = -1,
         polys: dict[str, ArrayLike] | None = None,
@@ -777,16 +761,12 @@ class TermBuilder:
         )
 
         fname = self.names.fname("mrf", basis.x.name)
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
         coef_name = self.names.beta(fname)
         term = MRFTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
@@ -808,7 +788,7 @@ class TermBuilder:
         self,
         *x: str,
         basis_fn: Callable[[Array], Array],
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         use_callback: bool = True,
         cache_basis: bool = True,
@@ -825,17 +805,12 @@ class TermBuilder:
         )
 
         fname = self.names.fname("f", basis.x.name)
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
-
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
@@ -847,7 +822,7 @@ class TermBuilder:
         self,
         *x: str,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         kernel_name: Literal[
             "spherical",
@@ -880,16 +855,12 @@ class TermBuilder:
         )
 
         fname = self.names.fname("kriging", basis.x.name)
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
@@ -901,7 +872,7 @@ class TermBuilder:
         self,
         *x: str,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int | None = None,
         knots: ArrayLike | None = None,
@@ -924,17 +895,13 @@ class TermBuilder:
         )
 
         fname = self.names.fname("tp", basis.x.name)
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
@@ -946,7 +913,7 @@ class TermBuilder:
         self,
         *x: str,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int | None = None,
         knots: ArrayLike | None = None,
@@ -967,17 +934,13 @@ class TermBuilder:
         )
 
         fname = self.names.fname("ts", basis.x.name)
-        if isinstance(scale, VarIGPrior):
-            scale = self._init_default_scale(
-                concentration=scale.concentration, scale=scale.scale, term_name=fname
-            )
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=scale,
+            scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
@@ -988,7 +951,12 @@ class TermBuilder:
     def ta(
         self,
         *marginals: StrctTerm,
-        common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
+        common_scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | Literal["default"]
+        | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         include_main_effects: bool = False,
         scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
@@ -1006,17 +974,13 @@ class TermBuilder:
         fname = self.names.create(f"{_fname}(" + inputs + ")")
         coef_name = self.names.beta(fname)
 
-        if isinstance(common_scale, VarIGPrior):
-            common_scale = self._init_default_scale(
-                concentration=common_scale.concentration,
-                scale=common_scale.scale,
-                term_name=fname,
-            )
-
         if common_scale is not None and not isinstance(common_scale, float):
+            common_scale = self.init_scale(common_scale, fname)
             _biject_and_replace_star_gibbs_with(
                 common_scale, self._get_inference(scales_inference)
             )
+        elif common_scale is not None:
+            common_scale = self.init_scale(common_scale, fname)
 
         term = StrctTensorProdTerm(
             *marginals,
@@ -1039,7 +1003,12 @@ class TermBuilder:
     def tx(
         self,
         *marginals: StrctTerm,
-        common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
+        common_scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | Literal["default"]
+        | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
     ) -> StrctTensorProdTerm:
@@ -1055,7 +1024,12 @@ class TermBuilder:
     def tf(
         self,
         *marginals: StrctTerm,
-        common_scale: ScaleIG | lsl.Var | float | VarIGPrior | None = None,
+        common_scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | Literal["default"]
+        | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
     ) -> StrctTensorProdTerm:
@@ -1166,3 +1140,21 @@ def _has_star_gibbs(var: lsl.Var) -> bool:
 
     # by this point, we did not find any StarVarianceGibbs
     return False
+
+
+def _format_name(var: lsl.Var, fill: str) -> lsl.Var:
+    with TemporaryModel(var, to_float32=False) as model:
+        nodes = dict(model.nodes)
+        vars_ = dict(model.vars)
+
+    nodes_and_vars = nodes | vars_
+    for node in nodes_and_vars.values():
+        node.name = node.name.format(name=fill, x=fill)
+        if "$" in node.name:
+            node.name = node.name.replace("$", "")
+            node.name = "$" + node.name + "$"
+
+    if not var.name:
+        var.name = fill
+
+    return var
