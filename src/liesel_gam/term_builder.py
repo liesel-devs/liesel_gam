@@ -17,7 +17,7 @@ from ryp import r, to_py
 from .basis_builder import BasisBuilder
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
-from .term import LinTerm, MRFTerm, RITerm, StrctTensorProdTerm, StrctTerm
+from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
 from .var import ScaleIG, VarIGPrior
 
 InferenceTypes = Any
@@ -187,6 +187,53 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
+
+        term.model_spec = basis.model_spec
+        term.mappings = basis.mappings
+        term.column_names = basis.column_names
+
+        return term
+
+    def slin(
+        self,
+        formula: str,
+        scale: ScaleIG | lsl.Var | float | VarIGPrior = VarIGPrior(1.0, 0.005),
+        inference: InferenceTypes | None | Literal["default"] = "default",
+        include_intercept: bool = False,
+        context: dict[str, Any] | None = None,
+        noncentered: bool = False,
+    ) -> StrctLinTerm:
+        basis = self.bases.lin(
+            formula,
+            xname="",
+            basis_name="X",
+            include_intercept=include_intercept,
+            context=context,
+        )
+
+        if basis.x.name:
+            fname = self.names.create("slin" + "(" + basis.x.name + ")")
+        else:
+            fname = self.names.create("slin" + "(" + basis.name + ")")
+
+        coef_name = self.names.beta(fname)
+
+        if isinstance(scale, VarIGPrior):
+            scale = self._init_default_scale(
+                concentration=scale.concentration, scale=scale.scale, term_name=fname
+            )
+
+        coef_name = self.names.beta(fname)
+        term = StrctLinTerm(
+            basis=basis,
+            penalty=basis.penalty,
+            scale=scale,
+            name=fname,
+            inference=self._get_inference(inference),
+            coef_name=coef_name,
+        )
+        if noncentered:
+            term.reparam_noncentered()
 
         term.model_spec = basis.model_spec
         term.mappings = basis.mappings

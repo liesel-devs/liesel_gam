@@ -11,7 +11,7 @@ from jax import Array
 from jax.typing import ArrayLike
 
 from .registry import CategoryMapping
-from .term import LinTerm, MRFTerm, RITerm, StrctTensorProdTerm, StrctTerm
+from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
 
 KeyArray = Any
 
@@ -339,7 +339,7 @@ def summarise_regions(
 
 
 def summarise_lin(
-    term: LinTerm,
+    term: LinTerm | StrctLinTerm,
     samples: Mapping[str, jax.Array],
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,

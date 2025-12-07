@@ -685,7 +685,7 @@ class Intercept(UserVar):
         self.parameter = True
 
 
-class LinTerm(BasisDot):
+class LinMixin:
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
     _column_names: list[str] | None = None
@@ -739,6 +739,14 @@ class LinTerm(BasisDot):
                     f"got {type(val)}."
                 )
         self._column_names = list(value)
+
+
+class LinTerm(BasisDot, LinMixin):
+    pass
+
+
+class StrctLinTerm(StrctTerm, LinMixin):
+    pass
 
 
 class StrctTensorProdTerm(UserVar):

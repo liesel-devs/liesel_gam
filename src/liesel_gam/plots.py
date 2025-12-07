@@ -22,7 +22,7 @@ from .summary import (
     summarise_nd_smooth,
     summarise_regions,
 )
-from .term import LinTerm, MRFTerm, RITerm, StrctTensorProdTerm, StrctTerm
+from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
 
 KeyArray = Any
 
@@ -267,7 +267,7 @@ def plot_regions(
 
 
 def plot_forest(
-    term: RITerm | MRFTerm | LinTerm,
+    term: RITerm | MRFTerm | LinTerm | StrctLinTerm,
     samples: Mapping[str, jax.Array],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
@@ -295,7 +295,7 @@ def plot_forest(
             unobserved_color=unobserved_color,
             indices=indices,
         )
-    elif isinstance(term, LinTerm):
+    elif isinstance(term, LinTerm | StrctLinTerm):
         return plot_forest_lin(
             term=term,
             samples=samples,
@@ -310,7 +310,7 @@ def plot_forest(
 
 
 def plot_forest_lin(
-    term: LinTerm,
+    term: LinTerm | StrctLinTerm,
     samples: Mapping[str, jax.Array],
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
