@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
 from math import ceil
 from typing import Any, Literal, get_args
 
@@ -17,6 +16,7 @@ import smoothcon as scon
 from liesel.model.model import TemporaryModel
 from ryp import r, to_py, to_r
 
+from ..names import NameManager
 from ..var import (
     Basis,
     LinBasis,
@@ -1018,62 +1018,6 @@ class BasisBuilder:
         return basis
 
 
-@dataclass
-class NameManager:
-    prefix: str = ""
-    created_names: dict[str, int] = field(default_factory=dict)
-
-    def create(self, name: str, apply_prefix: bool = True, lazy: bool = True) -> str:
-        """
-        Appends a counter to the given name for uniqueness.
-        There is an individual counter for each name.
-
-        If a prefix was passed to the builder on init, the prefix is applied to the
-        name.
-        """
-        if apply_prefix:
-            name = self.prefix + name
-
-        i = self.created_names.get(name, 0)
-
-        if i > 0 and lazy:
-            name_indexed = name + str(i)
-        else:
-            name_indexed = name
-
-        self.created_names[name] = i + 1
-
-        return name_indexed
-
-    def fname(self, f: str, basis: Basis) -> str:
-        return self.create(f"{f}({basis.x.name})")
-
-    def param(
-        self,
-        param_name: str,
-        term_name: str = "",
-    ) -> str:
-        param_name = param_name.replace("$", "")
-        if term_name:
-            term_name = term_name.replace("$", "")
-            param_name = f"${param_name}" + "_{" + f"{term_name}" + "}$"
-            # apply_prefix false, because the assumption is that any prefix will be
-            # present in the term name already
-            return self.create(param_name, apply_prefix=False)
-        else:
-            param_name = f"${param_name}$"
-            return self.create(param_name, apply_prefix=True)
-
-    def beta(self, term_name: str = "") -> str:
-        return self.param(term_name=term_name, param_name="\\beta")
-
-    def tau(self, term_name: str = "") -> str:
-        return self.param(term_name=term_name, param_name="\\tau")
-
-    def tau2(self, term_name: str = "") -> str:
-        return self.param(term_name=term_name, param_name="\\tau^2")
-
-
 class TermBuilder:
     def __init__(
         self,
@@ -1227,7 +1171,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cr", basis)
+        fname = self.names.fname("cr", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1272,7 +1216,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cs", basis)
+        fname = self.names.fname("cs", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1317,7 +1261,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cc", basis)
+        fname = self.names.fname("cc", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1364,7 +1308,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("bs", basis)
+        fname = self.names.fname("bs", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1412,7 +1356,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("ps", basis)
+        fname = self.names.fname("ps", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1464,7 +1408,7 @@ class TermBuilder:
         if diagonal_penalty:
             basis.diagonalize_penalty()
 
-        fname = self.names.fname("np", basis)
+        fname = self.names.fname("np", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1511,7 +1455,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cp", basis)
+        fname = self.names.fname("cp", basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1542,7 +1486,7 @@ class TermBuilder:
     ) -> RITerm:
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
-        fname = self.names.fname("ri", basis)
+        fname = self.names.fname("ri", basis.x.name)
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
@@ -1676,7 +1620,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname(bs, basis=basis)
+        fname = self.names.fname(bs, basis.x.name)
 
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
@@ -1737,7 +1681,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("mrf", basis)
+        fname = self.names.fname("mrf", basis.x.name)
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
@@ -1785,7 +1729,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("f", basis)
+        fname = self.names.fname("f", basis.x.name)
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
@@ -1840,7 +1784,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("kriging", basis)
+        fname = self.names.fname("kriging", basis.x.name)
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
@@ -1884,7 +1828,7 @@ class TermBuilder:
             remove_null_space_completely=remove_null_space_completely,
         )
 
-        fname = self.names.fname("tp", basis)
+        fname = self.names.fname("tp", basis.x.name)
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
@@ -1927,7 +1871,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("ts", basis)
+        fname = self.names.fname("ts", basis.x.name)
         if isinstance(scale, VarIGPrior):
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
