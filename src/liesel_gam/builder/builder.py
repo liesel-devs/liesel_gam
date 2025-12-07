@@ -177,7 +177,7 @@ class BasisBuilder:
         basis = Basis(
             value=Xvar,
             basis_fn=basis_fn,
-            name=self.names.create_lazily(basis_name + "(" + Xname + ")"),
+            name=self.names.create(basis_name + "(" + Xname + ")"),
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=jnp.asarray(penalty),
@@ -216,7 +216,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
+            name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -256,7 +256,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
+            name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -302,7 +302,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
+            name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -342,7 +342,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
+            name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -399,7 +399,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
+            name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -440,7 +440,7 @@ class BasisBuilder:
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
-            name=self.names.create_lazily(basis_name + "(" + x_var.name + ")"),
+            name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
             penalty=smooth.penalty,
             use_callback=True,
@@ -490,7 +490,7 @@ class BasisBuilder:
                 lsl.TransientCalc(  # for memory-efficiency
                     lambda *args: jnp.vstack(args).T,
                     *list(obs_vars.values()),
-                    _name=self.names.create_lazily(xname),
+                    _name=self.names.create(xname),
                 )
             )
         else:
@@ -502,7 +502,7 @@ class BasisBuilder:
 
         basis = Basis(
             xvar,
-            name=self.names.create_lazily(basis_name + "(" + xname + ")"),
+            name=self.names.create(basis_name + "(" + xname + ")"),
             basis_fn=basis_fn,
             penalty=smooth.penalty,
             use_callback=True,
@@ -724,7 +724,7 @@ class BasisBuilder:
         xvar = lsl.TransientCalc(  # for memory-efficiency
             lambda *args: jnp.vstack(args).T,
             *list(variables.values()),
-            _name=self.names.create_lazily(xname) if xname else xname,
+            _name=self.names.create(xname) if xname else xname,
         )
 
         def basis_fn(x):
@@ -743,9 +743,9 @@ class BasisBuilder:
             return jnp.asarray(basis, dtype=float)
 
         if xname:
-            bname = self.names.create_lazily(basis_name + "(" + xvar.name + ")")
+            bname = self.names.create(basis_name + "(" + xvar.name + ")")
         else:
-            bname = self.names.create_lazily(basis_name)
+            bname = self.names.create(basis_name)
 
         basis = LinBasis(
             xvar,
@@ -782,7 +782,7 @@ class BasisBuilder:
         basis = Basis(
             value=result.var,
             basis_fn=lambda x: x,
-            name=self.names.create_lazily(basis_name + "(" + cluster + ")"),
+            name=self.names.create(basis_name + "(" + cluster + ")"),
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
@@ -980,7 +980,7 @@ class BasisBuilder:
         basis = MRFBasis(
             value=var,
             basis_fn=basis_fun,
-            name=self.names.create_lazily(basis_name + "(" + x + ")"),
+            name=self.names.create(basis_name + "(" + x + ")"),
             cache_basis=True,
             use_callback=True,
             penalty=penalty_arr,
@@ -1023,7 +1023,7 @@ class NameManager:
     prefix: str = ""
     created_names: dict[str, int] = field(default_factory=dict)
 
-    def create(self, name: str, apply_prefix: bool = True) -> str:
+    def create(self, name: str, apply_prefix: bool = True, lazy: bool = True) -> str:
         """
         Appends a counter to the given name for uniqueness.
         There is an individual counter for each name.
@@ -1036,19 +1036,7 @@ class NameManager:
 
         i = self.created_names.get(name, 0)
 
-        name_indexed = name + str(i)
-
-        self.created_names[name] = i + 1
-
-        return name_indexed
-
-    def create_lazily(self, name: str, apply_prefix: bool = True) -> str:
-        if apply_prefix:
-            name = self.prefix + name
-
-        i = self.created_names.get(name, 0)
-
-        if i > 0:
+        if i > 0 and lazy:
             name_indexed = name + str(i)
         else:
             name_indexed = name
@@ -1058,24 +1046,32 @@ class NameManager:
         return name_indexed
 
     def fname(self, f: str, basis: Basis) -> str:
-        return self.create_lazily(f"{f}({basis.x.name})")
+        return self.create(f"{f}({basis.x.name})")
 
-    def create_param_name(self, term_name: str, param_name: str) -> str:
+    def param(
+        self,
+        param_name: str,
+        term_name: str = "",
+    ) -> str:
+        param_name = param_name.replace("$", "")
         if term_name:
+            term_name = term_name.replace("$", "")
             param_name = f"${param_name}" + "_{" + f"{term_name}" + "}$"
-            return self.create_lazily(param_name, apply_prefix=False)
+            # apply_prefix false, because the assumption is that any prefix will be
+            # present in the term name already
+            return self.create(param_name, apply_prefix=False)
         else:
             param_name = f"${param_name}$"
-            return self.create_lazily(param_name, apply_prefix=True)
+            return self.create(param_name, apply_prefix=True)
 
-    def create_beta_name(self, term_name: str) -> str:
-        return self.create_param_name(term_name=term_name, param_name="\\beta")
+    def beta(self, term_name: str = "") -> str:
+        return self.param(term_name=term_name, param_name="\\beta")
 
-    def create_tau_name(self, term_name: str) -> str:
-        return self.create_param_name(term_name=term_name, param_name="\\tau")
+    def tau(self, term_name: str = "") -> str:
+        return self.param(term_name=term_name, param_name="\\tau")
 
-    def create_tau2_name(self, term_name: str) -> str:
-        return self.create_param_name(term_name=term_name, param_name="\\tau^2")
+    def tau2(self, term_name: str = "") -> str:
+        return self.param(term_name=term_name, param_name="\\tau^2")
 
 
 class TermBuilder:
@@ -1106,8 +1102,8 @@ class TermBuilder:
         value: float | Array = 1.0,
         term_name: str = "",
     ) -> ScaleIG:
-        scale_name = self.names.create_tau_name(term_name)
-        variance_name = self.names.create_tau2_name(term_name)
+        scale_name = self.names.tau(term_name)
+        variance_name = self.names.tau2(term_name)
         scale_var = ScaleIG(
             value=value,
             concentration=concentration,
@@ -1186,11 +1182,11 @@ class TermBuilder:
         )
 
         if basis.x.name:
-            term_name = self.names.create_lazily("lin" + "(" + basis.x.name + ")")
+            term_name = self.names.create("lin" + "(" + basis.x.name + ")")
         else:
-            term_name = self.names.create_lazily("lin" + "(" + basis.name + ")")
+            term_name = self.names.create("lin" + "(" + basis.name + ")")
 
-        coef_name = self.names.create_beta_name(term_name)
+        coef_name = self.names.beta(term_name)
 
         term = LinTerm(
             basis,
@@ -1238,7 +1234,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1283,7 +1279,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1328,7 +1324,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1375,7 +1371,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1423,7 +1419,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1475,7 +1471,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1522,7 +1518,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis=basis,
             penalty=basis.penalty,
@@ -1552,7 +1548,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
 
         term = RITerm(
             basis=basis,
@@ -1597,7 +1593,7 @@ class TermBuilder:
             x_var = x
             xname = x_var.basis.x.name
 
-        fname = self.names.create_lazily("rs(" + xname + "|" + cluster + ")")
+        fname = self.names.create("rs(" + xname + "|" + cluster + ")")
         term = lsl.Var.new_calc(
             lambda x, cluster: x * cluster,
             x=x_var,
@@ -1612,7 +1608,7 @@ class TermBuilder:
         x: str,
         by: Term,
     ) -> lsl.Var:
-        fname = self.names.create_lazily(x + "*" + by.name)
+        fname = self.names.create(x + "*" + by.name)
         x_var = self.registry.get_obs(x)
 
         term = lsl.Var.new_calc(
@@ -1687,7 +1683,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis,
             penalty=basis.penalty,
@@ -1746,7 +1742,7 @@ class TermBuilder:
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = MRFTerm(
             basis,
             penalty=basis.penalty,
@@ -1795,7 +1791,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis,
             penalty=basis.penalty,
@@ -1849,7 +1845,7 @@ class TermBuilder:
             scale = self._init_default_scale(
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis,
             penalty=basis.penalty,
@@ -1894,7 +1890,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis,
             penalty=basis.penalty,
@@ -1937,7 +1933,7 @@ class TermBuilder:
                 concentration=scale.concentration, scale=scale.scale, term_name=fname
             )
 
-        coef_name = self.names.create_beta_name(fname)
+        coef_name = self.names.beta(fname)
         term = Term(
             basis,
             penalty=basis.penalty,
@@ -1966,8 +1962,8 @@ class TermBuilder:
         on a transformed version.
         """
         inputs = ",".join(list(TPTerm._input_obs([t.basis for t in marginals])))
-        fname = self.names.create_lazily(f"{_fname}(" + inputs + ")")
-        coef_name = self.names.create_beta_name(fname)
+        fname = self.names.create(f"{_fname}(" + inputs + ")")
+        coef_name = self.names.beta(fname)
 
         if isinstance(common_scale, VarIGPrior):
             common_scale = self._init_default_scale(
