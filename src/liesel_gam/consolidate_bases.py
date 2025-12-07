@@ -19,7 +19,7 @@ can be safely and efficiently used in batched operations:
 import liesel.model as lsl
 from liesel.goose.types import Position
 
-from ..var import Basis
+from .var import Basis
 
 
 def _remove_singleton_vars(gb: lsl.GraphBuilder) -> lsl.GraphBuilder:
