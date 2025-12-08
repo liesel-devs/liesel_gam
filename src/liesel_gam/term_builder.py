@@ -67,6 +67,40 @@ def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> d
 
 
 class TermBuilder:
+    """
+    Initializes structured additive model terms.
+
+    The terms returned by the methods of this class are all instances of
+    :class:`liesel.model.Var`, or of its subclasses.
+
+    Among other things, the term builder automatically assigns unique names to the
+    created variables.
+
+    Parameters
+    ----------
+    registry
+        Provides an interface to a data frame used to set up the model terms.
+    prefix_names_by
+        Names created by this TermBuilder will be prefixed by the string supplied here.
+    default_inference
+        Defines the default inference specification for terms created by this builder.
+    default_scale_fn
+        A function or :class:`.VarIGPrior` object that defines the default scale \
+        for structured additive terms initialized by this builder. If this is a \
+        function, it must take no arguments and return a :class:`liesel.model.Var` \
+        that acts as the scale. If it is a :class:`.VarIGPrior`, the default scale \
+        will be ``scale = sqrt(var)``, where \
+        ``var ~ InverseGamma(concentration, scale)``, with concentration and scale \
+        given by the :class:`.VarIGPrior` object. For most terms, this \
+        will mean that a fitting Gibbs sampler can be automatically set up for \
+        ``var``. The exceptions to this rule are :meth:`.ta`, :meth:`.tf`, and \
+        :meth:`.tx`.
+
+    See Also
+    --------
+    .BasisBuilder : Initializes :class:`.Basis` objects with fitting penalty matrices.
+    """
+
     def __init__(
         self,
         registry: PandasRegistry,
@@ -94,6 +128,38 @@ class TermBuilder:
         scale: lsl.Var | ScaleIG | float | Literal["default"] | VarIGPrior,
         term_name: str,
     ) -> lsl.Var:
+        """
+        Fully initializes a scale variable with a term-related name.
+
+        The behavior depends on the type of the ``scale`` argument.
+
+        - If it is ``"default"``, the return will be created based on the \
+            ``default_scale_fn`` argument supplied to the TermBuilder upon \
+            initialization.
+        - If it is a :class:`.VarIGPrior`, the return \
+            will be ``scale = sqrt(var)``, where \
+            ``var ~ InverseGamma(concentration, scale)``, with concentration and scale \
+            given by the :class:`.VarIGPrior` object. For most terms, this \
+            will mean that a fitting Gibbs sampler can be automatically set up for \
+            ``var``. The exceptions to this rule are :meth:`.ta`, :meth:`.tf`, and \
+            :meth:`.tx`.
+        - If it is a ``float``, the return will be ``lsl.Var.new_value`` holding this \
+            float.
+        - If it is a :class:`liesel.model.Var` object, the return will be this \
+            object. If you supply a :class:`liesel.model.Var`, you can use the place-\
+            holder ``{x}`` in its name to allow this method to fill in the \
+            ``term_name``.
+
+        Parameters
+        ----------
+        scale
+            Scale object.
+        term_name
+            Name of the term this scale corresponds to. If you supply a \
+            :class:`liesel.model.Var`, you can use the place-\
+            holder ``{x}`` in its name to allow this method to fill in the \
+            ``term_name``.
+        """
         if scale == "default":
             if isinstance(self._default_scale_fn, VarIGPrior):
                 scale_var: lsl.Var | ScaleIG = ScaleIG(
