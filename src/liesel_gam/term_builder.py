@@ -190,24 +190,6 @@ class TermBuilder:
         scale_var = _format_name(scale_var, fill=scale_name)
         return scale_var
 
-    def _init_default_ig_scale(
-        self,
-        concentration: float | Array,
-        scale: float | Array,
-        value: float | Array = 1.0,
-        term_name: str = "",
-    ) -> ScaleIG:
-        scale_name = self.names.tau(term_name)
-        variance_name = self.names.tau2(term_name)
-        scale_var = ScaleIG(
-            value=value,
-            concentration=concentration,
-            scale=scale,
-            name=scale_name,
-            variance_name=variance_name,
-        )
-        return scale_var
-
     @classmethod
     def from_dict(
         cls, data: dict[str, ArrayLike], prefix_names_by: str = ""
