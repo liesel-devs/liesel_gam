@@ -11,6 +11,7 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import smoothcon as scon
+import tensorflow_probability.substrates.jax.bijectors as tfb
 from liesel.model.model import TemporaryModel
 from ryp import r, to_py
 
@@ -105,7 +106,7 @@ class TermBuilder:
         self,
         registry: PandasRegistry,
         prefix_names_by: str = "",
-        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel),
+        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
     ) -> None:
         self.registry = registry
@@ -1044,7 +1045,9 @@ class TermBuilder:
                 raise TypeError(
                     f"Expected scale to be a liesel.model.Var, got {type(scale)}"
                 )
-            _biject_and_replace_star_gibbs_with(scale, scales_inference)
+            _biject_and_replace_star_gibbs_with(
+                scale, self._get_inference(scales_inference)
+            )
 
         return term
 
@@ -1058,7 +1061,9 @@ class TermBuilder:
         | Literal["default"]
         | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
-        scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
+        scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
+            gs.HMCKernel
+        ),
     ) -> StrctTensorProdTerm:
         return self.ta(
             *marginals,
@@ -1079,7 +1084,9 @@ class TermBuilder:
         | Literal["default"]
         | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
-        scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
+        scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
+            gs.HMCKernel
+        ),
     ) -> StrctTensorProdTerm:
         return self.ta(
             *marginals,
@@ -1144,7 +1151,7 @@ def _biject_and_replace_star_gibbs_with(
         trafo_name = "h(" + param.name + ")"
     else:
         trafo_name = None
-    param.transform(bijector=None, inference=inference, name=trafo_name)
+    param.transform(bijector=tfb.Softplus(), inference=inference, name=trafo_name)
     return var
 
 
