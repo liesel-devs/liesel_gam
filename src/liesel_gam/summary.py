@@ -9,11 +9,23 @@ import numpy as np
 import pandas as pd
 from jax import Array
 from jax.typing import ArrayLike
+from liesel.goose.summary_m import SummaryQuantities
 
 from .registry import CategoryMapping
 from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
 
 KeyArray = Any
+
+
+def _summarise_which(which: str | Sequence[str] | None) -> Sequence[SummaryQuantities]:
+    basics: Sequence[SummaryQuantities] = ["mean", "sd", "var", "hdi", "quantiles"]
+    if which is None:
+        return basics
+    if "hdi" not in which:
+        basics = [w for w in basics if w != "hdi"]
+    if "q_" not in which:
+        basics = [w for w in basics if w != "quantiles"]
+    return basics
 
 
 def summarise_by_samples(
@@ -69,7 +81,11 @@ def summarise_1d_smooth(
     term_samples = term.predict(samples, newdata=newdata_x)
     term_summary = (
         gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=quantiles, hdi_prob=hdi_prob
+            term_samples,
+            name=term.name,
+            quantiles=quantiles,
+            hdi_prob=hdi_prob,
+            which=_summarise_which(None),
         )
         .to_dataframe()
         .reset_index()
@@ -139,9 +155,14 @@ def summarise_nd_smooth(
 
     ci_quantiles_ = (0.05, 0.95) if quantiles is None else quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
+
     term_summary = (
         gs.SamplesSummary.from_array(
-            term_samples, name=term.name, quantiles=ci_quantiles_, hdi_prob=hdi_prob_
+            term_samples,
+            name=term.name,
+            quantiles=ci_quantiles_,
+            hdi_prob=hdi_prob_,
+            which=_summarise_which(which),
         )
         .to_dataframe()
         .reset_index()
@@ -241,6 +262,7 @@ def summarise_cluster(
             predictions,
             quantiles=quantiles,
             hdi_prob=0.9 if hdi_prob is None else hdi_prob,
+            which=_summarise_which(None),
         )
         .to_dataframe()
         .reset_index()
@@ -354,7 +376,10 @@ def summarise_lin(
 
     df = (
         gs.SamplesSummary.from_array(
-            coef_samples, quantiles=quantiles, hdi_prob=hdi_prob
+            coef_samples,
+            quantiles=quantiles,
+            hdi_prob=hdi_prob,
+            which=_summarise_which(None),
         )
         .to_dataframe()
         .reset_index()
