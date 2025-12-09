@@ -648,7 +648,7 @@ wheels = [
 
 [[package]]
 name = "liesel"
-version = "0.4.1"
+version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arviz" },
@@ -664,12 +664,12 @@ dependencies = [
     { name = "pydot" },
     { name = "scipy" },
     { name = "seaborn" },
-    { name = "tensorflow-probability" },
+    { name = "tfp-nightly" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/ca/4f439f411caddca16a5849b9b428f935cef0c9aab722bfa65b52ac732c03/liesel-0.4.1.tar.gz", hash = "sha256:6eaffdfa84a57554f06cbdbb4fb16ad938bf240086cf34d50fbf52241e035731", size = 7378521, upload-time = "2025-07-25T09:52:51.493Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/48/ac59a77a089678e362aee8a3d03538d6f75b8c6e147f0f77e6c368f902fb/liesel-0.4.2.tar.gz", hash = "sha256:e9c84f07a8c99bfab361dfbd3b9817b6574eb5355b46e973a835c1f7068f586d", size = 4243000, upload-time = "2025-12-09T16:45:12.557Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/52/793fea8bd669965fc10b71effeff6d3b9ecf2d14eec09ab66ce732083d4f/liesel-0.4.1-py3-none-any.whl", hash = "sha256:ee345f983b33efae58374c6e123b8746add897b68be0515e8eaa60b1099727fa", size = 125090, upload-time = "2025-07-25T09:52:49.136Z" },
+    { url = "https://files.pythonhosted.org/packages/96/6c/b0bf0435a983b2375d54aeb823d50cc9f4608c84542e3592dc29c5902e83/liesel-0.4.2-py3-none-any.whl", hash = "sha256:f370172c483e782e6d322615ac66e8fa1d2268c4e7a5cb4612fa4fb0da07b8e5", size = 128165, upload-time = "2025-12-09T16:45:10.907Z" },
 ]
 
 [[package]]
@@ -696,7 +696,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "formulaic", specifier = ">=1.2.1" },
-    { name = "liesel", specifier = ">=0.4.1" },
+    { name = "liesel", specifier = ">=0.4.2" },
     { name = "smoothcon", specifier = ">=0.0.9" },
 ]
 
@@ -1522,8 +1522,8 @@ wheels = [
 ]
 
 [[package]]
-name = "tensorflow-probability"
-version = "0.25.0"
+name = "tfp-nightly"
+version = "0.26.0.dev20251209"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "absl-py" },
@@ -1535,7 +1535,7 @@ dependencies = [
     { name = "six" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/b6/e116761ceeb880b7ad4c6a7e1203538754dd7dda42538f08d6daaf8dfa4d/tensorflow_probability-0.25.0-py2.py3-none-any.whl", hash = "sha256:f3f4d6431656c0122906888afe1b67b4400e82bd7f254b45b92e6c5b84ea8e3e", size = 6979403, upload-time = "2024-11-08T16:25:57.238Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/61/ff8e7d484ad6fba26a5a76252c2b85071653f1992a92d910d113f67b01ea/tfp_nightly-0.26.0.dev20251209-py2.py3-none-any.whl", hash = "sha256:4aeb4e642a549525ae0081dc46b12ccfd0c57bb9c1cec22b3530fd9a18f47715", size = 6975585, upload-time = "2025-12-09T09:44:07.973Z" },
 ]
 
 [[package]]
