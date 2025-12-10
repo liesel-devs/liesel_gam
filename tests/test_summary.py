@@ -33,7 +33,7 @@ def polys() -> np.typing.NDArray:
     return to_py("columb.polys", format="numpy")
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def tb(columb) -> gam.TermBuilder:
     df = columb
     return gam.TermBuilder.from_df(df)
