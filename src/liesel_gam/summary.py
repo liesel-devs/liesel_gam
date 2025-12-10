@@ -21,9 +21,9 @@ def _summarise_which(which: str | Sequence[str] | None) -> Sequence[SummaryQuant
     basics: Sequence[SummaryQuantities] = ["mean", "sd", "var", "hdi", "quantiles"]
     if which is None:
         return basics
-    if "hdi" not in which:
+    if "hdi" not in ",".join(which):
         basics = [w for w in basics if w != "hdi"]
-    if "q_" not in which:
+    if "q_" not in ",".join(which):
         basics = [w for w in basics if w != "quantiles"]
     return basics
 
