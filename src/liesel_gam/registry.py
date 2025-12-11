@@ -111,17 +111,6 @@ class PandasRegistry:
 
         return array
 
-    def _get_cache_key(
-        self, name: str, transform: Callable | None, var_name: str | None
-    ) -> str:
-        """Generate cache key for variable with optional transform."""
-        if transform is None:
-            return name
-
-        transform_id = getattr(transform, "__name__", str(transform))
-        cache_name = var_name or f"{name}_{transform_id}"
-        return cache_name
-
     def _is_closure(self, func: Callable) -> bool:
         """Check if function is a closure (captures variables from outer scope)."""
         return func.__closure__ is not None
