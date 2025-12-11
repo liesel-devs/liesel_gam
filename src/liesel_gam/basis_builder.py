@@ -646,7 +646,14 @@ class BasisBuilder:
         # evaluate model matrix once to get a spec with structure information
         # also necessary to populate spec with the correct information for
         # transformations like center, scale, standardize
-        spec = spec.get_model_matrix(self.data, context=context).model_spec
+        try:
+            spec = spec.get_model_matrix(self.data, context=context).model_spec
+        except Exception as e:
+            raise RuntimeError(
+                "Could not build model matrix. This could be caused by "
+                "unsupported data dtypes like dates. Please check your input data. "
+                "Also check the original error message, included above."
+            ) from e
 
         # get column names. There may be a more efficient way to do it
         # that does not require building the model matrix a second time, but this
