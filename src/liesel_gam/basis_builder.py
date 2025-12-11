@@ -711,6 +711,7 @@ class BasisBuilder:
             use_callback=True,
             cache_basis=True,
             name=bname,
+            penalty=None,
         )
 
         basis.model_spec = spec

@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal
 
 import jax
+import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import pandas as pd
@@ -287,6 +288,7 @@ class TermBuilder:
             include_intercept=include_intercept,
             context=context,
         )
+        basis._penalty = lsl.Value(jnp.eye(basis.nbases))
 
         fname = self.names.create("slin" + "(" + basis.name + ")")
 
