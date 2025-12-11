@@ -19,7 +19,7 @@ ArrayLike = jax.typing.ArrayLike
 class VarIGPrior(NamedTuple):
     concentration: float
     scale: float
-    value: float = 10.0
+    value: float = 1.0
 
 
 def _append_name(name: str, append: str) -> str:
