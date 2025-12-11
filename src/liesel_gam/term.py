@@ -120,12 +120,7 @@ def _init_scale_ig(
 
 
 def _validate_scalar_or_p_scale(scale_value: Array, p):
-    try:
-        is_scalar = scale_value.size == 1
-    except AttributeError:
-        raise TypeError(
-            f"Expected scale value to be an array, got type {type(scale_value)}"
-        )
+    is_scalar = scale_value.size == 1
     is_p = scale_value.size == p
     if not (is_scalar or is_p):
         raise ValueError(
