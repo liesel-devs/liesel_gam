@@ -82,7 +82,7 @@ def _init_scale_ig(
                 )
 
         scale_var: ScaleIG | lsl.Var | None = ScaleIG(
-            value=jnp.array(x.value),
+            value=jnp.sqrt(jnp.array(x.value)),
             concentration=concentration,
             scale=scale_,
         )
