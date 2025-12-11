@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import pytest
+import tensorflow_probability.substrates.jax.distributions as tfd
 from jax import Array
 from ryp import r, to_py
 
@@ -200,6 +201,199 @@ class TestSmoothTerm:
         assert proposal[tau2.name] > 0.0
         assert proposal[tau2.name].size == 1
 
+    def test_init_with_weak_penalty(self) -> None:
+        a = lsl.Var.new_param(1.0)
+        pen = lsl.Var.new_calc(lambda a: a * jnp.eye(5), a)
+
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        with pytest.raises(NotImplementedError):
+            gam.StrctTerm(basis, penalty=pen, scale=1.0)
+
+    def test_init_varigprior(sel):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        term = gam.StrctTerm(basis, penalty=None, scale=gam.VarIGPrior(1.0, 0.005, 2.0))
+        assert term.scale.value == pytest.approx(jnp.sqrt(2.0))
+
+        assert term.scale.value_node[0].dist_node[
+            "concentration"
+        ].value == pytest.approx(1.0)
+        assert term.scale.value_node[0].dist_node["scale"].value == pytest.approx(0.005)
+
+        with pytest.raises(ValueError):
+            gam.StrctTerm(
+                basis, penalty=None, scale=gam.VarIGPrior(jnp.ones(2), 0.005, 2.0)
+            )
+
+        with pytest.raises(ValueError):
+            gam.StrctTerm(
+                basis, penalty=None, scale=gam.VarIGPrior(1.0, jnp.ones(2), 2.0)
+            )
+
+        with pytest.raises(ValueError):
+            gam.StrctTerm(
+                basis, penalty=None, scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2))
+            )
+
+        with pytest.raises(ValueError, match="1 or 5, got size 2"):
+            gam.StrctTerm(
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2)),
+                validate_scalar_scale=False,
+            )
+
+        with pytest.raises(RuntimeError, match="Failed to setup Gibbs kernel"):
+            gam.StrctTerm(
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(5)),
+                validate_scalar_scale=False,
+            )
+
+        gam.StrctTerm(
+            basis,
+            penalty=None,
+            scale=lsl.Var.new_param(jnp.ones(5)),
+            validate_scalar_scale=False,
+        )
+
+    def test_scale_types(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        with pytest.raises(TypeError, match="Unexpected type for scale"):
+            gam.StrctTerm(basis, penalty=None, scale="test")
+
+        with pytest.raises(TypeError, match="Unexpected type for scale"):
+            gam.StrctTerm(basis, penalty=None, scale=lsl.Var.new_param("test"))
+
+
+class TestNonCentering:
+    def test_scale_is_none(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        term = gam.StrctTerm(basis, penalty=None, scale=None)
+
+        with pytest.raises(ValueError, match="Noncentering"):
+            term.reparam_noncentered()
+
+    def test_reparam_twice(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        scale = lsl.Var(2.0, name="a")
+        term = gam.StrctTerm(basis, penalty=None, scale=scale)
+        term.reparam_noncentered()
+        assert term.scale is scale
+        assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
+
+        # does nothing
+        term.reparam_noncentered()
+        assert term.scale is scale
+        assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
+
+    def test_reparam_with_scale_ig(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        scale = gam.ScaleIG(1.0, 1.0, 0.005, name="a")
+        term = gam.StrctTerm(basis, penalty=None, scale=scale)
+        term.reparam_noncentered()
+        assert term.scale is scale
+        assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
+
+    def test_reparam_with_scale_ig_multivariate(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        scale = gam.ScaleIG(1.0, 1.0, 0.005, name="a")
+        term = gam.StrctTerm(
+            basis, penalty=None, scale=scale, validate_scalar_scale=False
+        )
+        scale.value_node[0].value = jnp.ones(5)
+        scale.update()
+        with pytest.raises(RuntimeError):
+            term.reparam_noncentered()
+
+
+class TestStrctTermFConstructor:
+    def test_reparam_with_scale_ig(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        with pytest.raises(ValueError, match="must be named"):
+            gam.StrctTerm.f(basis, scale=1.0)
+
+        basis = gam.Basis(x, xname="x")
+        basis.name = ""
+        with pytest.raises(ValueError, match="must be named"):
+            gam.StrctTerm.f(basis, scale=1.0)
+
+        basis = gam.Basis(x, xname="x")
+        gam.StrctTerm.f(basis, scale=1.0)
+
+    def test_init_noncentered(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x, xname="x")
+        scale = lsl.Var(2.0, name="a")
+        term = gam.StrctTerm.f(basis, scale=scale, noncentered=True)
+
+        assert term.scale is scale
+        assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
+
+    def test_init_new_ig_noncentered(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x, xname="x")
+        term = gam.StrctTerm.new_ig(
+            basis, penalty=basis.penalty, noncentered=True, name="test"
+        )
+
+        assert term.scale.value == pytest.approx(100.0)
+        assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
+
+
+class TestTermWithCustomPenalty:
+    def test_init_diag_prior(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        term = gam.StrctTerm(basis, penalty=None, scale=1.0)
+        assert isinstance(term.coef.dist_node.init_dist(), tfd.Normal)
+
+    def test_penalty_none(self) -> None:
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        term = gam.StrctTerm(basis, penalty=None, scale=1.0)
+        assert term._penalty is None
+
+        with pytest.raises(ValueError, match="is None"):
+            term.scale_penalty()
+
+        with pytest.raises(ValueError, match="is None"):
+            term.constrain("sumzero_term")
+
+        with pytest.raises(ValueError, match="is None"):
+            term.diagonalize_penalty()
+
+    def test_penalty_diag_different_object(self) -> None:
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        term = gam.StrctTerm(basis, penalty=jnp.eye(5), scale=1.0)
+
+        with pytest.raises(ValueError, match="Different penalty"):
+            term.scale_penalty()
+
+        with pytest.raises(ValueError, match="Different penalty"):
+            term.constrain("sumzero_term")
+
+        with pytest.raises(ValueError, match="Different penalty"):
+            term.diagonalize_penalty()
+
+    def test_penalty_diag_same_object(self) -> None:
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x)
+        term = gam.StrctTerm(basis, penalty=basis.penalty, scale=1.0)
+
+        term.scale_penalty()
+        term.constrain("sumzero_term")
+        term.diagonalize_penalty()
+
 
 class TestTPTerm:
     def test_init(self, columb):
@@ -255,3 +449,50 @@ class TestTPTerm:
 
         with pytest.raises(ValueError):
             gam.StrctTensorProdTerm(t1, t2)
+
+
+class TestIndexingTerm:
+    def test_init(self):
+        x = jnp.arange(10, dtype=jnp.int32)
+        basis = gam.Basis(x, xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        term = gam.IndexingTerm.f(basis, scale=scale)
+        assert term._penalty is None
+
+    def test_constraints(self):
+        x = jnp.arange(10, dtype=jnp.int32)
+        basis = gam.Basis(x, xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        term = gam.IndexingTerm.f(basis, scale=scale)
+
+        with pytest.raises(ValueError):
+            term.scale_penalty()
+
+        with pytest.raises(ValueError):
+            term.diagonalize_penalty()
+
+        with pytest.raises(ValueError):
+            term.constrain("sumzero_coef")
+
+    def test_init_validation(self):
+        x = jnp.arange(10, dtype=jnp.float32)
+        basis = gam.Basis(x, xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        with pytest.raises(TypeError):
+            gam.IndexingTerm.f(basis, scale=scale)
+
+        basis = gam.Basis(jnp.c_[x, x], xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        with pytest.raises(ValueError):
+            gam.IndexingTerm.f(basis, scale=scale)
+
+    def test_full_basis(self):
+        x = jnp.arange(10, dtype=jnp.int32)
+        basis = gam.Basis(x, xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        term = gam.IndexingTerm.f(basis, scale=scale)
+
+        b = term.init_full_basis()
+        assert b.value.shape == (10, 10)
+        assert b.penalty is not None
+        assert b.penalty.value.shape == (10, 10)

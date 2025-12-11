@@ -252,6 +252,7 @@ def is_diagonal(M, atol=1e-6):
 
 class TestBasisReparameterization:
     def test_diagonalize_penalty(self, basis: gam.Basis):
+        assert basis.penalty is not None
         assert not is_diagonal(basis.penalty.value, 1e-5)
         b1 = basis.value
         basis.diagonalize_penalty()
@@ -260,6 +261,7 @@ class TestBasisReparameterization:
         assert not jnp.allclose(b1, b2, atol=1e-3)
 
     def test_diagonalize_penalty_twice(self, basis: gam.Basis):
+        assert basis.penalty is not None
         basis.diagonalize_penalty()
         b1 = basis.value
         pen1 = basis.penalty.value
@@ -273,6 +275,7 @@ class TestBasisReparameterization:
         assert jnp.allclose(b1, b2, atol=1e-5)
 
     def test_scale_penalty(self, basis: gam.Basis):
+        assert basis.penalty is not None
         b1 = basis.value
         pen1 = basis.penalty.value
 
@@ -286,6 +289,7 @@ class TestBasisReparameterization:
         assert jnp.allclose(b1, b2, atol=1e-5)
 
     def test_scale_penalty_twice(self, basis: gam.Basis):
+        assert basis.penalty is not None
         basis.scale_penalty()
         b1 = basis.value
         pen1 = basis.penalty.value
@@ -298,6 +302,7 @@ class TestBasisReparameterization:
         assert jnp.allclose(b1, b2, atol=1e-6)
 
     def test_constrain_sumzero_coef(self, basis: gam.Basis):
+        assert basis.penalty is not None
         basis.constrain("sumzero_coef")
         term = gam.StrctTerm.f(basis)
         coef = jax.random.normal(key(42), term.coef.value.shape)
@@ -306,6 +311,7 @@ class TestBasisReparameterization:
         assert basis.constraint == "sumzero_coef"
 
     def test_constrain_sumzero_term(self, basis: gam.Basis):
+        assert basis.penalty is not None
         basis.constrain("sumzero_term")
         term = gam.StrctTerm.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
@@ -314,6 +320,7 @@ class TestBasisReparameterization:
         assert basis.constraint == "sumzero_term"
 
     def test_constrain_constant_and_linear(self, basis: gam.Basis):
+        assert basis.penalty is not None
         basis.constrain("constant_and_linear")
         term = gam.StrctTerm.f(basis)
         term.coef.value = jax.random.normal(key(42), term.coef.value.shape)
@@ -334,6 +341,7 @@ class TestBasisReparameterization:
         assert basis.constraint == "constant_and_linear"
 
     def test_constrain_custom(self, basis: gam.Basis):
+        assert basis.penalty is not None
         A = jnp.mean(basis.value, axis=0, keepdims=True)
         basis.constrain(A)
         term = gam.StrctTerm.f(basis)
@@ -343,6 +351,7 @@ class TestBasisReparameterization:
         assert basis.constraint == "custom"
 
     def test_constrain_twice(self, basis: gam.Basis):
+        assert basis.penalty is not None
         basis.constrain("sumzero_term")
         with pytest.raises(ValueError):
             basis.constrain("sumzero_term")

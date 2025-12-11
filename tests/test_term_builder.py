@@ -151,6 +151,7 @@ class TestBasisReparameterization:
         term = tb.ps(
             "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
+        assert term.basis.penalty is not None
         p1 = term.basis.penalty.value
         assert not is_diagonal(p1, 1e-3)
         p = term.coef.dist_node["penalty"].value  # type: ignore
