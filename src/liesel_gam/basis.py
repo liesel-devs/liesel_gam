@@ -147,7 +147,7 @@ class Basis(UserVar):
         xname: str | None = None,
         use_callback: bool = True,
         cache_basis: bool = True,
-        penalty: ArrayLike | lsl.Value | None = None,
+        penalty: ArrayLike | lsl.Value | Literal["identity"] | None = "identity",
         **basis_kwargs,
     ) -> None:
         self._validate_xname(value, xname)
@@ -204,9 +204,11 @@ class Basis(UserVar):
 
         if isinstance(penalty, lsl.Value):
             penalty_var = penalty
-        elif penalty is None:
+        elif isinstance(penalty, str) and penalty == "identity":
             penalty_arr = jnp.eye(self.nbases)
             penalty_var = lsl.Value(penalty_arr)
+        elif penalty is None:
+            penalty_var = None
         else:
             penalty_arr = jnp.asarray(penalty)
             penalty_var = lsl.Value(penalty_arr)
@@ -243,7 +245,7 @@ class Basis(UserVar):
         return ""
 
     @property
-    def penalty(self) -> lsl.Value:
+    def penalty(self) -> lsl.Value | None:
         """
         Return the penalty matrix wrapped as a :class:`liesel.model.Value`.
 
@@ -264,9 +266,17 @@ class Basis(UserVar):
         value
             New penalty matrix or an already-wrapped :class:`liesel.model.Value`.
         """
-        if isinstance(value, lsl.Value):
+        if self.penalty is None and isinstance(value, lsl.Value):
+            self._penalty = value
+
+        elif self.penalty is None:
+            self._penalty = lsl.Value(jnp.asarray(value))
+
+        elif isinstance(value, lsl.Value):
+            assert self._penalty is not None
             self._penalty.value = value.value
         else:
+            assert self._penalty is not None
             penalty_arr = jnp.asarray(value)
             self._penalty.value = penalty_arr
 
@@ -333,6 +343,8 @@ class Basis(UserVar):
         -------
         The modified basis instance (self).
         """
+        if self.penalty is None:
+            raise TypeError("Basis.penalty is None, cannot apply transformation.")
         assert isinstance(self.value_node, lsl.Calc)
         basis_fn = self.value_node.function
 
@@ -364,6 +376,8 @@ class Basis(UserVar):
         -------
         The modified basis instance (self).
         """
+        if self.penalty is None:
+            raise TypeError("Basis.penalty is None, cannot apply transformation.")
         K = self.penalty.value
         scale = jnp.linalg.norm(K, ord=jnp.inf)
         penalty = K / scale
@@ -387,6 +401,14 @@ class Basis(UserVar):
         -------
         The modified basis instance (self).
         """
+        if self.penalty is None:
+            raise TypeError("Basis.penalty is None, cannot apply transformation.")
+
+        if self.value.ndim < 2:
+            raise ValueError(
+                "To apply contraints, basis must be at least 2-dimensional. Got "
+                f"{self.value.ndim} dimensions."
+            )
 
         assert isinstance(self.value_node, lsl.Calc)
         basis_fn = self.value_node.function
