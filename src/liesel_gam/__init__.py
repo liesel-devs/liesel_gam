@@ -41,9 +41,9 @@ try:
     to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
     r("rm('___test___')")
 except ImportError as e:
-    msg1 = "Testing communication between R and Python failed. "
-    msg2 = "Probably, you need to install the R package 'arrow' using "
-    msg3 = "install.packages('arrow')."
-    msg4 = "Also, please consider the original traceback from ryp above."
-    msg = msg1 + msg2 + msg3 + msg4
-    raise ImportError(msg) from e
+    raise ImportError(
+        "Testing communication between R and Python failed. "
+        "Probably, you need to install the R package 'arrow' using "
+        "install.packages('arrow')."
+        "Also, please consider the original traceback from ryp above."
+    ) from e
