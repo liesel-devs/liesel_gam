@@ -342,6 +342,9 @@ class StrctTerm(UserVar):
         if not basis.name:
             raise ValueError("basis must be named.")
 
+        if not isinstance(fname, str):
+            raise TypeError(f"Expected type str, got {type(fname)}.")
+
         name = f"{fname}({basis.x.name})"
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
 
@@ -544,6 +547,7 @@ class MRFTerm(StrctTerm):
 
     @property
     def labels(self) -> list[str] | None:
+        """Region labels."""
         return self._labels
 
     @labels.setter
@@ -562,6 +566,7 @@ class MRFTerm(StrctTerm):
 
     @property
     def ordered_labels(self) -> list[str] | None:
+        """Ordered labels, if they are available."""
         return self._ordered_labels
 
     @ordered_labels.setter
@@ -748,13 +753,16 @@ class LinMixin:
     @property
     def column_names(self) -> list[str]:
         if self._column_names is None:
-            raise ValueError("No model spec defined.")
+            raise ValueError("No column names defined.")
         return self._column_names
 
     @column_names.setter
     def column_names(self, value: Sequence[str]):
         if not isinstance(value, Sequence):
             raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
+
+        if isinstance(value, str):
+            raise TypeError("Replacement type cannot be string.")
 
         for val in value:
             if not isinstance(val, str):
@@ -897,21 +905,12 @@ class StrctTensorProdTerm(UserVar):
         for t in marginals:
             if t.scale is None:
                 raise ValueError(f"Invalid scale for {t}: {t.scale}")
-            try:
-                # ignoring type here because potential errors are handlded
-                t.coef.dist_node["penalty"]  # type: ignore
-            except Exception as e:
-                raise ValueError(f"Invalid penalty for {t}") from e
-
-        for i, b in enumerate(StrctTensorProdTerm._get_bases(marginals)):
-            if b.value.ndim != 2:
-                raise ValueError(
-                    "Expected 2-dimensional basis, but the basis "
-                    f"of {marginals[i]} has shape {b.value.shape}"
-                )
 
     @property
     def input_obs(self) -> dict[str, lsl.Var]:
+        """
+        A dictionary of strong input input variables.
+        """
         return self._input_obs(self.bases)
 
     @staticmethod
@@ -927,7 +926,7 @@ class StrctTensorProdTerm(UserVar):
                 if b.x.strong and b.x.observed:
                     # case: ordinary univariate marginal basis, like ps
                     if not b.x.name:
-                        raise ValueError(f"Observed name not found for {b}")
+                        raise ValueError(f"{b}.x is unnamed.")
                     _input_x[b.x.name] = b.x
                 elif b.x.weak:
                     # currently, I don't expect this case to be present
@@ -939,17 +938,14 @@ class StrctTensorProdTerm(UserVar):
                             _input_x[xi.name] = xi
 
             else:
-                # case: potentially multivariate marginal, possibly tp,
+                # case: potentially multivariate marginal, possibly thin plate,
                 # where basis.x is a calculator that collects the strong inputs.
                 for xj in b.x.all_input_nodes():
-                    if not isinstance(xj, lsl.Var):
-                        if xj.var is not None:
-                            if xj.var.observed:
-                                _input_x[xj.var.name] = xj.var
-                    elif xj.observed:
-                        if not xj.name:
-                            raise ValueError(f"Observed name not found for {b}")
-                        _input_x[xj.name] = xj
+                    if xj.var is not None:
+                        if xj.var.observed:
+                            if not xj.var.name:
+                                raise ValueError(f"Observed name not found for {b}")
+                            _input_x[xj.var.name] = xj.var
 
         return _input_x
 
