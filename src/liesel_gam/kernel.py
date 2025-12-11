@@ -17,17 +17,18 @@ def star_ig_gibbs(
     a_value = variance_var.dist_node["concentration"].value  # type: ignore
     b_value = variance_var.dist_node["scale"].value  # type: ignore
 
-    if penalty is not None and coef.dist_node is None:
+    if penalty is not None:
         penalty_value = jnp.asarray(penalty)
         rank_value = jnp.linalg.matrix_rank(penalty_value)
-    elif coef.dist_node is not None:
-        penalty_value = coef.dist_node["penalty"].value  # type: ignore
-        rank_value = jnp.linalg.matrix_rank(penalty_value)
     else:
-        # assuming identity penalty, but not materializing it here to be
-        # memory-efficient
-        penalty_value = None
-        rank_value = jnp.asarray(coef.value).shape[-1]
+        try:
+            penalty_value = coef.dist_node["penalty"].value  # type: ignore
+            rank_value = jnp.linalg.matrix_rank(penalty_value)
+        except KeyError:
+            # assuming identity penalty, but not materializing it here to be
+            # memory-efficient
+            penalty_value = None
+            rank_value = jnp.asarray(coef.value).shape[-1]
 
     model = coef.model
     if model is None:
