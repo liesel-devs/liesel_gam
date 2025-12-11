@@ -447,6 +447,20 @@ class StrctTerm(UserVar):
 
         return term
 
+    def _assert_penalty_is_basis_penalty(self):
+        if self._penalty is None:
+            raise ValueError(
+                f"Penalty of {self} is None."
+                " This functionality is only available if the term is initialized with "
+                "the same penalty object as its basis."
+            )
+        if self._penalty is not self.basis.penalty:
+            raise ValueError(
+                f"Different penalty objects found on {self} and its basis {self.basis}."
+                " This functionality is only available if the term is initialized with "
+                "the same penalty object as its basis."
+            )
+
     def diagonalize_penalty(self, atol: float = 1e-6) -> Self:
         """
         Diagonalize the penalty via an eigenvalue decomposition.
@@ -460,6 +474,7 @@ class StrctTerm(UserVar):
         -------
         The modified term instance (self).
         """
+        self._assert_penalty_is_basis_penalty()
         self.basis.diagonalize_penalty(atol)
         return self
 
@@ -475,6 +490,7 @@ class StrctTerm(UserVar):
         -------
         The modified term instance (self).
         """
+        self._assert_penalty_is_basis_penalty()
         self.basis.scale_penalty()
         return self
 
@@ -497,6 +513,7 @@ class StrctTerm(UserVar):
         -------
         The modified term instance (self).
         """
+        self._assert_penalty_is_basis_penalty()
         self.basis.constrain(constraint)
         self.coef.value = jnp.zeros(self.nbases)
         return self
