@@ -125,10 +125,6 @@ class ScaleIG(UserVar):
         inference: InferenceTypes = None,
     ):
         value = jnp.asarray(value)
-        if value.size != 1:
-            raise ValueError(
-                f"Expected scalar value for ScaleIG, got size {value.size}."
-            )
 
         concentration_node = _ensure_value(
             concentration, name=_append_name(name, "_concentration")
@@ -149,6 +145,10 @@ class ScaleIG(UserVar):
     def setup_gibbs_inference(
         self, coef: lsl.Var, penalty: jax.typing.ArrayLike | None = None
     ) -> ScaleIG:
+        if self.value.size != 1:
+            raise ValueError(
+                f"Gibbs sampler assumes scalar value, got size {self.value.size}."
+            )
         init_gibbs = copy.copy(init_star_ig_gibbs)
         init_gibbs.__name__ = "StarVarianceGibbs"
 
