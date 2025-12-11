@@ -612,8 +612,7 @@ class IndexingTerm(StrctTerm):
             self.coef.update()
             self.update()
 
-    @property
-    def full_basis(self) -> Basis:
+    def init_full_basis(self) -> Basis:
         nclusters = jnp.unique(self.basis.value).size
         full_basis = Basis(
             self.basis.x, basis_fn=jax.nn.one_hot, num_classes=nclusters, name=""
@@ -625,8 +624,7 @@ class RITerm(IndexingTerm):
     _labels = None
     _mapping = None
 
-    @property
-    def full_basis(self) -> Basis:
+    def init_full_basis(self) -> Basis:
         try:
             nclusters = len(self.mapping.labels_to_integers_map)
         except ValueError:
@@ -868,8 +866,8 @@ class StrctTensorProdTerm(UserVar):
     ) -> list[Basis]:
         bases = []
         for t in marginals:
-            if hasattr(t, "full_basis"):
-                bases.append(t.full_basis)
+            if hasattr(t, "init_full_basis"):
+                bases.append(t.init_full_basis())
             else:
                 bases.append(t.basis)
         return bases
