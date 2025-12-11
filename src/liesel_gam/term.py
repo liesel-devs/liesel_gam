@@ -290,7 +290,8 @@ class StrctTerm(UserVar):
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
-                pen = self.coef.dist_node["penalty"].value
+                pen = self._penalty.value if self._penalty is not None else None
+                self.scale.update()
                 self.scale.setup_gibbs_inference(scaled_coef, penalty=pen)  # type: ignore
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
