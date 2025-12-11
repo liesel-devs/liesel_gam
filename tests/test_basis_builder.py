@@ -46,6 +46,47 @@ class TestBasisBuilder:
         assert basis.value.size == 2
 
 
+class TestFoBasisInputTypes:
+    def test_int(self, data):
+        """Int is turned into float."""
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("x_int")
+        assert jnp.issubdtype(basis.value.dtype, jnp.floating)
+
+        basis = bases.lin("x_Int64")  # get turned into float32
+        assert jnp.issubdtype(basis.value.dtype, jnp.floating)
+
+        basis = bases.lin("x_uint8")  # get turned into float32
+        assert jnp.issubdtype(basis.value.dtype, jnp.floating)
+
+    def test_string(self, data):
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(TypeError):
+            bases.lin("label")
+
+        data["label"] = data["label"].astype("str")
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("label")
+        basis.value.shape[1] == (len(data["label"].unique()) - 1)
+        assert "label" in bases.mappings
+
+    def test_date(self, data):
+        """Int is turned into float."""
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(RuntimeError):
+            bases.lin("date")
+
+        with pytest.raises(RuntimeError):
+            bases.lin("date_tz")
+
+        with pytest.raises(RuntimeError):
+            bases.lin("period_m")
+
+
 class TestFoBasisLinearNumeric:
     def test_name(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
