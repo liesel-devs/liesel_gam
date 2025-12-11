@@ -713,7 +713,9 @@ class LinMixin:
     _column_names: list[str] | None = None
 
     @property
-    def model_spec(self) -> ModelSpec | None:
+    def model_spec(self) -> ModelSpec:
+        if self._model_spec is None:
+            raise ValueError("No model spec defined.")
         return self._model_spec
 
     @model_spec.setter
@@ -727,7 +729,7 @@ class LinMixin:
     @property
     def mappings(self) -> dict[str, CategoryMapping]:
         if self._mappings is None:
-            raise ValueError("No model spec defined.")
+            raise ValueError("No mappings defined.")
         return self._mappings
 
     @mappings.setter
