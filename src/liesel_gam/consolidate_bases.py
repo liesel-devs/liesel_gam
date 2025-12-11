@@ -84,7 +84,9 @@ def consolidate_bases(
 
     gb = _remove_singleton_vars(gb)
 
-    bases_model = lsl.GraphBuilder().add(*weak_bases).build_model()
+    bases_model = (
+        lsl.GraphBuilder(to_float32=model._to_float32).add(*weak_bases).build_model()
+    )
     model = gb.build_model()
 
     return model, bases_model
