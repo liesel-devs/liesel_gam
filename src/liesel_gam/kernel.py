@@ -9,16 +9,25 @@ import liesel.model as lsl
 def star_ig_gibbs(
     coef: lsl.Var, scale: lsl.Var, penalty: jax.typing.ArrayLike | None = None
 ) -> gs.GibbsKernel:
+    """
+    The 'penalty' argument is used only in the case that no penalty can be retrieved
+    from the coefficient's distribution node.
+    """
     variance_var = scale.value_node[0]  # type: ignore
     a_value = variance_var.dist_node["concentration"].value  # type: ignore
     b_value = variance_var.dist_node["scale"].value  # type: ignore
 
-    if coef.dist_node is None:
+    if penalty is not None and coef.dist_node is None:
         penalty_value = jnp.asarray(penalty)
-    else:
+        rank_value = jnp.linalg.matrix_rank(penalty_value)
+    elif coef.dist_node is not None:
         penalty_value = coef.dist_node["penalty"].value  # type: ignore
-
-    rank_value = jnp.linalg.matrix_rank(penalty_value)
+        rank_value = jnp.linalg.matrix_rank(penalty_value)
+    else:
+        # assuming identity penalty, but not materializing it here to be
+        # memory-efficient
+        penalty_value = None
+        rank_value = jnp.asarray(coef.value).shape[-1]
 
     model = coef.model
     if model is None:
@@ -32,7 +41,12 @@ def star_ig_gibbs(
         coef_value = pos[coef.name]
 
         a_gibbs = jnp.squeeze(a_value + 0.5 * rank_value)
-        b_gibbs = jnp.squeeze(b_value + 0.5 * (coef_value @ penalty_value @ coef_value))
+        if penalty_value is not None:
+            b_gibbs = jnp.squeeze(
+                b_value + 0.5 * (coef_value.T @ penalty_value @ coef_value)
+            )
+        else:
+            b_gibbs = jnp.squeeze(b_value + 0.5 * (coef_value.T @ coef_value))
 
         draw = b_gibbs / jax.random.gamma(prng_key, a_gibbs)
 
