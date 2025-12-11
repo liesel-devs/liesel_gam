@@ -41,8 +41,8 @@ def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Di
 
 
 def term_prior(
-    scale: lsl.Var | Array | None,
-    penalty: lsl.Var | lsl.Value | Array | None,
+    scale: lsl.Var | None,
+    penalty: lsl.Var | lsl.Value | None,
 ) -> lsl.Dist | None:
     """
     Returns
@@ -55,14 +55,8 @@ def term_prior(
             raise ValueError(f"If {scale=}, then penalty must also be None.")
         return None
 
-    if not isinstance(scale, lsl.Var | lsl.Value):
-        scale = lsl.Var(scale)
-
     if penalty is None:
         return mvn_diag_prior(scale)
-
-    if not isinstance(penalty, lsl.Var | lsl.Value):
-        penalty = lsl.Value(penalty)
 
     return mvn_structured_prior(scale, penalty)
 
@@ -98,23 +92,29 @@ def _init_scale_ig(
                 x._variance_param.value = jnp.asarray(x._variance_param.value)
                 x.update()
         elif x.strong:
-            x.value = jnp.asarray(x.value)
+            try:
+                x.value = jnp.asarray(x.value)
+            except Exception as e:
+                raise TypeError(
+                    f"Unexpected type for scale value: {type(x.value)}"
+                ) from e
 
         scale_var = x
         if validate_scalar:
             size = jnp.asarray(scale_var.value).size
             if not size == 1:
                 raise ValueError(f"Expected scalar scale, got size {size}")
-    elif x is not None:
-        scale_var = lsl.Var.new_value(jnp.asarray(x))
+    elif x is None:
+        scale_var = x
+    else:
+        try:
+            scale_var = lsl.Var.new_value(jnp.asarray(x))
+        except Exception as e:
+            raise TypeError(f"Unexpected type for scale: {type(x)}") from e
         if validate_scalar:
             size = scale_var.value.size
             if not size == 1:
                 raise ValueError(f"Expected scalar scale, got size {size}")
-    elif x is None:
-        scale_var = x
-    else:
-        raise TypeError(f"Unexpected type for scale: {type(x)}")
 
     return scale_var
 
