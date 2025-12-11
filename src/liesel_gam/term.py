@@ -609,10 +609,14 @@ class IndexingTerm(StrctTerm):
             self.coef.update()
             self.update()
 
-    def init_full_basis(self) -> Basis:
+    @property
+    def nclusters(self) -> int:
         nclusters = jnp.unique(self.basis.value).size
+        return int(nclusters)
+
+    def init_full_basis(self) -> Basis:
         full_basis = Basis(
-            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=nclusters, name=""
+            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=self.nclusters, name=""
         )
         return full_basis
 
@@ -621,14 +625,18 @@ class RITerm(IndexingTerm):
     _labels = None
     _mapping = None
 
-    def init_full_basis(self) -> Basis:
+    @property
+    def nclusters(self) -> int:
         try:
             nclusters = len(self.mapping.labels_to_integers_map)
         except ValueError:
             nclusters = jnp.unique(self.basis.value).size
 
+        return int(nclusters)
+
+    def init_full_basis(self) -> Basis:
         full_basis = Basis(
-            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=nclusters, name=""
+            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=self.nclusters, name=""
         )
         return full_basis
 
@@ -640,6 +648,8 @@ class RITerm(IndexingTerm):
 
     @labels.setter
     def labels(self, value: list[str]) -> None:
+        if not len(value) == self.nclusters:
+            raise ValueError(f"Expected {self.nclusters} labels, got {len(value)}.")
         self._labels = value
 
     @property
