@@ -193,16 +193,36 @@ class TermBuilder:
 
     @classmethod
     def from_dict(
-        cls, data: dict[str, ArrayLike], prefix_names_by: str = ""
+        cls,
+        data: dict[str, ArrayLike],
+        prefix_names_by: str = "",
+        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
     ) -> TermBuilder:
-        return cls.from_df(pd.DataFrame(data), prefix_names_by=prefix_names_by)
+        return cls.from_df(
+            pd.DataFrame(data),
+            prefix_names_by=prefix_names_by,
+            default_inference=default_inference,
+            default_scale_fn=default_scale_fn,
+        )
 
     @classmethod
-    def from_df(cls, data: pd.DataFrame, prefix_names_by: str = "") -> TermBuilder:
+    def from_df(
+        cls,
+        data: pd.DataFrame,
+        prefix_names_by: str = "",
+        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+    ) -> TermBuilder:
         registry = PandasRegistry(
             data, na_action="drop", prefix_names_by=prefix_names_by
         )
-        return cls(registry, prefix_names_by=prefix_names_by)
+        return cls(
+            registry,
+            prefix_names_by=prefix_names_by,
+            default_inference=default_inference,
+            default_scale_fn=default_scale_fn,
+        )
 
     def labels_to_integers(self, newdata: dict) -> dict:
         return labels_to_integers(newdata, self.bases.mappings)
