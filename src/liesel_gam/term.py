@@ -797,7 +797,7 @@ class StrctTensorProdTerm(UserVar):
         self._validate_marginals(marginals)
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
         bases = self._get_bases(marginals)
-        penalties = [b.penalty.value for b in bases]
+        penalties = self._get_penalties(bases)
 
         if common_scale is None:
             scales = [t.scale for t in marginals]
@@ -874,6 +874,17 @@ class StrctTensorProdTerm(UserVar):
             else:
                 bases.append(t.basis)
         return bases
+
+    @staticmethod
+    def _get_penalties(bases: Sequence[Basis]) -> list[Array]:
+        penalties = []
+        for b in bases:
+            if b.penalty is None:
+                raise TypeError(
+                    f"All bases must have a penalty matrix, got 'None' for {b}."
+                )
+            penalties.append(b.penalty.value)
+        return penalties
 
     @staticmethod
     def _validate_marginals(marginals: Sequence[StrctTerm]):
