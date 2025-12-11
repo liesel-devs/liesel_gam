@@ -25,8 +25,11 @@ from .plots import summarise_regions as summarise_regions
 from .predictor import AdditivePredictor as AdditivePredictor
 from .registry import PandasRegistry as PandasRegistry
 from .term import BasisDot as BasisDot
+from .term import IndexingTerm as IndexingTerm
 from .term import Intercept as Intercept
 from .term import LinTerm as LinTerm
+from .term import MRFTerm as MRFTerm
+from .term import RITerm as RITerm
 from .term import SmoothTerm as SmoothTerm
 from .term import StrctTensorProdTerm as StrctTensorProdTerm
 from .term import StrctTerm as StrctTerm
