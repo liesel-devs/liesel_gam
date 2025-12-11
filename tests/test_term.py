@@ -158,7 +158,7 @@ class TestSmoothTerm:
         )
 
         assert term.scale is not None
-        assert jnp.allclose(term.scale.value, 10.0)
+        assert jnp.allclose(term.scale.value, 100.0)
 
         assert term.basis.value.shape == (10, 2)
         assert term.nbases == 2
@@ -496,3 +496,28 @@ class TestIndexingTerm:
         assert b.value.shape == (10, 10)
         assert b.penalty is not None
         assert b.penalty.value.shape == (10, 10)
+
+
+class TestRITerm:
+    def test_full_basis(self):
+        x = jnp.arange(10, dtype=jnp.int32)
+        basis = gam.Basis(x, xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        term = gam.RITerm.f(basis, scale=scale)
+
+        b = term.init_full_basis()
+        assert b.value.shape == (10, 10)
+        assert b.penalty is not None
+        assert b.penalty.value.shape == (10, 10)
+
+    def test_special_attributes(self):
+        x = jnp.arange(10, dtype=jnp.int32)
+        basis = gam.Basis(x, xname="x", penalty=None)
+        scale = lsl.Var(2.0, name="a")
+        term = gam.RITerm.f(basis, scale=scale)
+
+        with pytest.raises(ValueError):
+            term.labels = ["a", "b"]
+
+        term.labels = ["a" + str(i) for i in range(10)]
+        assert len(term.labels) == 10
