@@ -463,7 +463,7 @@ class TestFoBasisTransforms:
         assert basis.value.shape == (84, 6)
 
     def test_te(self, bases) -> None:
-        with pytest.raises(FactorEvaluationError):
+        with pytest.raises(RuntimeError):
             bases.lin("te(y, x_float)", xname="X")
 
     def test_hashed(self, bases) -> None:

@@ -329,6 +329,13 @@ class TestStrctTermFConstructor:
         basis = gam.Basis(x, xname="x")
         gam.StrctTerm.f(basis, scale=1.0)
 
+    def test_name_type(self):
+        x = jax.random.uniform(jax.random.key(1), (10, 5))
+        basis = gam.Basis(x, xname="x")
+        scale = lsl.Var(2.0, name="a")
+        with pytest.raises(TypeError):
+            gam.StrctTerm.f(basis, scale=scale, noncentered=True, fname=basis)
+
     def test_init_noncentered(self):
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x, xname="x")
@@ -449,6 +456,83 @@ class TestTPTerm:
 
         with pytest.raises(ValueError):
             gam.StrctTensorProdTerm(t1, t2)
+
+    def test_non_penalty(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        px = tb.ps("x", k=20)
+        py = tb.ps("y", k=20)
+
+        px.basis._penalty = None
+
+        with pytest.raises(TypeError):
+            gam.StrctTensorProdTerm(px, py)
+
+    def test_include_main_effects(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        px = tb.ps("x", k=20)
+        py = tb.ps("y", k=20)
+
+        tp = gam.StrctTensorProdTerm(px, py, include_main_effects=True)
+        assert tp.value_node[0] is px
+        assert tp.value_node[1] is py
+        assert isinstance(tp.value_node["basis"], lsl.Var)
+        assert isinstance(tp.value_node["coef"], lsl.Var)
+
+        tp = gam.StrctTensorProdTerm(px, py)
+        with pytest.raises(IndexError):
+            tp.value_node[0]
+        assert isinstance(tp.value_node["basis"], lsl.Var)
+        assert isinstance(tp.value_node["coef"], lsl.Var)
+
+    def test_strong_input_obs(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        px = tb.ps("x", k=20)
+        py = tb.ps("y", k=20)
+
+        assert px.basis.x.strong
+        assert py.basis.x.strong
+
+        tp = gam.StrctTensorProdTerm(px, py)
+        assert tp.input_obs["x"] is px.basis.x
+        assert jnp.allclose(tp.input_obs["x"].value, columb["x"].to_numpy())
+        assert tp.input_obs["y"] is py.basis.x
+        assert jnp.allclose(tp.input_obs["y"].value, columb["y"].to_numpy())
+
+        px.basis.x.name = ""
+        with pytest.raises(ValueError):
+            tp.input_obs
+
+        x = px.basis.value_node[0]
+        x_weak = lsl.Var.new_calc(jnp.square, x, name="x**2")
+
+        px.basis.value_node[0] = x_weak
+        with pytest.raises(ValueError):
+            tp.input_obs
+
+        x.name = "x"
+        "x" in tp.input_obs
+
+    def test_weak_input_obs(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        px = tb.slin("x + area")
+        py = tb.ps("y", k=20)
+
+        assert isinstance(px.basis.x, lsl.TransientCalc)
+        assert py.basis.x.strong
+
+        tp = gam.StrctTensorProdTerm(px, py)
+        assert jnp.allclose(tp.input_obs["x"].value, columb["x"].to_numpy())
+        assert jnp.allclose(tp.input_obs["area"].value, columb["area"].to_numpy())
+        assert tp.input_obs["y"] is py.basis.x
+        assert jnp.allclose(tp.input_obs["y"].value, columb["y"].to_numpy())
+
+        tp.input_obs["x"].name = ""
+        with pytest.raises(ValueError):
+            tp.input_obs
 
 
 class TestIndexingTerm:

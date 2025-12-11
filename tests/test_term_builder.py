@@ -73,17 +73,48 @@ class TestTermBuilder:
 
 
 class TestLinTerm:
-    def test_lin_term(self, columb):
+    def test_lin_term_attributes(self, columb):
         tb = gam.TermBuilder.from_df(columb)
         term = tb.lin("x + y + district")
 
         assert term.model_spec is not None
         assert term.mappings is not None
 
+        with pytest.raises(TypeError):
+            term.model_spec = "test"
+
+        term._model_spec = None
+        with pytest.raises(ValueError):
+            term.model_spec
+
+        with pytest.raises(TypeError):
+            term.mappings = "test"
+
+        with pytest.raises(TypeError):
+            term.mappings = {"test": "value"}
+
+        term._column_names = None
+        with pytest.raises(ValueError):
+            term.column_names
+
+        with pytest.raises(TypeError):
+            term.column_names = 2
+
+        with pytest.raises(TypeError):
+            term.column_names = "test"
+
+        term = tb.lin("x + y")
+        term._mappings = None
+        with pytest.raises(ValueError):
+            term.mappings
+
     def test_lin_term_column_names(self, columb, data):
         tb = gam.TermBuilder.from_df(columb)
         term = tb.lin("x + y")
         assert term.column_names == ["x", "y"]
+
+        with pytest.raises(TypeError):
+            term.column_names = [1, 2]
 
         tb = gam.TermBuilder.from_df(data)
         term = tb.lin("y + cat_ordered")
@@ -122,6 +153,13 @@ class TestMRFTerm:
             scale_penalty=False,
         )
         assert mrf.ordered_labels == ["a", "b", "c"]
+
+        assert mrf.labels == ["a", "b", "c"]
+        assert mrf.neighbors == nb
+
+        mrf._mapping = None
+        with pytest.raises(ValueError):
+            mrf.mapping
 
     def test_labels_categorical(self) -> None:
         nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
@@ -431,11 +469,18 @@ class TestRITerm:
         ri = tb.ri("district")
         assert ri.init_full_basis().value.shape == (49, 49)
 
+        ri._mapping = None  # should also work without mapping
+        assert ri.init_full_basis().value.shape == (49, 49)
+
     def test_labels(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
 
         assert len(ri.labels) == 49
+
+        ri._labels = None
+        with pytest.raises(ValueError):
+            ri.labels
 
 
 class TestTPTerm:
@@ -445,6 +490,16 @@ class TestTPTerm:
         ps = tb.ps("x", k=10)
         ta = tb.tx(ri, ps)
         assert ta.basis.value.shape == (49, 9 * 49)
+
+    def test_common_scale(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        psy = tb.ps("y", k=10)
+        psx = tb.ps("x", k=10)
+        ta = tb.tx(psy, psx, common_scale=gam.VarIGPrior(1.0, 0.005))
+        assert ta.basis.value.shape == (49, 9 * 9)
+        for i in range(len(ta.scales)):
+            if i > 0:
+                assert ta.scales[i] is ta.scales[i - 1]
 
     def test_ps_mrf(self, columb, columb_polys):
         tb = gb.TermBuilder.from_df(columb)
