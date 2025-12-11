@@ -362,7 +362,7 @@ class Basis(UserVar):
 
         self.value_node.function = reparam_basis
         self.update()
-        penalty = Z.T @ K @ Z
+        penalty = jnp.eye(Z.shape[-1])  # practically equal to: penalty = Z.T @ K @ Z
         self.update_penalty(penalty)
 
         return self
