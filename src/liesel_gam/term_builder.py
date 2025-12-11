@@ -5,15 +5,11 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal
 
 import jax
-import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
-import numpy as np
 import pandas as pd
-import smoothcon as scon
 import tensorflow_probability.substrates.jax.bijectors as tfb
 from liesel.model.model import TemporaryModel
-from ryp import r, to_py
 
 from .basis_builder import BasisBuilder
 from .names import NameManager
@@ -30,28 +26,6 @@ BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp", "gp"]
 
 
 logger = logging.getLogger(__name__)
-
-
-def _margin_penalties(smooth: scon.SmoothCon):
-    """Extracts the marginal penalty matrices from a ti() smooth."""
-    # this should go into smoothcon, but it works here for now
-    r(
-        f"penalties_list <- lapply({smooth._smooth_r_name}"
-        "[[1]]$margin, function(x) x$S[[1]])"
-    )
-    pens = to_py("penalties_list")
-    return [pen.to_numpy() for pen in pens]
-
-
-def _tp_penalty(K1, K2) -> Array:
-    """Computes the full tensor product penalty from the marginals."""
-    # this should go into smoothcon, but it works here for now
-    D1 = np.shape(K1)[1]
-    D2 = np.shape(K2)[1]
-    I1 = np.eye(D1)
-    I2 = np.eye(D2)
-
-    return jnp.asarray(jnp.kron(K1, I2) + jnp.kron(I1, K2))
 
 
 def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> dict:
@@ -279,10 +253,7 @@ class TermBuilder:
             context=context,
         )
 
-        if basis.x.name:
-            term_name = self.names.create("lin" + "(" + basis.x.name + ")")
-        else:
-            term_name = self.names.create("lin" + "(" + basis.name + ")")
+        term_name = self.names.create("lin" + "(" + basis.name + ")")
 
         coef_name = self.names.beta(term_name)
 
@@ -317,10 +288,7 @@ class TermBuilder:
             context=context,
         )
 
-        if basis.x.name:
-            fname = self.names.create("slin" + "(" + basis.x.name + ")")
-        else:
-            fname = self.names.create("slin" + "(" + basis.name + ")")
+        fname = self.names.create("slin" + "(" + basis.name + ")")
 
         term = StrctLinTerm(
             basis=basis,
@@ -1060,14 +1028,15 @@ class TermBuilder:
             include_main_effects=include_main_effects,
         )
 
-        for scale in term.scales:
-            if not isinstance(scale, lsl.Var):
-                raise TypeError(
-                    f"Expected scale to be a liesel.model.Var, got {type(scale)}"
+        if not common_scale:
+            for scale in term.scales:
+                if not isinstance(scale, lsl.Var):
+                    raise TypeError(
+                        f"Expected scale to be a liesel.model.Var, got {type(scale)}"
+                    )
+                _biject_and_replace_star_gibbs_with(
+                    scale, self._get_inference(scales_inference)
                 )
-            _biject_and_replace_star_gibbs_with(
-                scale, self._get_inference(scales_inference)
-            )
 
         return term
 
@@ -1126,7 +1095,7 @@ def _find_parameter(var: lsl.Var) -> lsl.Var:
 
     Returns the strong latent parameter, if it can be determined unambiguously.
     """
-    if var.strong:
+    if var.strong and var.parameter:
         return var
 
     with TemporaryModel(var, to_float32=False) as model:
@@ -1171,12 +1140,19 @@ def _biject_and_replace_star_gibbs_with(
         trafo_name = "h(" + param.name + ")"
     else:
         trafo_name = None
-    param.transform(bijector=tfb.Softplus(), inference=inference, name=trafo_name)
+    transformed = param.transform(
+        bijector=tfb.Softplus(), inference=inference, name=trafo_name
+    )
+    if trafo_name is None:
+        transformed.name = ""
     return var
 
 
 def _has_star_gibbs(var: lsl.Var) -> bool:
-    param = _find_parameter(var)
+    try:
+        param = _find_parameter(var)
+    except ValueError:
+        return False
     if param.inference is None:
         # no inference means no StarVarianceGibbs
         return False
