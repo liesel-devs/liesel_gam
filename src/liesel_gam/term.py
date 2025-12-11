@@ -194,7 +194,7 @@ class StrctTerm(UserVar):
     def __init__(
         self,
         basis: Basis,
-        penalty: lsl.Var | lsl.Value | Array | None,
+        penalty: lsl.Var | lsl.Value | ArrayLike | None,
         scale: ScaleIG | VarIGPrior | lsl.Var | ArrayLike | None,
         name: str = "",
         inference: InferenceTypes = None,
@@ -203,19 +203,21 @@ class StrctTerm(UserVar):
         validate_scalar_scale: bool = True,
     ):
         scale = _init_scale_ig(scale, validate_scalar=validate_scalar_scale)
-
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
-
-        prior = term_prior(scale, penalty)
 
         self.basis = basis
 
         if isinstance(penalty, lsl.Var | lsl.Value):
             nparam = jnp.shape(penalty.value)[-1]
+            self._penalty: lsl.Var | lsl.Value | None = penalty
         elif penalty is not None:
             nparam = jnp.shape(penalty)[-1]
+            self._penalty = lsl.Value(jnp.asarray(penalty))
         else:
             nparam = self.nbases
+            self._penalty = None
+
+        prior = term_prior(scale, self._penalty)
 
         if scale is not None:
             _validate_scalar_or_p_scale(scale.value, nparam)
