@@ -195,7 +195,6 @@ class Basis(UserVar):
         self.update()
         self.observed = True
 
-        self.x: lsl.Var | lsl.Node = value_var
         basis_shape = jnp.shape(self.value)
         if len(basis_shape) >= 1:
             self.nbases: int = basis_shape[-1]
@@ -217,6 +216,10 @@ class Basis(UserVar):
 
         self._constraint: str | None = None
         self._reparam_matrix: Array | None = None
+
+    @property
+    def x(self) -> lsl.Var | lsl.Node:
+        return self.value_node[0]
 
     @property
     def constraint(self) -> str | None:
