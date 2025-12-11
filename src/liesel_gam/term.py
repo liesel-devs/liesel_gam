@@ -28,7 +28,7 @@ def mvn_diag_prior(scale: lsl.Var) -> lsl.Dist:
 def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Dist:
     if isinstance(penalty, lsl.Var) and not penalty.strong:
         raise NotImplementedError(
-            "Varying penalties or currently not supported by this function."
+            "Varying penalties are currently not supported by this function."
         )
     prior = lsl.Dist(
         MultivariateNormalSingular,
