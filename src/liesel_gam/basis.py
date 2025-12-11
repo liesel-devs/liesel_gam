@@ -547,6 +547,14 @@ class LinBasis(Basis):
         if not isinstance(value, Sequence):
             raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
 
+        if isinstance(value, str):
+            raise TypeError("Replacement type cannot be string.")
+
+        if not len(value) == self.value.shape[-1]:
+            raise ValueError(
+                f"Expected {self.value.shape[-1]} column names, got {len(value)}"
+            )
+
         for val in value:
             if not isinstance(val, str):
                 raise TypeError(
