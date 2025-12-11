@@ -72,6 +72,30 @@ class TestTermBuilder:
         assert caplog.records[0].levelno == logging.INFO
 
 
+class TestLinTerm:
+    def test_lin_term(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+        term = tb.lin("x + y + district")
+
+        assert term.model_spec is not None
+        assert term.mappings is not None
+
+    def test_lin_term_column_names(self, columb, data):
+        tb = gam.TermBuilder.from_df(columb)
+        term = tb.lin("x + y")
+        assert term.column_names == ["x", "y"]
+
+        tb = gam.TermBuilder.from_df(data)
+        term = tb.lin("y + cat_ordered")
+        assert term.column_names == ["y", "cat_ordered[T.med]", "cat_ordered[T.high]"]
+
+        term = tb.lin("`with space`")
+        term.column_names == ["with space"]
+
+        term = tb.lin("`weird:col*name`")
+        term.column_names == ["weird:col*name"]
+
+
 class TestMRFTerm:
     def test_unobserved_regions(self, columb, columb_polys) -> None:
         i = np.arange(columb.shape[0])
@@ -405,7 +429,13 @@ class TestRITerm:
     def test_full_basis(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
-        assert ri.full_basis.value.shape == (49, 49)
+        assert ri.init_full_basis().value.shape == (49, 49)
+
+    def test_labels(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        ri = tb.ri("district")
+
+        assert len(ri.labels) == 49
 
 
 class TestTPTerm:
