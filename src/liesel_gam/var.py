@@ -142,7 +142,7 @@ class ScaleIG(UserVar):
         variance_name = variance_name or _append_name(name, "_square")
 
         self._variance_param = lsl.Var.new_param(
-            value, prior, inference=inference, name=variance_name
+            value**2, prior, inference=inference, name=variance_name
         )
         super().__init__(lsl.Calc(jnp.sqrt, self._variance_param), name=name)
 
