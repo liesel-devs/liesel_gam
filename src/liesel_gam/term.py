@@ -257,7 +257,6 @@ class StrctTerm(UserVar):
         Turns this term into noncentered form, which means the prior for
         the coefficient will be turned from ``coef ~ N(0, scale^2 * inv(penalty))`` into
         ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
-        This can sometimes be helpful when sampling with the No-U-Turn Sampler.
         """
         if self.scale is None:
             raise ValueError(
