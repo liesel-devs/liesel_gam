@@ -66,7 +66,7 @@ class TestPredictor:
 
     def test_intercept(self) -> None:
         pred = gam.AdditivePredictor("loc")
-        assert pred.intercept.name == "loc_intercept"
+        assert pred.intercept.name == "$\\beta_{0,loc}$"
         assert pred.intercept is not None
         assert pred.intercept.parameter  # type: ignore
 
