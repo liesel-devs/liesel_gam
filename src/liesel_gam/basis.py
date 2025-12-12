@@ -240,16 +240,14 @@ class Basis(UserVar):
                 "used. Name the variable instead."
             )
 
-    def _basis_name(self, value: lsl.Var | lsl.Node | ArrayLike, name: str | None):
-        if name is not None and name != "":
+    def _basis_name(self, value: lsl.Var | lsl.Node, name: str | None):
+        if name is not None:
             return name
 
-        if isinstance(value, lsl.Var | lsl.Node) and value.name == "":
+        if value.name == "":
             return ""
 
-        if hasattr(value, "name"):
-            return f"B({value.name})"
-        return ""
+        return f"B({value.name})"
 
     @property
     def penalty(self) -> lsl.Value | None:
