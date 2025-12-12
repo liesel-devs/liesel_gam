@@ -38,26 +38,6 @@ def _validate_bs(bs):
             raise ValueError(f"Allowed values for 'bs' are: {allowed}; got {bs=}.")
 
 
-def assert_intercept_in_spec(spec: fo.ModelSpec) -> fo.ModelSpec:
-    """
-    Uses the degrees of the terms in the spec's formula to find intercepts.
-    The degree of a term indicates how many columns of the input data are referenced
-    by the term, so a degree of zero can be used to identify an intercept.
-    """
-    terms = list(spec.formula)
-    terms_with_degree_zero = [term for term in terms if term.degree == 0]
-
-    if len(terms_with_degree_zero) > 1:
-        raise RuntimeError(f"Too many intercepts: {len(terms_with_degree_zero)}.")
-    if len(terms_with_degree_zero) == 0:
-        raise RuntimeError(
-            "No intercept found in formula. Did you explicitly remove an "
-            "intercept by including '0' or '-1'? This breaks model matrix setup."
-        )
-
-    return spec
-
-
 def validate_formula(formula: str) -> None:
     if "~" in formula:
         raise ValueError("'~' in formulas is not supported.")
@@ -634,14 +614,6 @@ class BasisBuilder:
     ) -> LinBasis:
         validate_formula(formula)
         spec = fo.ModelSpec(formula, output="numpy")
-
-        if not include_intercept:
-            # because we do our own intercept handling with the full model matrix
-            # it may be surprising to assert that there is an intercept only if
-            # the plan is to remove it.
-            # But in order to safely remove it, we first have to ensure that it is
-            # present.
-            assert_intercept_in_spec(spec)
 
         # evaluate model matrix once to get a spec with structure information
         # also necessary to populate spec with the correct information for
