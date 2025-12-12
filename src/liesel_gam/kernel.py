@@ -24,7 +24,7 @@ def star_ig_gibbs(
         try:
             penalty_value = coef.dist_node["penalty"].value  # type: ignore
             rank_value = jnp.linalg.matrix_rank(penalty_value)
-        except KeyError:
+        except (KeyError, TypeError):
             # assuming identity penalty, but not materializing it here to be
             # memory-efficient
             penalty_value = None
