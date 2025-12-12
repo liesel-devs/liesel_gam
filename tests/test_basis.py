@@ -227,6 +227,32 @@ class TestBasis:
         with pytest.raises(NotImplementedError):
             gam.Basis.new_calc(x)
 
+    def test_x_node_and_xname_supplied(self):
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        with pytest.raises(ValueError, match="`xname` must not be used"):
+            gam.Basis(x, basis_fn=lambda x: x**2, xname="test")
+
+    def test_update_penalty(self):
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=None)
+        assert basis.penalty is None
+
+        with pytest.raises(ValueError):
+            basis.update_penalty(jnp.eye(1))
+
+        basis.update_penalty(jnp.eye(10))
+        assert jnp.allclose(basis.penalty.value, jnp.eye(10))
+
+    def test_penalty_node(self):
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        pen = lsl.Value(jnp.eye(10))
+        basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=pen)
+        assert jnp.allclose(basis.penalty.value, jnp.eye(10))
+        assert basis.penalty is pen
+
+        basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=jnp.eye(10))
+        assert jnp.allclose(basis.penalty.value, jnp.eye(10))
+
 
 @pytest.fixture
 def basis() -> gam.Basis:
@@ -251,6 +277,25 @@ def is_diagonal(M, atol=1e-6):
 
 
 class TestBasisReparameterization:
+    def test_penalty_is_none(self):
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        basis = gam.Basis(x, basis_fn=lambda x: jnp.expand_dims(x**2, -1), penalty=None)
+
+        with pytest.raises(TypeError, match="penalty is None"):
+            basis.scale_penalty()
+
+        with pytest.raises(TypeError, match="penalty is None"):
+            basis.diagonalize_penalty()
+
+        with pytest.raises(TypeError, match="penalty is None"):
+            basis.constrain("sumzero_coef")
+
+    def test_1d_basis(self):
+        x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
+        basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=None)
+        with pytest.raises(ValueError, match="matrix-valued bases"):
+            basis.constrain("sumzero_coef")
+
     def test_diagonalize_penalty(self, basis: gam.Basis):
         assert basis.penalty is not None
         assert not is_diagonal(basis.penalty.value, 1e-5)

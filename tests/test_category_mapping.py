@@ -179,3 +179,25 @@ class TestCategoryMappingDecoding:
         cm = gam.CategoryMapping({"apple": 0, "banana": 1})
         decoded = cm.integers_to_labels([0, 1])
         assert decoded.tolist() == ["apple", "banana"]
+
+
+class TestCatchAllEncodings:
+    def test_to_integers(self):
+        cm = gam.CategoryMapping({"apple": 0, "banana": 1})
+
+        ints = jnp.array([0, 1])
+        assert jnp.allclose(ints, cm.to_integers([0, 1]))
+        assert jnp.allclose(ints, cm.to_integers(["apple", "banana"]))
+
+        with pytest.raises(ValueError):
+            cm.to_integers([0, 1, 2])
+
+    def test_to_labels(self):
+        cm = gam.CategoryMapping({"apple": 0, "banana": 1})
+
+        labs = np.array(["apple", "banana"])
+        assert np.all(labs == cm.to_labels([0, 1]))
+        assert np.all(labs == cm.to_labels(["apple", "banana"]))
+
+        with pytest.raises(ValueError):
+            cm.to_labels(["apple", "banana", "orange"])

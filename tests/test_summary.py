@@ -12,7 +12,7 @@ from jax.typing import ArrayLike
 from ryp import r, to_py
 
 import liesel_gam as gam
-from liesel_gam.summary import grid_nd, input_grid_nd_smooth
+from liesel_gam.summary import grid_nd, input_grid_nd_smooth, summarise_by_samples
 
 
 @pytest.fixture(scope="module")
@@ -37,6 +37,21 @@ def polys() -> np.typing.NDArray:
 def tb(columb) -> gam.TermBuilder:
     df = columb
     return gam.TermBuilder.from_df(df)
+
+
+class TestSummariseBySamples:
+    def test_runs(self, tb: gam.TermBuilder) -> None:
+        term = tb.s("x", k=10, bs="ps")
+        _ = lsl.Model([term])
+
+        samples = term.coef.sample((4, 20), jkey(0))
+        su = summarise_by_samples(
+            key=jkey(1), a=samples[term.coef.name], name=term.name, n=5
+        )
+
+        coef_dim = term.coef.value.shape[-1]
+        nsamples = 5
+        assert su.shape[0] == (coef_dim * nsamples)
 
 
 class Test1dSmoothSummary:
@@ -105,6 +120,36 @@ class Test1dSmoothClusteredSummary:
 
         tb = gam.TermBuilder.from_df(df)
         smooth = tb.s("x", k=10, bs="ps")
+        term = tb.rs(smooth, cluster="district")
+        model = lsl.Model([term])
+
+        samples = model.sample((4, 20), jkey(0))
+        su = gam.summarise_1d_smooth_clustered(term, samples=samples)
+        assert su.shape[0] == 20 * 10
+
+    def test_runs_with_tp_multivar(self, columb: pd.DataFrame) -> None:
+        df = columb.iloc[:10, :].copy()
+        df["district"] = pd.Categorical(df["district"].to_list())
+
+        tb = gam.TermBuilder.from_df(df)
+        smooth = tb.tp("x", "y", k=10)
+        term = tb.rs(smooth, cluster="district")
+        model = lsl.Model([term])
+
+        samples = model.sample((4, 20), jkey(0))
+        su = gam.summarise_1d_smooth_clustered(term, samples=samples)
+        assert su.shape[0] == 16 * 10
+
+        term.value_node["cluster"]._mapping = None  # type: ignore
+        su = gam.summarise_1d_smooth_clustered(term, samples=samples)
+        assert su.shape[0] == 16 * 10
+
+    def test_runs_with_tp_univar(self, columb: pd.DataFrame) -> None:
+        df = columb.iloc[:10, :].copy()
+        df["district"] = pd.Categorical(df["district"].to_list())
+
+        tb = gam.TermBuilder.from_df(df)
+        smooth = tb.tp("x", k=10)
         term = tb.rs(smooth, cluster="district")
         model = lsl.Model([term])
 
@@ -204,6 +249,17 @@ class Test1dSmoothClusteredSummary:
         assert su.shape[0] == 13 * 13
         assert su["observed"].sum() == 10 * 13
 
+        term.value_node["cluster"]._mapping = None  # type: ignore
+        newdata = {
+            "x": jnp.linspace(-1, 2, 13),
+            "district": columb["district"].to_numpy()[:13].astype(int),
+        }
+        su = gam.summarise_1d_smooth_clustered(
+            term, samples=samples, newdata=newdata, newdata_meshgrid=True
+        )
+        assert su.shape[0] == 13 * 13
+        assert su["observed"].sum() == 10 * 13
+
     def test_hdi_prob(self, columb: pd.DataFrame) -> None:
         df = columb.iloc[:10, :].copy()
         df["district"] = pd.Categorical(df["district"].to_list())
@@ -295,6 +351,18 @@ class Test1dSmoothClusteredSummary:
         assert su1.shape[0] == 3
         assert su1["district"].to_list() == ["a", "b", "c"]
 
+        su1 = gam.summarise_1d_smooth_clustered(
+            term, samples=samples, newdata=newdata, labels=None
+        )
+        assert su1.shape[0] == 3
+        assert su1["district"].to_list() == ["0", "1", "2"]
+
+        su1 = gam.summarise_1d_smooth_clustered(
+            term, samples=samples, newdata=newdata, labels=None
+        )
+        assert su1.shape[0] == 3
+        assert su1["district"].to_list() == ["0", "1", "2"]
+
     def test_random_slope(self, columb: pd.DataFrame) -> None:
         df = columb.iloc[:10, :].copy()
         df["district"] = pd.Categorical(df["district"].to_list())
@@ -322,7 +390,7 @@ class Test1dSmoothClusteredSummary:
         assert "x" in list(su.columns)
         assert "district" in list(su.columns)
 
-        assert su.shape[0] == 810
+        assert su.shape[0] == 3 * 3 * 10
 
     def test_ri(self, columb: pd.DataFrame) -> None:
         df = columb.iloc[:10, :].copy()
@@ -534,6 +602,16 @@ class TestClusterSummary:
         samples = term.coef.sample((4, 20), jkey(0))
         su = gam.summarise_cluster(term=term, samples=samples, newdata=newdata)
         assert su.shape[0] == 3
+
+    def test_newdata_labels_no_mapping(self, tb: gam.TermBuilder) -> None:
+        term = tb.ri("district")
+        term._mapping = None
+        _ = lsl.Model([term])
+
+        newdata = {term.basis.x.name: ["1", "3", "4"]}
+        samples = term.coef.sample((4, 20), jkey(0))
+        with pytest.raises(TypeError):
+            gam.summarise_cluster(term=term, samples=samples, newdata=newdata)
 
     def test_newdata_codes(self, tb: gam.TermBuilder) -> None:
         term = tb.ri("district")

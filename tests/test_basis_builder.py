@@ -850,6 +850,174 @@ class TestMRFBasis:
 
         assert not jnp.allclose(K, K2)
 
+        basis = bases.mrf(
+            "district", penalty=K, penalty_labels=["c", "b", "a"], absorb_cons=True
+        )
+
+        assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
+        assert basis.penalty.value.shape[-1] == 2
+
+        basis = bases.mrf(
+            "district",
+            penalty=K,
+            penalty_labels=["c", "b", "a"],
+            absorb_cons=True,
+            diagonal_penalty=True,
+        )
+
+        assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
+        assert basis.penalty.value.shape[-1] == 2
+
+        basis = bases.mrf(
+            "district",
+            penalty=K,
+            penalty_labels=["c", "b", "a"],
+            absorb_cons=True,
+            diagonal_penalty=True,
+            scale_penalty=True,
+        )
+
+        assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
+        assert basis.penalty.value.shape[-1] == 2
+
+    def test_nb(self):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        nb = {"a": ["c"], "b": ["c"], "c": ["a", "b"]}
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        K = np.array([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [-1.0, -1.0, 2.0]])
+
+        assert jnp.allclose(basis.penalty.value, K)
+
+        nb = {"a": [2], "b": [2], "c": [0, 1]}
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert jnp.allclose(basis.penalty.value, K)
+
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        df["district"] = pd.Categorical(df["district"], categories=["c", "b", "a"])
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        nb = {"a": [2], "b": [2], "c": [0, 1]}
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert jnp.allclose(basis.penalty.value, K)
+
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+            penalty=K,
+            penalty_labels=["c", "b", "a"],
+        )
+        assert not jnp.allclose(basis.penalty.value, K)
+
+    def test_warnings(self, caplog):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        # a - c - b
+
+        # c has 2 neighbors: a and b
+        # b has 1 neighbor: c
+        # a has 1 neighbor: c
+
+        K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+        nb = {"a": ["c"], "b": ["c"], "c": ["a", "b"]}
+        polys = {"a": jnp.ones((2, 2)), "b": jnp.ones((2, 2)), "c": jnp.ones((2, 2))}
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        bases.mrf("district", penalty=K, nb=nb, penalty_labels=["c", "b", "a"])
+        assert "'nb'" in caplog.records[0].message
+        assert caplog.records[0].levelname == "WARNING"
+
+        bases.mrf("district", penalty=K, polys=polys, penalty_labels=["c", "b", "a"])
+        assert "'polys'" in caplog.records[1].message
+        assert caplog.records[1].levelname == "WARNING"
+
+        bases.mrf(
+            "district", penalty=K, nb=nb, polys=polys, penalty_labels=["c", "b", "a"]
+        )
+        assert "'nb'" in caplog.records[2].message
+        assert caplog.records[2].levelname == "WARNING"
+        assert "'polys'" in caplog.records[3].message
+        assert caplog.records[3].levelname == "WARNING"
+
+    def test_validation(self, caplog):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        # a - c - b
+
+        # c has 2 neighbors: a and b
+        # b has 1 neighbor: c
+        # a has 1 neighbor: c
+
+        K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        with pytest.raises(TypeError, match="must be int"):
+            bases.mrf("district", k="1", penalty=K, penalty_labels=["c", "b", "a"])
+
+        with pytest.raises(ValueError, match="smaller than"):
+            bases.mrf("district", k=-2, penalty=K, penalty_labels=["c", "b", "a"])
+
+        with pytest.raises(ValueError, match="must be provided"):
+            bases.mrf("district", k=-1)
+
+        with pytest.raises(ValueError, match="'penalty_labels' has"):
+            bases.mrf("district", k=-1, penalty=K, penalty_labels=["c", "b"])
+
+        with pytest.raises(ValueError, match="Names in 'polys'"):
+            bases.mrf(
+                "district",
+                k=-1,
+                polys={"a": jnp.ones((2, 2)), "x": jnp.ones((2, 2))},
+            )
+
+        nb = {"a": [[1]], "b": ["c"], "c": ["a", "b"]}
+        with pytest.raises(ValueError, match="1d"):
+            bases.mrf("district", k=-1, nb=nb)
+
+        nb = {"a": ["c"], "b": ["c"], "d": ["a", "b"]}
+        with pytest.raises(ValueError, match="Names in 'nb'"):
+            bases.mrf("district", k=-1, nb=nb)
+
+        K = jnp.zeros((3, 3))
+        bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+        assert "rank deficiency" in caplog.records[0].message
+        assert caplog.records[0].levelname == "WARNING"
+
+        K = jnp.zeros((3, 2))
+        with pytest.raises(ValueError, match="square"):
+            bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+
+        K = jnp.zeros((2, 2))
+        with pytest.raises(ValueError, match="Dimensions of 'penalty'"):
+            bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+
 
 def is_diagonal(M, atol=1e-5):
     # mask for off-diagonal elements
@@ -859,6 +1027,13 @@ def is_diagonal(M, atol=1e-5):
 
 
 class TestS:
+    def test_unsupported(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        with pytest.raises(ValueError):
+            bases.s("x", bs="ab", k=8)
+
     def test_tp_univariate(self, columb):
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
