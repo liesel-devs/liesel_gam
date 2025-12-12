@@ -632,6 +632,12 @@ class TermBuilder:
         mapping = self.bases.mappings[cluster]
         term.mapping = mapping
         term.labels = list(mapping.labels_to_integers_map)
+        nparams = len(mapping.labels_to_integers_map)
+
+        if basis.penalty is None and nparams != basis.nbases:
+            # this takes care of increasing the parameter number in case this term
+            # covers unobserved clusters
+            term.coef.value = jnp.zeros(nparams)
 
         return term
 
