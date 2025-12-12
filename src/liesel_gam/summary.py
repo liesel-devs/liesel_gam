@@ -120,6 +120,27 @@ def input_grid_nd_smooth(
     return grid_nd(inputs, ngrid)
 
 
+def grid_nd_nomesh(
+    inputs: dict[str, jax.typing.ArrayLike], ngrid: int
+) -> dict[str, Any]:
+    mins = {k: jnp.min(v) for k, v in inputs.items()}
+    maxs = {k: jnp.max(v) for k, v in inputs.items()}
+    grids = {k: np.linspace(mins[k], maxs[k], ngrid) for k in inputs}
+    return grids
+
+
+def input_grid_nd_smooth_nomesh(
+    term: StrctTerm | LinTerm, ngrid: int
+) -> dict[str, jax.typing.ArrayLike]:
+    if not isinstance(term.basis.x, lsl.TransientCalc | lsl.Calc):
+        raise NotImplementedError(
+            "Function not implemented for bases with inputs of "
+            f"type {type(term.basis.x)}."
+        )
+    inputs = {n.var.name: n.var.value for n in term.basis.x.all_input_nodes()}  # type: ignore
+    return grid_nd_nomesh(inputs, ngrid)
+
+
 # using q_0.05 and q_0.95 explicitly here
 # even though users could choose to return other quantiles like 0.1 and 0.9
 # then they can supply q_0.1 and q_0.9, etc.
@@ -343,9 +364,6 @@ def summarise_regions(
 
     df["label"] = df[region].astype(str)
 
-    if "observed" not in df.columns:
-        df["observed"] = True
-
     plot_df = poly_df.merge(df, on="label")
 
     plot_df = plot_df.melt(
@@ -435,16 +453,22 @@ def summarise_1d_smooth_clustered(
         cgrid = np.asarray(list(labels.integers_to_labels_map))  # integer codes
         unique_clusters = np.unique(cluster.basis.x.value)  # unique codes
 
-        if isinstance(x, lsl.Node) or x.strong:
+        if isinstance(x, lsl.Node) and len(x.inputs) == 1:
             xgrid: Mapping[str, ArrayLike] = {
                 x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)
             }
+        elif isinstance(x, lsl.Var) and x.strong:
+            xgrid = {x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)}
         else:
             assert isinstance(term, StrctTerm | LinTerm), (
                 f"Wrong type for term: {type(term)}"
             )
-            ncols = jnp.shape(term.basis.value)[-1]
-            xgrid = input_grid_nd_smooth(term, ngrid=int(np.pow(ngrid, 1 / ncols)))
+            ncols = jnp.shape(term.basis.x.value)[-1]
+            xgrid = {}
+
+            xgrid = input_grid_nd_smooth_nomesh(
+                term, ngrid=int(np.pow(ngrid, 1 / ncols))
+            )
 
         grid: Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = dict(xgrid) | {
             cluster.basis.x.name: cgrid
@@ -454,14 +478,18 @@ def summarise_1d_smooth_clustered(
         observed = {x: x in unique_clusters for x in cgrid}
     elif newdata is None:
         cgrid = np.unique(cluster.basis.x.value)
-        if isinstance(x, lsl.Node) or x.strong:
+        if isinstance(x, lsl.Node) and len(x.inputs) == 1:
+            xgrid = {x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)}
+        elif isinstance(x, lsl.Var) and x.strong:
             xgrid = {x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)}
         else:
             assert isinstance(term, StrctTerm | LinTerm), (
                 f"Wrong type for term: {type(term)}"
             )
-            ncols = jnp.shape(term.basis.value)[-1]
-            xgrid = input_grid_nd_smooth(term, ngrid=int(np.pow(ngrid, 1 / ncols)))
+            ncols = jnp.shape(term.basis.x.value)[-1]
+            xgrid = input_grid_nd_smooth_nomesh(
+                term, ngrid=int(np.pow(ngrid, 1 / ncols))
+            )
 
         grid = xgrid | {cluster.basis.x.name: cgrid}
 
@@ -480,10 +508,7 @@ def summarise_1d_smooth_clustered(
             zip(grid.keys(), full_grid_arrays)
         )
 
-        if isinstance(labels, CategoryMapping):
-            observed = {x: x in cluster.basis.x.value for x in cgrid}
-        else:
-            observed = {x: True for x in cgrid}
+        observed = {x: x in cluster.basis.x.value for x in cgrid}
     elif newdata is not None:
         cgrid = np.asarray(newdata[cluster.basis.x.name])
         cgrid = _convert_to_integers(cgrid, labels, cluster)
