@@ -181,7 +181,7 @@ class StrctTerm(UserVar):
         The coefficient variable created for this term. It holds the prior
         (multivariate normal singular) and is used in the evaluation of the
         term.
-    is_noncentered
+    scale_is_factored
         Whether the term has been reparameterized to the non-centered form.
 
     """
@@ -231,7 +231,7 @@ class StrctTerm(UserVar):
         if _update_on_init:
             self.coef.update()
 
-        self.is_noncentered = False
+        self.scale_is_factored = False
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
@@ -247,18 +247,22 @@ class StrctTerm(UserVar):
     def scale(self) -> lsl.Var | lsl.Node | None:
         return self._scale
 
-    def reparam_noncentered(self) -> Self:
+    def factor_scale(self) -> Self:
         """
-        Turns this term into noncentered form, which means the prior for
+        Turns this term into a partially standardized form, which means the prior for
         the coefficient will be turned from ``coef ~ N(0, scale^2 * inv(penalty))`` into
         ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
         """
         if self.scale is None:
             raise ValueError(
-                f"Noncentering reparameterization of {self} fails, "
-                f"because {self.scale=}."
+                f"Scale factorization of {self} fails, because {self.scale=}."
             )
-        if self.is_noncentered:
+        if self.scale.value.size > 1:
+            raise ValueError(
+                f"Scale factorization of {self} fails, "
+                f"because scale must be scalar, but got {self.scale.value.size=}."
+            )
+        if self.scale_is_factored:
             return self
 
         assert self.coef.dist_node is not None
@@ -280,7 +284,7 @@ class StrctTerm(UserVar):
         self.value_node["coef"] = scaled_coef
         self.coef.update()
         self.update()
-        self.is_noncentered = True
+        self.scale_is_factored = True
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
@@ -300,7 +304,7 @@ class StrctTerm(UserVar):
         scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         inference: InferenceTypes = None,
         coef_name: str | None = None,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> Self:
         """
         Construct a smooth term from a :class:`.Basis`.
@@ -325,9 +329,9 @@ class StrctTerm(UserVar):
         inference
             Inference specification forwarded to the coefficient variable \
             creation, a :class:`liesel.goose.MCMCSpec`.
-        noncentered
-            If ``True``, the term is reparameterized to the non-centered \
-            form via :meth:`.reparam_noncentered` before being returned.
+        factor_scale
+            If ``True``, the term is reparameterized by factoring out the scale \
+            form via :meth:`.factor_scale` before being returned.
         coef_name
             Coefficient name. The default coefficient name is a LaTeX-like string \
             ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
@@ -355,11 +359,11 @@ class StrctTerm(UserVar):
             inference=inference,
             coef_name=coef_name,
             name=name,
-            validate_scalar_scale=not noncentered,
+            validate_scalar_scale=not factor_scale,
         )
 
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
 
         return term
 
@@ -375,7 +379,7 @@ class StrctTerm(UserVar):
         scale_value: float = 100.0,
         scale_name: str | None = None,
         coef_name: str | None = None,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         """
         Construct a smooth term with an inverse-gamma prior on the variance.
@@ -413,9 +417,9 @@ class StrctTerm(UserVar):
         coef_name
             Coefficient name. The default coefficient name is a LaTeX-like string \
             ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
-        noncentered
+        factor_scale
             If ``True``, reparameterize the term to non-centered form \
-            (see :meth:`.reparam_noncentered`).
+            (see :meth:`.factor_scale`).
 
         Returns
         -------
@@ -442,8 +446,8 @@ class StrctTerm(UserVar):
             coef_name=coef_name,
         )
 
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
 
         return term
 

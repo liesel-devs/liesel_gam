@@ -275,20 +275,20 @@ class TestNonCentering:
         basis = gam.Basis(x)
         term = gam.StrctTerm(basis, penalty=None, scale=None)
 
-        with pytest.raises(ValueError, match="Noncentering"):
-            term.reparam_noncentered()
+        with pytest.raises(ValueError, match="Scale factorization"):
+            term.factor_scale()
 
     def test_reparam_twice(self):
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x)
         scale = lsl.Var(2.0, name="a")
         term = gam.StrctTerm(basis, penalty=None, scale=scale)
-        term.reparam_noncentered()
+        term.factor_scale()
         assert term.scale is scale
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
         # does nothing
-        term.reparam_noncentered()
+        term.factor_scale()
         assert term.scale is scale
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
@@ -297,7 +297,7 @@ class TestNonCentering:
         basis = gam.Basis(x)
         scale = gam.ScaleIG(1.0, 1.0, 0.005, name="a")
         term = gam.StrctTerm(basis, penalty=None, scale=scale)
-        term.reparam_noncentered()
+        term.factor_scale()
         assert term.scale is scale
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
@@ -310,8 +310,8 @@ class TestNonCentering:
         )
         scale.value_node[0].value = jnp.ones(5)
         scale.update()
-        with pytest.raises(RuntimeError):
-            term.reparam_noncentered()
+        with pytest.raises(ValueError):
+            term.factor_scale()
 
 
 class TestStrctTermFConstructor:
@@ -334,22 +334,22 @@ class TestStrctTermFConstructor:
         basis = gam.Basis(x, xname="x")
         scale = lsl.Var(2.0, name="a")
         with pytest.raises(TypeError):
-            gam.StrctTerm.f(basis, scale=scale, noncentered=True, fname=basis)
+            gam.StrctTerm.f(basis, scale=scale, factor_scale=True, fname=basis)
 
-    def test_init_noncentered(self):
+    def test_init_factor_scale(self):
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x, xname="x")
         scale = lsl.Var(2.0, name="a")
-        term = gam.StrctTerm.f(basis, scale=scale, noncentered=True)
+        term = gam.StrctTerm.f(basis, scale=scale, factor_scale=True)
 
         assert term.scale is scale
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
-    def test_init_new_ig_noncentered(self):
+    def test_init_new_ig_factor_scale(self):
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x, xname="x")
         term = gam.StrctTerm.new_ig(
-            basis, penalty=basis.penalty, noncentered=True, name="test"
+            basis, penalty=basis.penalty, factor_scale=True, name="test"
         )
 
         assert term.scale.value == pytest.approx(100.0)
