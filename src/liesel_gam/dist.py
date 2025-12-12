@@ -54,7 +54,7 @@ class MultivariateNormalSingular(tfd.Distribution):
         return tf.TensorShape((jnp.shape(self._penalty)[-1],))
 
     def _event_shape_tensor(self):
-        return jnp.array((jnp.shape(self._penalty)[-1],), dtype=self._penalty.dtype)
+        return jnp.array((jnp.shape(self._penalty)[-1],))
 
     def _log_prob(self, x: Array) -> Array:
         x_centered = x - self._loc
@@ -272,7 +272,11 @@ class StructuredPenaltyOperator:
 
     @classmethod
     def from_penalties(
-        cls, scales: jax.Array, penalties: Sequence[jax.Array], eps: float = 1e-6
+        cls,
+        scales: jax.Array,
+        penalties: Sequence[jax.Array],
+        eps: float = 1e-6,
+        validate_args: bool = False,
     ) -> Self:
         evs = [jnp.linalg.eigh(K) for K in penalties]
         evals = [ev.eigenvalues for ev in evs]
@@ -284,6 +288,7 @@ class StructuredPenaltyOperator:
             penalties=penalties,
             penalties_eigvalues=evals,
             masks=masks,
+            validate_args=validate_args,
         )
 
     @cached_property
@@ -443,8 +448,8 @@ class StructuredPenaltyOperator:
         n_penalties3 = len(self._penalties_eigvalues)
 
         if not len({n_penalties1, n_penalties2, n_penalties3}) == 1:
-            msg1 = "Got inconsistent numbers of penalties. "
-            msg2 = f"Number of scale parameters: {n_penalties1}"
+            msg1 = "Got inconsistent numbers of parameters. "
+            msg2 = f"Number of scale parameters: {n_penalties1} "
             msg3 = f"Number of penalty matrices: {n_penalties2}. "
             msg4 = f"Number of eigenvalue vectors: {n_penalties3}. "
             raise ValueError(msg1 + msg2 + msg3 + msg4)
@@ -483,7 +488,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         self._include_normalizing_constant = include_normalizing_constant
 
         if validate_args:
-            self._validate_penalties()
+            self._op._validate_penalties()
             self._validate_event_dim()
 
         super().__init__(
@@ -515,7 +520,7 @@ class MultivariateNormalStructured(tfd.Distribution):
     def _batch_shape_tensor(self):
         variances = self._op.variances  # shape (B..., K)
         batch_shape = tuple(variances.shape[:-1])
-        return jnp.array(batch_shape, dtype=self._loc.dtype)
+        return jnp.array(batch_shape)
 
     def _event_shape(self):
         return tf.TensorShape((jnp.shape(self._loc)[-1],))
@@ -545,6 +550,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         scales: Array,
         penalties: Sequence[Array],
         tol: float = 1e-6,
+        precompute_masks: bool = True,
         validate_args: bool = False,
         allow_nan_stats: bool = True,
         include_normalizing_constant: bool = True,
@@ -556,7 +562,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         constructor = cls.get_locscale_constructor(
             penalties=penalties,
             tol=tol,
-            precompute_masks=False,
+            precompute_masks=precompute_masks,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             include_normalizing_constant=include_normalizing_constant,
@@ -615,7 +621,9 @@ class MultivariateNormalStructured(tfd.Distribution):
         prec = self._op.materialize_precision()
         eigenvalues, evecs = jnp.linalg.eigh(prec)
         sqrt_eval = jnp.sqrt(1 / eigenvalues)
-        assert self._op._masks is not None
+
+        if self._op._masks is None:
+            raise ValueError("self._op_masks is None, but need pre-computed masks.")
         sqrt_eval = sqrt_eval.at[..., ~self._op._masks].set(0.0)
 
         event_shape = sqrt_eval.shape[-1]

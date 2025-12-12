@@ -1,3 +1,5 @@
+from functools import reduce
+
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
@@ -34,6 +36,7 @@ class TestMultivariateNormalSingular:
 
         assert mvns.event_shape == tf.TensorShape([10])
         assert mvns.event_shape_tensor() == 10
+        assert jnp.allclose(mvns._event_shape_tensor(), mvns.event_shape_tensor())
 
     def test_samples(self) -> None:
         pen = splines.pspline_penalty(d=10, diff=2)
@@ -144,6 +147,76 @@ class TestStructuredPenaltyOperator:
         ldet2 = jnp.log(eig.eigenvalues[mask]).sum()
 
         assert jnp.allclose(ldet1, ldet2)
+
+    def test_compute_masks(self):
+        K1 = pspline_penalty(6)
+        K2 = pspline_penalty(8)
+        K3 = pspline_penalty(5)
+
+        scales = jnp.array([1.0, 2.0, 0.5])
+
+        with pytest.raises(ValueError):
+            gd.StructuredPenaltyOperator.from_penalties(
+                scales=scales, penalties=[K1, K2, K3], eps=1.0
+            )
+
+    def test_validate_penalties(self):
+        K1 = pspline_penalty(6)
+        K2 = pspline_penalty(8)
+        K3 = pspline_penalty(5)
+
+        scales = jnp.array([1.0, 2.0, 0.5])
+
+        gd.StructuredPenaltyOperator.from_penalties(
+            scales=scales, penalties=[K1, K2, K3], validate_args=True
+        )
+
+        with pytest.raises(ValueError):
+            gd.StructuredPenaltyOperator.from_penalties(
+                scales=scales, penalties=[K1, K2], validate_args=True
+            )
+
+    def test_materialize_penalty(self):
+        K1 = pspline_penalty(6)
+        K2 = pspline_penalty(8)
+        K3 = pspline_penalty(5)
+
+        scales = jnp.array([1.0, 2.0, 0.5])
+
+        op = gd.StructuredPenaltyOperator.from_penalties(
+            scales=scales, penalties=[K1, K2, K3]
+        )
+
+        K = op.materialize_penalty()
+
+        p = len(op._penalties)
+
+        dims = [op._penalties[j].shape[-1] for j in range(p)]
+
+        def kron_all(mats):
+            """Kronecker product of a list of matrices."""
+            return reduce(jnp.kron, mats)
+
+        def one_batch(variances, *penalties):
+            # Build K_1 / tau1^2 as initial value
+            factors = [penalties[0] if i == 0 else jnp.eye(dims[i]) for i in range(p)]
+
+            K = kron_all(factors) / variances[0]
+
+            # Add remaining K_j / tau_j^2
+            for j in range(1, p):
+                factors = [
+                    penalties[j] if i == j else jnp.eye(dims[i]) for i in range(p)
+                ]
+                Kj = kron_all(factors)
+                K = K + Kj / variances[j]
+
+            return K
+
+        Kb = one_batch(jnp.ones(p), *[K1, K2, K3])
+
+        assert jnp.allclose(K, Kb)
+        assert not jnp.allclose(K, op.materialize_precision())
 
     def test_log_pdet_is_jittable(self):
         K1 = pspline_penalty(6)
@@ -333,8 +406,88 @@ class TestStructuredPenaltyOperator:
 
         assert jnp.allclose(xKx, xKx2)
 
+        x = jax.random.normal(jax.random.key(seed), K.shape[:-2] + (n,))
+
+        xKx = jax.vmap(quad_form, (0, 0))(x, K)
+        xKx2 = op.quad_form(x)
+
+        assert jnp.allclose(xKx, xKx2)
+
+        x = jax.random.normal(jax.random.key(seed), (3,) + K.shape[:-2] + (n,))
+
+        with pytest.raises(ValueError):
+            op.quad_form(x)
+
 
 class TestMultivariateNormalStructuredSingular:
+    def test_sample(self):
+        K1 = pspline_penalty(6)[:-2, :-2]
+        K2 = pspline_penalty(8)[:-2, :-2]
+
+        n = K1.shape[-1] * K2.shape[-1]
+
+        loc = jnp.zeros(n)
+        scales = jnp.array([1.0, 2.0])
+        dist = gd.MultivariateNormalStructured.from_penalties(
+            loc=loc, scales=scales, penalties=[K1, K2]
+        )
+
+        x = dist.sample(seed=jax.random.key(1))
+        assert jnp.allclose(jnp.asarray(x.shape), dist.event_shape_tensor())
+        assert jnp.allclose(jnp.asarray(x.shape), dist._event_shape_tensor())
+
+        x = dist.sample(5, seed=jax.random.key(1))
+        assert x.shape == (5, n)
+
+        x = dist.sample((5, 10), seed=jax.random.key(1))
+        assert x.shape == (5, 10, n)
+
+        dist = gd.MultivariateNormalStructured.from_penalties(
+            loc=loc, scales=scales, penalties=[K1, K2], precompute_masks=False
+        )
+
+        with pytest.raises(ValueError):
+            dist.sample(seed=jax.random.key(1))
+
+    def test_from_penalties(self):
+        K1 = pspline_penalty(6)[:-2, :-2]
+        K2 = pspline_penalty(8)[:-2, :-2]
+
+        fn = gd.MultivariateNormalStructured.get_locscale_constructor
+        dist_constr = fn((K1, K2))
+
+        n = K1.shape[-1] * K2.shape[-1]
+
+        loc = jnp.zeros(n)
+        scales = jnp.array([1.0, 2.0])
+        d1 = dist_constr(loc=loc, scales=scales)
+        d2 = gd.MultivariateNormalStructured.from_penalties(
+            loc=loc, scales=scales, penalties=[K1, K2]
+        )
+
+        x = jax.random.normal(jax.random.key(1), (n,))
+
+        assert jnp.allclose(d1.log_prob(x), d2.log_prob(x))
+
+    def test_validate_penalties(self):
+        K1 = pspline_penalty(6)[:-2, :-2]
+        K2 = pspline_penalty(8)[:-2, :-2]
+
+        fn = gd.MultivariateNormalStructured.get_locscale_constructor
+        dist_constr = fn((K1, K2), validate_args=True)
+
+        n = K1.shape[-1] * K2.shape[-1]
+
+        loc = jnp.zeros(n)
+        scales = jnp.array([1.0, 2.0])
+        dist_constr(loc=loc, scales=scales)
+
+        with pytest.raises(ValueError):
+            dist_constr(loc=loc, scales=jnp.array([1.0]))
+
+        with pytest.raises(ValueError):
+            dist_constr(loc=jnp.zeros(3), scales=scales)
+
     @pytest.mark.parametrize("seed", (0, 1, 2, 3))
     def test_log_prob(self, seed):
         K1 = pspline_penalty(6)[:-2, :-2]
@@ -342,6 +495,64 @@ class TestMultivariateNormalStructuredSingular:
 
         fn = gd.MultivariateNormalStructured.get_locscale_constructor
         dist_constr = fn((K1, K2))
+
+        n = K1.shape[-1] * K2.shape[-1]
+
+        loc = jnp.zeros(n)
+        scales = jnp.array([1.0, 2.0])
+        dist = dist_constr(loc=loc, scales=scales)
+
+        K = dist._op.materialize_precision()
+
+        x = jax.random.normal(jax.random.key(seed), (n,))
+
+        lp1 = dist.log_prob(x)
+
+        lp1 = lp1
+
+        Ki = jnp.linalg.inv(K)
+        dist2 = tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=Ki)
+
+        lp2 = dist2.log_prob(x)
+
+        assert jnp.allclose(lp1, lp2, atol=1e-4)
+
+    @pytest.mark.parametrize("seed", (0, 1, 2, 3))
+    def test_log_prob_unnormalized(self, seed):
+        K1 = pspline_penalty(6)[:-2, :-2]
+        K2 = pspline_penalty(8)[:-2, :-2]
+
+        fn = gd.MultivariateNormalStructured.get_locscale_constructor
+        dist_constr_norm = fn((K1, K2), include_normalizing_constant=True)
+        dist_constr_unnorm = fn((K1, K2), include_normalizing_constant=False)
+
+        n = K1.shape[-1] * K2.shape[-1]
+
+        loc = jnp.zeros(n)
+        scales = jnp.array([1.0, 2.0])
+        dist_norm = dist_constr_norm(loc=loc, scales=scales)
+        dist_unnorm = dist_constr_unnorm(loc=loc, scales=scales)
+
+        x1 = jax.random.normal(jax.random.key(seed), (n,))
+        x2 = jax.random.normal(jax.random.key(seed + 1), (n,))
+
+        lp1 = dist_norm.log_prob(x1)
+        lp2 = dist_norm.log_prob(x2)
+
+        lp1_unnorm = dist_unnorm.log_prob(x1)
+        lp2_unnorm = dist_unnorm.log_prob(x2)
+
+        assert lp1 != pytest.approx(lp1_unnorm)
+        assert (lp1 - lp1_unnorm) == pytest.approx(lp2 - lp2_unnorm)
+
+    def test_log_prob_no_precomputed_mask(self):
+        seed = 1
+
+        K1 = pspline_penalty(6)[:-2, :-2]
+        K2 = pspline_penalty(8)[:-2, :-2]
+
+        fn = gd.MultivariateNormalStructured.get_locscale_constructor
+        dist_constr = fn((K1, K2), precompute_masks=False)
 
         n = K1.shape[-1] * K2.shape[-1]
 
@@ -395,6 +606,18 @@ class TestMultivariateNormalStructuredSingular:
 
         beta = tfd.Normal(0.0, 1.0).sample((B, K_tau2.shape[-1]), key_beta)
         dist = gd.MultivariateNormalStructured(jnp.zeros_like(beta), op)
+
+        assert jnp.allclose(
+            jnp.asarray(dist.batch_shape), jnp.asarray(K_tau2.shape[:-2])
+        )
+
+        assert jnp.allclose(
+            jnp.asarray(dist.batch_shape_tensor()), jnp.asarray(K_tau2.shape[:-2])
+        )
+
+        assert jnp.allclose(
+            jnp.asarray(dist._batch_shape_tensor()), jnp.asarray(K_tau2.shape[:-2])
+        )
 
         assert dist.log_prob(beta[0]).shape == (3,)
         assert dist.log_prob(beta).shape == (3,)
