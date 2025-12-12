@@ -1017,6 +1017,7 @@ class TermBuilder:
             list(StrctTensorProdTerm._input_obs([t.basis for t in marginals]))
         )
         fname = self.names.create(f"{_fname}(" + inputs + ")")
+        basis_name = self.names.create("B(" + inputs + ")")
         coef_name = self.names.beta(fname)
 
         if common_scale is not None and not isinstance(common_scale, float):
@@ -1034,6 +1035,7 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
             include_main_effects=include_main_effects,
+            basis_name=basis_name,
         )
 
         if not common_scale:
