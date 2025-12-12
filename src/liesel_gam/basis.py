@@ -195,12 +195,6 @@ class Basis(UserVar):
         self.update()
         self.observed = True
 
-        basis_shape = jnp.shape(self.value)
-        if len(basis_shape) >= 1:
-            self.nbases: int = basis_shape[-1]
-        else:
-            self.nbases = 1  # scalar case
-
         if isinstance(penalty, lsl.Value):
             penalty_var = penalty
         elif isinstance(penalty, str) and penalty == "identity":
@@ -216,6 +210,16 @@ class Basis(UserVar):
 
         self._constraint: str | None = None
         self._reparam_matrix: Array | None = None
+
+    @property
+    def nbases(self) -> int:
+        basis_shape = jnp.shape(self.value)
+        if len(basis_shape) >= 1:
+            nbases: int = basis_shape[-1]
+        else:
+            nbases = 1  # scalar case
+
+        return nbases
 
     @property
     def x(self) -> lsl.Var | lsl.Node:
