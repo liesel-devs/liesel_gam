@@ -262,6 +262,22 @@ class Basis(UserVar):
         """
         return self._penalty
 
+    def _validate_penalty_shape(self, pen: ArrayLike | lsl.Value) -> lsl.Value:
+        if isinstance(pen, lsl.Value):
+            pen_arr = jnp.asarray(pen.value)
+            pen_val = pen
+            pen_val.value = pen_arr
+        else:
+            pen_arr = jnp.asarray(pen)
+            pen_val = lsl.Value(pen_arr)
+
+        if not pen_arr.shape[-1] == self.nbases:
+            raise ValueError(
+                f"Basis has {self.nbases} columns, replacement penalty has "
+                f"{pen_arr.shape[-1]}"
+            )
+        return pen_val
+
     def update_penalty(self, value: ArrayLike | lsl.Value):
         """
         Update the penalty matrix for this basis.
@@ -271,19 +287,10 @@ class Basis(UserVar):
         value
             New penalty matrix or an already-wrapped :class:`liesel.model.Value`.
         """
-        if self.penalty is None and isinstance(value, lsl.Value):
-            self._penalty = value
-
-        elif self.penalty is None:
-            self._penalty = lsl.Value(jnp.asarray(value))
-
-        elif isinstance(value, lsl.Value):
-            assert self._penalty is not None
-            self._penalty.value = value.value
+        if self._penalty is None:
+            self._penalty = self._validate_penalty_shape(value)
         else:
-            assert self._penalty is not None
-            penalty_arr = jnp.asarray(value)
-            self._penalty.value = penalty_arr
+            self._penalty.value = self._validate_penalty_shape(value).value
 
     @classmethod
     def new_linear(
