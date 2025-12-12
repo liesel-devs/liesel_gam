@@ -416,12 +416,6 @@ class Basis(UserVar):
         if self.penalty is None:
             raise TypeError("Basis.penalty is None, cannot apply transformation.")
 
-        if self.value.ndim < 2:
-            raise ValueError(
-                "To apply contraints, basis must be at least 2-dimensional. Got "
-                f"{self.value.ndim} dimensions."
-            )
-
         assert isinstance(self.value_node, lsl.Calc)
         basis_fn = self.value_node.function
 
