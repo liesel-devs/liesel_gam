@@ -701,14 +701,12 @@ class BasisBuilder:
         if penalty is not None:
             penalty = jnp.asarray(penalty)
         result = self.registry.get_obs_and_mapping(cluster)
-        if result.mapping is None:
+
+        if not result.is_categorical:
             raise TypeError(f"{cluster=} must be categorical.")
 
-        self.mappings[cluster] = result.mapping
-        nparams = len(result.mapping.labels_to_integers_map)
-
-        if penalty is None:
-            penalty = jnp.eye(nparams)
+        if result.mapping is not None:
+            self.mappings[cluster] = result.mapping
 
         basis = Basis(
             value=result.var,
