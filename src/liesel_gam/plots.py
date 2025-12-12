@@ -361,7 +361,7 @@ def plot_forest_clustered(
     if labels is None:
         try:
             labels = term.mapping  # type: ignore
-        except AttributeError:
+        except (AttributeError, ValueError):
             labels = None
 
     df = summarise_cluster(
@@ -433,7 +433,7 @@ def plot_1d_smooth_clustered(
     if labels is None:
         try:
             labels = cluster.mapping  # type: ignore
-        except AttributeError:
+        except (AttributeError, ValueError):
             labels = None
 
     term_summary = summarise_1d_smooth_clustered(
