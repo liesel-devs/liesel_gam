@@ -740,7 +740,10 @@ class BasisBuilder:
             If it is a list or array of strings, the values are the labels of the
             neighbors.
             If it is a list or array of integers, the values are the indices of the
-            neighbors.
+            neighbors. Indices correspond to regions based on an alphabetical ordering
+            of regions.
+        penalty: If penalty is supplied, it takes precedence over both nb and polys,
+            and the arguments '
 
 
         mgcv does not concern itself with your category ordering. It *will* order
@@ -789,7 +792,7 @@ class BasisBuilder:
             xt_args.append("polys=polys")
             if not labels == set(list(polys)):
                 raise ValueError(
-                    "Names in 'poly' must correspond to the levels of 'x'."
+                    "Names in 'polys' must correspond to the levels of 'x'."
                 )
             pass_to_r["polys"] = {key: np.asarray(val) for key, val in polys.items()}
 
@@ -801,6 +804,10 @@ class BasisBuilder:
             nb_processed = {}
             for key, val in nb.items():
                 val_arr = np.asarray(val)
+                if val_arr.ndim != 1:
+                    raise ValueError(
+                        f"Expected 1d arrays in 'nb', got {val_arr.ndim=} for {key}."
+                    )
                 if np.isdtype(val_arr.dtype, np.dtype("int")):
                     # add one to convert to 1-based indexing for R
                     # and cast to float for R
@@ -845,6 +852,18 @@ class BasisBuilder:
                 )
             pass_to_r["penalty"] = penalty
 
+        if "nb" in pass_to_r and "penalty" in pass_to_r:
+            logger.warning(
+                "Both 'nb' and 'penalty' were supplied. 'penalty' will be used to "
+                "setup this basis."
+            )
+
+        if "polys" in pass_to_r and "penalty" in pass_to_r:
+            logger.warning(
+                "Both 'polys' and 'penalty' were supplied. 'penalty' will be used "
+                "to setup this basis."
+            )
+
         xt = "list("
         xt += ",".join(xt_args)
         xt += ")"
@@ -862,14 +881,6 @@ class BasisBuilder:
 
         spec = f"s({x}, k={k}, bs='mrf', xt={xt})"
 
-        # disabling warnings about "mrf should be a factor"
-        # since even turning data into a pandas df and x_array into
-        # a categorical series did not satisfy mgcv in that regard.
-        # Things still seem to work, and we ensure further above
-        # that we are actually dealing with a categorical variable
-        # so I think turning the warnings off temporarily here is fine
-        # r("old_warn <- getOption('warn')")
-        # r("options(warn = -1)")
         observed = mapping.integers_to_labels(var.value)
         regions = list(mapping.labels_to_integers_map)
         df = pd.DataFrame({x: pd.Categorical(observed, categories=regions)})
@@ -882,7 +893,6 @@ class BasisBuilder:
             scale_penalty=scale_penalty,
             pass_to_r=pass_to_r,
         )
-        # r("options(warn = old_warn)")
 
         x_name = x
 
@@ -904,7 +914,10 @@ class BasisBuilder:
         if np.shape(smooth_penalty)[1] > len(labels):
             smooth_penalty = smooth_penalty[:, 1:]
 
-        penalty_arr = jnp.asarray(np.astype(smooth_penalty, "float"))
+        try:
+            penalty_arr = jnp.asarray(np.astype(smooth_penalty, "float"))
+        except ValueError:
+            penalty_arr = jnp.asarray(np.astype(smooth_penalty[:, 1:], "float"))
 
         basis = MRFBasis(
             value=var,
