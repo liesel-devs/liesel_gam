@@ -33,6 +33,7 @@ extensions = [
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy-1.8.1/", None),
     "liesel": ("https://docs.liesel-project.org/en/latest/", None),
     "jax": ("https://jax.readthedocs.io/en/latest/", None),
