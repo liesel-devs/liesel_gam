@@ -12,7 +12,7 @@ from formulaic import ModelSpec
 
 from liesel_gam.category_mapping import CategoryMapping
 
-from .basis import Basis
+from .basis import Basis, is_diagonal
 from .dist import MultivariateNormalSingular, MultivariateNormalStructured
 from .var import ScaleIG, UserVar, VarIGPrior, _append_name
 
@@ -247,12 +247,7 @@ class StrctTerm(UserVar):
     def scale(self) -> lsl.Var | lsl.Node | None:
         return self._scale
 
-    def factor_scale(self) -> Self:
-        """
-        Turns this term into a partially standardized form, which means the prior for
-        the coefficient will be turned from ``coef ~ N(0, scale^2 * inv(penalty))`` into
-        ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
-        """
+    def _validate_scale_for_factoring(self):
         if self.scale is None:
             raise ValueError(
                 f"Scale factorization of {self} fails, because {self.scale=}."
@@ -262,6 +257,59 @@ class StrctTerm(UserVar):
                 f"Scale factorization of {self} fails, "
                 f"because scale must be scalar, but got {self.scale.value.size=}."
             )
+
+    def _validate_penalty_for_factoring(self, atol: float = 1e-5) -> Array:
+        if self._penalty is None:
+            return jnp.array(self.coef.value.shape[-1])
+
+        pen_rank = jnp.linalg.matrix_rank(self._penalty.value)
+
+        if pen_rank == self._penalty.value.shape[-1]:
+            # full-rank penalty always works
+            return pen_rank
+
+        if not is_diagonal(self._penalty.value, atol):
+            # rank-deficient penalty must be diagonal
+            raise ValueError(
+                "With rank deficient penalties, factoring out the scale is "
+                "only supported when using diagonalized penalties. "
+                "This is "
+                "because the scale is only applied to the penalized part, "
+                "and we cannot reliably distinguish the penalized and "
+                "unpenalized parts without diagonalization."
+            )
+
+        unpenalized_parts = self._penalty.value[pen_rank:, pen_rank:]
+        zeros = jnp.zeros_like(unpenalized_parts)
+        if not jnp.allclose(unpenalized_parts, zeros, atol=atol):
+            # rank-deficient part must be the last rows/columns of the penalty
+            raise ValueError(
+                "With rank deficient penalties, factoring out the scale is "
+                "only supported when using diagonalized penalties. "
+                "The null space of the penalty must be organized in the "
+                "last R rows/columns, i.e. these must be all zero. "
+                "R refers to the rank of the penalty, in your "
+                f"case: {pen_rank}. "
+                "Your penalty seems to be diagonal, but not have these "
+                "zero-row/columns."
+                "This is important"
+                "because the scale is only applied to the penalized part, "
+                "and we cannot reliably distinguish the penalized and "
+                "unpenalized parts without this structure."
+            )
+
+        return pen_rank
+
+    def factor_scale(self, atol: float = 1e-5) -> Self:
+        """
+        Turns this term into a partially standardized form, which means the prior for
+        the coefficient will be turned from ``coef ~ N(0, scale^2 * inv(penalty))`` into
+        ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
+        """
+
+        self._validate_scale_for_factoring()
+        pen_rank = self._validate_penalty_for_factoring(atol)
+
         if self.scale_is_factored:
             return self
 
@@ -269,13 +317,18 @@ class StrctTerm(UserVar):
 
         self.coef.dist_node["scale"] = lsl.Value(jnp.array(1.0))
 
+        assert self.scale is not None  # checked in validation method above
         if self.scale.name and self.coef.name:
             scaled_name = self.scale.name + "*" + self.coef.name
         else:
             scaled_name = _append_name(self.coef.name, "_scaled")
 
+        def scale_coef(scale, coef):
+            coef = coef.at[:pen_rank].set(coef[:pen_rank] * scale)
+            return coef
+
         scaled_coef = lsl.Var.new_calc(
-            lambda scale, coef: scale * coef,
+            scale_coef,
             self.scale,
             self.coef,
             name=scaled_name,
@@ -286,11 +339,13 @@ class StrctTerm(UserVar):
         self.update()
         self.scale_is_factored = True
 
-        if hasattr(self.scale, "setup_gibbs_inference"):
+        if hasattr(self.scale, "setup_gibbs_inference_factored"):
             try:
                 pen = self._penalty.value if self._penalty is not None else None
                 self.scale.update()
-                self.scale.setup_gibbs_inference(scaled_coef, penalty=pen)  # type: ignore
+                self.scale.setup_gibbs_inference_factored(
+                    scaled_coef, self.coef, penalty=pen
+                )  # type: ignore
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
