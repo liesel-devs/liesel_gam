@@ -8,6 +8,8 @@ from .basis import MRFBasis as MRFBasis
 from .basis_builder import BasisBuilder as BasisBuilder
 from .category_mapping import CategoryMapping as CategoryMapping
 from .category_mapping import series_is_categorical as series_is_categorical
+from .demo_data import demo_data as demo_data
+from .demo_data import demo_data_ta as demo_data_ta
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs

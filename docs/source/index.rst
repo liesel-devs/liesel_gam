@@ -102,6 +102,8 @@ API Reference
     ~liesel_gam.CategoryMapping
     ~liesel_gam.VarIGPrior
     ~liesel_gam.ScaleIG
+    ~liesel_gam.demo_data
+    ~liesel_gam.demo_data_ta
 
 
 Acknowledgements and Funding
