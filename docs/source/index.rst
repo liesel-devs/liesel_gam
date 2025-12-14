@@ -21,17 +21,87 @@ The library can be installed from PYPI:
 API Reference
 -------------
 
-.. rubric:: Model
+.. rubric:: High-level API
 
 .. autosummary::
     :toctree: generated
-    :caption: API
+    :caption: High-level API
     :nosignatures:
 
-    ~liesel_gam.BasisBuilder
+    ~liesel_gam.AdditivePredictor
     ~liesel_gam.TermBuilder
+    ~liesel_gam.BasisBuilder
+
+.. rubric:: Plots
+
+.. autosummary::
+    :toctree: generated
+    :caption: Plots
+    :nosignatures:
+
+    ~liesel_gam.plot_1d_smooth
+    ~liesel_gam.plot_1d_smooth_clustered
+    ~liesel_gam.plot_2d_smooth
+    ~liesel_gam.plot_forest
+    ~liesel_gam.plot_polys
+    ~liesel_gam.plot_regions
+
+.. rubric:: Summary
+
+.. autosummary::
+    :toctree: generated
+    :caption: Summary
+    :nosignatures:
+
+    ~liesel_gam.summarise_regions
+    ~liesel_gam.summarise_nd_smooth
+    ~liesel_gam.summarise_lin
+    ~liesel_gam.summarise_cluster
+    ~liesel_gam.summarise_1d_smooth
+    ~liesel_gam.summarise_1d_smooth_clustered
+    ~liesel_gam.polys_to_df
+
+
+.. rubric:: Bases
+
+.. autosummary::
+    :toctree: generated
+    :caption: Bases
+    :nosignatures:
+
     ~liesel_gam.Basis
+    ~liesel_gam.MRFBasis
+    ~liesel_gam.LinBasis
+
+
+.. rubric:: Terms
+
+.. autosummary::
+    :toctree: generated
+    :caption: Terms
+    :nosignatures:
+
     ~liesel_gam.StrctTerm
+    ~liesel_gam.LinTerm
+    ~liesel_gam.StrctLinTerm
+    ~liesel_gam.IndexingTerm
+    ~liesel_gam.RITerm
+    ~liesel_gam.MRFTerm
+    ~liesel_gam.StrctTensorProdTerm
+
+
+
+.. rubric:: Utilities
+
+.. autosummary::
+    :toctree: generated
+    :caption: Utilities
+    :nosignatures:
+
+    ~liesel_gam.PandasRegistry
+    ~liesel_gam.CategoryMapping
+    ~liesel_gam.VarIGPrior
+    ~liesel_gam.ScaleIG
 
 
 Acknowledgements and Funding
