@@ -6,9 +6,6 @@
 Bayesian Generalized Additive Models in Liesel
 ==============================================
 
-Learn more in the paper:
-
-Brachem, J., Wiemann, P. F. V., & Kneib, T. (2024). Bayesian penalized transformation models: Structured additive location-scale regression for arbitrary conditional distributions (No. arXiv:2404.07440). arXiv. `https://doi.org/10.48550/arXiv.2404.07440 <https://doi.org/10.48550/arXiv.2404.07440>`_
 
 Installation
 ------------
