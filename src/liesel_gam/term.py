@@ -613,7 +613,8 @@ class IndexingTerm(StrctTerm):
         # attribute "function".
         # But we can assume safely that self.value_node is a lsl.Calc, which does have
         # one.
-        self.value_node.function = lambda basis, coef: jnp.take(coef, basis)  # type: ignore
+        assert isinstance(self.value_node, lsl.Calc)
+        self.value_node.function = lambda basis, coef: jnp.take(coef, basis)
         if _update_on_init:
             self.coef.update()
             self.update()
