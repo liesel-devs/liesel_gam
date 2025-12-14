@@ -11,6 +11,8 @@ from .category_mapping import series_is_categorical as series_is_categorical
 from .demo_data import demo_data as demo_data
 from .demo_data import demo_data_ta as demo_data_ta
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
+from .dist import MultivariateNormalStructured as MultivariateNormalStructured
+from .dist import StructuredPenaltyOperator as StructuredPenaltyOperator
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs
 from .plots import plot_1d_smooth as plot_1d_smooth
