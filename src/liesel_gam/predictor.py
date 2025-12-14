@@ -37,7 +37,7 @@ class AdditivePredictor(UserVar):
                 name=intercept_name.format(subscript="_{0," + name_cleaned + "}"),
                 value=0.0,
                 distribution=None,
-                inference=gs.MCMCSpec(gs.IWLSKernel),
+                inference=gs.MCMCSpec(gs.IWLSKernel.untuned),
             )
         else:
             intercept_ = 0.0
