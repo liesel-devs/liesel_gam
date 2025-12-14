@@ -114,20 +114,6 @@ class Basis(UserVar):
     callback wrapper inspects the return shape to build a compatible
     JAX ShapeDtypeStruct for the pure callback.
 
-    Attributes
-    ----------
-    role
-        The role assigned to this variable.
-    observed
-        Whether the basis is derived from an observed variable (always \
-        ``True`` for bases created from input data).
-    x
-        The input variable (observations) used to construct the basis.
-    nbases
-        Number of basis functions (number of columns in the basis matrix).
-    penalty
-        Penalty matrix (wrapped as a :class:`liesel.model.Value`) associated \
-        with the basis.
 
     Examples
     --------
@@ -213,6 +199,7 @@ class Basis(UserVar):
 
     @property
     def nbases(self) -> int:
+        """Number of basis functions (number of columns in the basis matrix)."""
         basis_shape = jnp.shape(self.value)
         if len(basis_shape) >= 1:
             nbases: int = basis_shape[-1]
@@ -223,6 +210,7 @@ class Basis(UserVar):
 
     @property
     def x(self) -> lsl.Var | lsl.Node:
+        """The input variable (observations) used to construct the basis."""
         return self.value_node[0]
 
     @property
@@ -252,13 +240,7 @@ class Basis(UserVar):
     @property
     def penalty(self) -> lsl.Value | None:
         """
-        Return the penalty matrix wrapped as a :class:`liesel.model.Value`.
-
-        Returns
-        -------
-        lsl.Value
-            Value wrapper holding the penalty (precision) matrix for this
-            basis.
+        The penalty matrix wrapped as a :class:`liesel.model.Value`.
         """
         return self._penalty
 

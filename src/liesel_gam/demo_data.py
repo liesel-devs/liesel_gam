@@ -19,7 +19,8 @@ def demo_data(n: int, seed: int = 1) -> pd.DataFrame:
         DataFrame with columns:
 
         - y (response)
-        - x_nonlin (continuous covariate with nonlinear effect on both location and scale)
+        - x_nonlin (continuous covariate with nonlinear effect on both location and
+          scale)
         - x_lin (continuous covariate with linear effect on both location and scale)
         - x_cat (categorical covariate with effect on both location)
 
