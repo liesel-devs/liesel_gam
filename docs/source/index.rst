@@ -90,12 +90,23 @@ API Reference
     ~liesel_gam.StrctTensorProdTerm
 
 
-
-.. rubric:: Utilities
+.. rubric:: Distribution
 
 .. autosummary::
     :toctree: generated
-    :caption: Utilities
+    :caption: Distribution
+    :nosignatures:
+
+    ~liesel_gam.MultivariateNormalSingular
+    ~liesel_gam.MultivariateNormalStructured
+    ~liesel_gam.StructuredPenaltyOperator
+
+
+.. rubric:: Other
+
+.. autosummary::
+    :toctree: generated
+    :caption: Other
     :nosignatures:
 
     ~liesel_gam.PandasRegistry
