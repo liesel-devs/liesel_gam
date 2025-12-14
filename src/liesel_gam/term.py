@@ -478,9 +478,9 @@ class StrctTerm(UserVar):
 
         Returns
         -------
-        A :class:`.Term` instance configured with an inverse-gamma prior on
-        the variance and an appropriate inference specification for
-        variance updates.
+            A :class:`.Term` instance configured with an inverse-gamma prior on
+            the variance and an appropriate inference specification for
+            variance updates.
 
         """
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"

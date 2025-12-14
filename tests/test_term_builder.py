@@ -450,6 +450,9 @@ class TestTerms:
         tb = gb.TermBuilder.from_df(columb)
         _test_term(tb.ps, k=20, constraints=1, fewer_bases_by=0, columb=columb)
 
+        tb = gb.TermBuilder.from_df(gam.demo_data(n=100))
+        tb.ps("x_nonlin", k=20)
+
     def test_s(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         s = partial(tb.s, bs="ps")
@@ -623,6 +626,19 @@ class TestVaryincCoefficient:
 
 
 class TestTPTerm:
+    def test_runs(self):
+        df = gam.demo_data_ta(n=200)
+        tb = gb.TermBuilder.from_df(df)
+        psy = tb.ps("y", k=10)
+        psx = tb.ps("x", k=10)
+        tb.tx(psy, psx)
+
+        df = gam.demo_data_ta(n=200, grid=True)
+        tb = gb.TermBuilder.from_df(df)
+        psy = tb.ps("y", k=10)
+        psx = tb.ps("x", k=10)
+        tb.tx(psy, psx)
+
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
