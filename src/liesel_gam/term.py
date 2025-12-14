@@ -620,6 +620,10 @@ class IndexingTerm(StrctTerm):
             self.update()
 
     @property
+    def nbases(self) -> int:
+        return self.nclusters
+
+    @property
     def nclusters(self) -> int:
         nclusters = jnp.unique(self.basis.value).size
         return int(nclusters)
