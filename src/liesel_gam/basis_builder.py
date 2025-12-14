@@ -913,6 +913,8 @@ class BasisBuilder:
         smooth_penalty = smooth.penalty
         if np.shape(smooth_penalty)[1] > len(labels):
             smooth_penalty = smooth_penalty[:, 1:]
+        elif np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]:
+            smooth_penalty = smooth_penalty[:, 1:]
 
         try:
             penalty_arr = jnp.asarray(np.astype(smooth_penalty, "float"))

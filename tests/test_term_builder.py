@@ -510,7 +510,13 @@ class TestTerms:
             smooth_unscaled.basis.penalty.value, smooth_scaled.basis.penalty.value
         )
 
-        smooth_factor_scale = tb.f("x", basis_fn=bfun, penalty=pen, factor_scale=True)
+        with pytest.raises(ValueError):
+            smooth_factor_scale = tb.f(
+                "x", basis_fn=bfun, penalty=pen, factor_scale=True
+            )
+        smooth_factor_scale = tb.f(
+            "x", basis_fn=bfun, penalty=jnp.eye(pen.shape[-1]), factor_scale=True
+        )
         smooth_factor_scale.scale.value == pytest.approx(2.0)
         smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
