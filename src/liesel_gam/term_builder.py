@@ -1113,7 +1113,7 @@ def _find_parameter(var: lsl.Var) -> lsl.Var:
     if var.strong and var.parameter:
         return var
 
-    with TemporaryModel(var, to_float32=False) as model:
+    with TemporaryModel(var, to_float32=False, silent=True) as model:
         params = model.parameters
         if not params:
             raise ValueError(f"No parameter found in the graph of {var}.")
@@ -1209,7 +1209,7 @@ def _has_star_gibbs(var: lsl.Var) -> bool:
 
 
 def _format_name(var: lsl.Var, fill: str) -> lsl.Var:
-    with TemporaryModel(var, to_float32=False) as model:
+    with TemporaryModel(var, to_float32=False, silent=True) as model:
         nodes = dict(model.nodes)
         vars_ = dict(model.vars)
 
