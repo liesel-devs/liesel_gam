@@ -44,6 +44,7 @@ from .var import ScaleIG as ScaleIG
 from .var import VarIGPrior as VarIGPrior
 
 on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
+# safeguard because R is not installed in the readthedocs build environment
 if not on_rtd:
     import pandas as pd
     from ryp import r, to_r
