@@ -1,5 +1,4 @@
-import pandas as pd
-from ryp import r, to_r
+import os
 
 from .__about__ import __version__ as __version__
 from .basis import Basis as Basis
@@ -44,13 +43,18 @@ from .term_builder import TermBuilder as TermBuilder
 from .var import ScaleIG as ScaleIG
 from .var import VarIGPrior as VarIGPrior
 
-try:
-    to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
-    r("rm('___test___')")
-except ImportError as e:
-    raise ImportError(
-        "Testing communication between R and Python failed. "
-        "Probably, you need to install the R package 'arrow' using "
-        "install.packages('arrow')."
-        "Also, please consider the original traceback from ryp above."
-    ) from e
+on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
+if not on_rtd:
+    import pandas as pd
+    from ryp import r, to_r
+
+    try:
+        to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
+        r("rm('___test___')")
+    except ImportError as e:
+        raise ImportError(
+            "Testing communication between R and Python failed. "
+            "Probably, you need to install the R package 'arrow' using "
+            "install.packages('arrow')."
+            "Also, please consider the original traceback from ryp above."
+        ) from e
