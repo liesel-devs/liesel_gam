@@ -11,8 +11,23 @@ import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
-import smoothcon as scon
-from ryp import r, to_py, to_r
+
+try:
+    # readthedocs safeguard: R is not installed in the readthedocs build environment
+    import smoothcon as scon
+    from ryp import r, to_py, to_r
+except RuntimeError as e:
+    import os
+
+    on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
+    if on_rtd:
+        scon = None
+        r = None
+        to_py = None
+        to_r = None
+        pass
+    else:
+        raise e
 
 from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager

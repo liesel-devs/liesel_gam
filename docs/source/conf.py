@@ -6,9 +6,19 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent.parent  # repo root (docs/source -> docs -> repo root)
+# sys.path.insert(0, str(ROOT))
+# if you use src-layout:
+sys.path.insert(0, str(ROOT / "src"))
+
+
 project = "liesel-gam"
-copyright = "2025, Johannes Brachem"
-author = "Johannes Brachem"
+copyright = "2025, Liesel Developers"
+author = "Liesel Developers"
 
 
 # -- General configuration ---------------------------------------------------
