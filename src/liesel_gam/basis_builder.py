@@ -12,7 +12,18 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import smoothcon as scon
-from ryp import r, to_py, to_r
+
+try:
+    # readthedocs safeguard: R is not installed in the readthedocs build environment
+    from ryp import r, to_py, to_r
+except RuntimeError as e:
+    import os
+
+    on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
+    if on_rtd:
+        pass
+    else:
+        raise e
 
 from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
