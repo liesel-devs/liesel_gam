@@ -179,7 +179,6 @@ class Basis(UserVar):
 
         super().__init__(calc, name=name_)
         self.update()
-        self.observed = True
 
         if isinstance(penalty, lsl.Value):
             penalty_var = penalty
