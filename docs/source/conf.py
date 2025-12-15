@@ -16,6 +16,12 @@ ROOT = HERE.parent.parent  # repo root (docs/source -> docs -> repo root)
 sys.path.insert(0, str(ROOT / "src"))
 
 
+try:
+    import liesel_gam
+except Exception as e:
+    raise RuntimeError("Import of liesel_gam failed during docs build") from e
+
+
 project = "liesel-gam"
 copyright = "2025, Johannes Brachem"
 author = "Johannes Brachem"
