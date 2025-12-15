@@ -181,3 +181,4 @@ notebooks/test_mrf.R
 img/Präsentation1.pptx
 covtest.sh
 /docs/source/generated
+notebooks/multivariate/test_tx_optim.ipynb
