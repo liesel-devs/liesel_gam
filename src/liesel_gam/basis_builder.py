@@ -397,7 +397,7 @@ class BasisBuilder:
             basis._constraint = "absorbed_via_mgcv"
         return basis
 
-    def s(
+    def _s(
         self,
         *x: str,
         k: int,
@@ -497,7 +497,7 @@ class BasisBuilder:
             m_args.append("0")
         m_str = "c(" + ", ".join(m_args) + ")"
 
-        basis = self.s(
+        basis = self._s(
             *x,
             k=k,
             bs="tp",
@@ -540,7 +540,7 @@ class BasisBuilder:
 
         m_str = "c(" + ", ".join(m_args) + ")"
 
-        basis = self.s(
+        basis = self._s(
             *x,
             k=k,
             bs="ts",
@@ -605,7 +605,7 @@ class BasisBuilder:
 
         m_str = "c(" + ", ".join(m_args) + ")"
 
-        basis = self.s(
+        basis = self._s(
             *x,
             k=k,
             bs="gp",

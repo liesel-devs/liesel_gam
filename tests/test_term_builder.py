@@ -367,7 +367,7 @@ class TestBasisReparameterization:
         with pytest.raises(ValueError):
             term.constrain("sumzero_term")
 
-        term = tb.s(
+        term = tb._s(
             "x",
             k=10,
             bs="tp",
@@ -455,7 +455,7 @@ class TestTerms:
 
     def test_s(self, columb):
         tb = gb.TermBuilder.from_df(columb)
-        s = partial(tb.s, bs="ps")
+        s = partial(tb._s, bs="ps")
         s.__name__ = "ps"  # monkey-patch
         _test_term(s, k=20, constraints=1, fewer_bases_by=0, columb=columb)
 

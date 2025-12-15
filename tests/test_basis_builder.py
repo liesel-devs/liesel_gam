@@ -1032,26 +1032,26 @@ class TestS:
         bases = BasisBuilder(registry)
 
         with pytest.raises(ValueError):
-            bases.s("x", bs="ab", k=8)
+            bases._s("x", bs="ab", k=8)
 
     def test_tp_univariate(self, columb):
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        b1 = bases.s("x", bs="tp", k=8)
+        b1 = bases._s("x", bs="tp", k=8)
         assert b1.value.shape[-1] == 7
         assert is_diagonal(b1.penalty.value)
 
-        b2 = bases.s("x", bs="tp", k=8, diagonal_penalty=False)
+        b2 = bases._s("x", bs="tp", k=8, diagonal_penalty=False)
         assert b2.value.shape[-1] == 7
         assert not is_diagonal(b2.penalty.value)
 
-        b3 = bases.s("x", bs="tp", k=8, diagonal_penalty=False, scale_penalty=False)
+        b3 = bases._s("x", bs="tp", k=8, diagonal_penalty=False, scale_penalty=False)
         assert b3.value.shape[-1] == 7
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
-        b4 = bases.s("x", bs="tp", k=8, absorb_cons=False)
+        b4 = bases._s("x", bs="tp", k=8, absorb_cons=False)
         assert b4.value.shape[-1] == 8
         assert is_diagonal(b4.penalty.value)
 
@@ -1059,22 +1059,22 @@ class TestS:
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        b1 = bases.s("x", "y", bs="tp", k=20)
+        b1 = bases._s("x", "y", bs="tp", k=20)
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
-        b2 = bases.s("x", "y", bs="tp", k=20, diagonal_penalty=False)
+        b2 = bases._s("x", "y", bs="tp", k=20, diagonal_penalty=False)
         assert b2.value.shape[-1] == 19
         assert not is_diagonal(b2.penalty.value)
 
-        b3 = bases.s(
+        b3 = bases._s(
             "x", "y", bs="tp", k=20, diagonal_penalty=False, scale_penalty=False
         )
         assert b3.value.shape[-1] == 19
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
-        b4 = bases.s("x", "y", bs="tp", k=20, absorb_cons=False)
+        b4 = bases._s("x", "y", bs="tp", k=20, absorb_cons=False)
         assert b4.value.shape[-1] == 20
         assert is_diagonal(b4.penalty.value)
 
@@ -1082,20 +1082,20 @@ class TestS:
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        b1 = bases.s("x", bs="gp", k=8)
+        b1 = bases._s("x", bs="gp", k=8)
         assert b1.value.shape[-1] == 7
         assert is_diagonal(b1.penalty.value)
 
-        b2 = bases.s("x", bs="gp", k=8, diagonal_penalty=False)
+        b2 = bases._s("x", bs="gp", k=8, diagonal_penalty=False)
         assert b2.value.shape[-1] == 7
         assert not is_diagonal(b2.penalty.value)
 
-        b3 = bases.s("x", bs="gp", k=8, diagonal_penalty=False, scale_penalty=False)
+        b3 = bases._s("x", bs="gp", k=8, diagonal_penalty=False, scale_penalty=False)
         assert b3.value.shape[-1] == 7
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
-        b4 = bases.s("x", bs="gp", k=8, absorb_cons=False)
+        b4 = bases._s("x", bs="gp", k=8, absorb_cons=False)
         assert b4.value.shape[-1] == 8
         assert is_diagonal(b4.penalty.value)
 
@@ -1103,22 +1103,22 @@ class TestS:
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        b1 = bases.s("x", "y", bs="gp", k=20)
+        b1 = bases._s("x", "y", bs="gp", k=20)
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
-        b2 = bases.s("x", "y", bs="gp", k=20, diagonal_penalty=False)
+        b2 = bases._s("x", "y", bs="gp", k=20, diagonal_penalty=False)
         assert b2.value.shape[-1] == 19
         assert not is_diagonal(b2.penalty.value)
 
-        b3 = bases.s(
+        b3 = bases._s(
             "x", "y", bs="gp", k=20, diagonal_penalty=False, scale_penalty=False
         )
         assert b3.value.shape[-1] == 19
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
-        b4 = bases.s("x", "y", bs="gp", k=20, absorb_cons=False)
+        b4 = bases._s("x", "y", bs="gp", k=20, absorb_cons=False)
         assert b4.value.shape[-1] == 20
         assert is_diagonal(b4.penalty.value)
 

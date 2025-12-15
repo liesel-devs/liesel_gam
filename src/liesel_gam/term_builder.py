@@ -698,7 +698,7 @@ class TermBuilder:
         return term
 
     # general smooth with MGCV bases
-    def s(
+    def _s(
         self,
         *x: str,
         k: int,
@@ -742,7 +742,7 @@ class TermBuilder:
         - fz (factor smooth interaction)
         - fs (random factor smooth interaction)
         """
-        basis = self.bases.s(
+        basis = self.bases._s(
             *x,
             k=k,
             bs=bs,
