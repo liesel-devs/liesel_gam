@@ -9,7 +9,7 @@ import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.distributions as tfd
 
-from .kernel import init_star_ig_gibbs
+from .kernel import init_star_ig_gibbs, init_star_ig_gibbs_factored
 
 InferenceTypes = Any
 Array = jax.Array
@@ -155,5 +155,29 @@ class ScaleIG(UserVar):
         self._variance_param.inference = gs.MCMCSpec(
             init_star_ig_gibbs,
             kernel_kwargs={"coef": coef, "scale": self, "penalty": penalty},
+        )
+        return self
+
+    def setup_gibbs_inference_factored(
+        self,
+        scaled_coef: lsl.Var,
+        latent_coef: lsl.Var,
+        penalty: jax.typing.ArrayLike | None = None,
+    ) -> ScaleIG:
+        if self.value.size != 1:
+            raise ValueError(
+                f"Gibbs sampler assumes scalar value, got size {self.value.size}."
+            )
+        init_gibbs = copy.copy(init_star_ig_gibbs_factored)
+        init_gibbs.__name__ = "StarVarianceGibbs"
+
+        self._variance_param.inference = gs.MCMCSpec(
+            init_star_ig_gibbs_factored,
+            kernel_kwargs={
+                "scaled_coef": scaled_coef,
+                "latent_coef": latent_coef,
+                "scale": self,
+                "penalty": penalty,
+            },
         )
         return self

@@ -89,7 +89,7 @@ class TestLinTerm:
     def test_slin(self, columb):
         tb = gam.TermBuilder.from_df(columb)
 
-        term = tb.slin("x + y", noncentered=True, scale=3.0)
+        term = tb.slin("x + y", factor_scale=True, scale=3.0)
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
@@ -238,9 +238,9 @@ class TestMRFTerm:
         )
         assert mrf.ordered_labels == ["a", "b", "c"]
 
-    def test_noncentered(self, columb, columb_polys):
+    def test_factor_scale(self, columb, columb_polys):
         tb = gb.TermBuilder.from_df(columb)
-        term = tb.mrf("district", noncentered=True, scale=3.0, polys=columb_polys)
+        term = tb.mrf("district", factor_scale=True, scale=3.0, polys=columb_polys)
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
@@ -440,9 +440,9 @@ def _test_term(
         smooth_unscaled.basis.penalty.value, smooth_scaled.basis.penalty.value
     )
 
-    smooth_noncentered = fn("x", k=k, noncentered=True, scale=2.0)
-    smooth_noncentered.scale.value == pytest.approx(2.0)
-    smooth_noncentered.coef.dist_node["scale"].value == pytest.approx(1.0)
+    smooth_factor_scale = fn("x", k=k, factor_scale=True, scale=2.0)
+    smooth_factor_scale.scale.value == pytest.approx(2.0)
+    smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
 
 class TestTerms:
@@ -513,9 +513,15 @@ class TestTerms:
             smooth_unscaled.basis.penalty.value, smooth_scaled.basis.penalty.value
         )
 
-        smooth_noncentered = tb.f("x", basis_fn=bfun, penalty=pen, noncentered=True)
-        smooth_noncentered.scale.value == pytest.approx(2.0)
-        smooth_noncentered.coef.dist_node["scale"].value == pytest.approx(1.0)
+        with pytest.raises(ValueError):
+            smooth_factor_scale = tb.f(
+                "x", basis_fn=bfun, penalty=pen, factor_scale=True
+            )
+        smooth_factor_scale = tb.f(
+            "x", basis_fn=bfun, penalty=jnp.eye(pen.shape[-1]), factor_scale=True
+        )
+        smooth_factor_scale.scale.value == pytest.approx(2.0)
+        smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     def test_cp(self, columb):
         tb = gb.TermBuilder.from_df(columb)
@@ -601,9 +607,9 @@ class TestRITerm:
         with pytest.raises(ValueError):
             ri.labels
 
-    def test_noncentered(self, columb):
+    def test_factor_scale(self, columb):
         tb = gb.TermBuilder.from_df(columb)
-        term = tb.ri("district", noncentered=True, scale=3.0)
+        term = tb.ri("district", factor_scale=True, scale=3.0)
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 

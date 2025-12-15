@@ -284,7 +284,7 @@ class TermBuilder:
         inference: InferenceTypes | None | Literal["default"] = "default",
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctLinTerm:
         basis = self.bases.lin(
             formula,
@@ -305,8 +305,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=self.names.beta(fname),
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
 
         term.model_spec = basis.model_spec
         term.mappings = basis.mappings
@@ -326,7 +326,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.cr(
             x=x,
@@ -350,8 +350,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def cs(
@@ -366,7 +366,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.cs(
             x=x,
@@ -390,8 +390,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def cc(
@@ -406,7 +406,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.cc(
             x=x,
@@ -430,8 +430,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def bs(
@@ -447,7 +447,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.bs(
             x=x,
@@ -472,8 +472,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     # P-spline
@@ -490,7 +490,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.ps(
             x=x,
@@ -515,8 +515,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def np(
@@ -531,7 +531,7 @@ class TermBuilder:
         knots: ArrayLike | None = None,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.ps(
             x=x,
@@ -562,8 +562,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def cp(
@@ -579,7 +579,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.cp(
             x=x,
@@ -604,8 +604,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     # random intercept
@@ -615,7 +615,7 @@ class TermBuilder:
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> RITerm:
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
@@ -631,8 +631,8 @@ class TermBuilder:
             name=fname,
         )
 
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
 
         mapping = self.bases.mappings[cluster]
         term.mapping = mapping
@@ -654,14 +654,14 @@ class TermBuilder:
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> lsl.Var:
         ri = self.ri(
             cluster=cluster,
             scale=scale,
             inference=self._get_inference(inference),
             penalty=penalty,
-            noncentered=noncentered,
+            factor_scale=factor_scale,
         )
 
         if isinstance(x, str):
@@ -710,7 +710,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         """
         Works:
@@ -765,8 +765,8 @@ class TermBuilder:
             scale=self.init_scale(scale, fname),
             inference=self._get_inference(inference),
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     # markov random field
@@ -782,7 +782,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> MRFTerm:
         """
         Polys: Dictionary of arrays. The keys of the dict are the region labels.
@@ -820,8 +820,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
 
         term.polygons = polys
         term.neighbors = basis.mrf_spec.nb
@@ -843,7 +843,7 @@ class TermBuilder:
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: ArrayLike | None = None,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.basis(
             *x,
@@ -864,8 +864,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def kriging(
@@ -888,7 +888,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.kriging(
             *x,
@@ -914,8 +914,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def tp(
@@ -929,7 +929,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
         remove_null_space_completely: bool = False,
     ) -> StrctTerm:
         basis = self.bases.tp(
@@ -955,8 +955,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def ts(
@@ -970,7 +970,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
-        noncentered: bool = False,
+        factor_scale: bool = False,
     ) -> StrctTerm:
         basis = self.bases.ts(
             *x,
@@ -994,8 +994,8 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
-        if noncentered:
-            term.reparam_noncentered()
+        if factor_scale:
+            term.factor_scale()
         return term
 
     def ta(

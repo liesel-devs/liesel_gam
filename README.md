@@ -91,7 +91,7 @@ pip install git+https://github.com/liesel-devs/liesel_gam.git
   - [Compose terms to build new models](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#compose-terms-to-build-new-models)
   - [Use a custom basis function](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#use-a-custom-basis-function)
   - [Use a custom basis matrix directly](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#use-a-custom-basis-matrix-directly)
-  - [Noncentered parameterization](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#noncentered-parameterization)
+  - [Partially standardized parameterization](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#factor_scale-parameterization)
   - [Extract a basis](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#extract-a-basis-directly)
   - [Extract a column from the data frame as a variable](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#extract-a-column-from-the-data-frame-as-a-variable)
 - [Overview of smooth terms available in liesel_gam](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#overview-of-smooth-terms-available-in-liesel_gam)
@@ -436,22 +436,26 @@ new_custom_basis = ... # your (m, p) array, the basis matrix at which you want t
 model.predict(newdata={"x8": new_custom_basis}, predict=["h(x8)"])
 ```
 
-### Noncentered parameterization
+### Partially standardized parameterization
 
 Sometimes sampling from the posterior can be facilitated by sampling from a
-reparameterized model, particularly using a "noncentered" parameterization
-(see [Stan documentation](https://mc-stan.org/docs/2_18/stan-users-guide/reparameterization-section.html)).
+reparameterized model, particularly using a partially standardized parameterization.
 
-Consider the mdoel $x \sim N(0, \sigma^2)$. Noncentered parameterization means that,
+Consider the mdoel $x \sim N(0, \sigma^2)$. factor_scale parameterization means that,
 instead of sampling $x$ and $\sigma^2$ directly, we rewrite it as $x = \sigma * \tilde{x}$,
 where $\tilde{x} \sim N(0, 1)$, and draw samples of $\tilde{x}$ and $\sigma^2$.
 
-For many terms in `liesel_gam` you can enable a noncentered parameterization by
+For many terms in `liesel_gam` you can enable a partially standardized parameterization
+by
 setting a corresponding argument to `True`:
 
 ```python
-loc_pred += tb.ps("x5", k=20, noncentered=True)
+loc_pred += tb.ps("x5", k=20, factor_scale=True)
 ```
+
+When used with diagonalized penalties (the default), setting `factor_scale=True`
+corresponds to a "noncentered parameterization"
+(see [Stan documentation](https://mc-stan.org/docs/2_18/stan-users-guide/reparameterization-section.html))
 
 ### Extract a basis directly
 
