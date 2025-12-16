@@ -113,15 +113,6 @@ class Basis(UserVar):
     determine its shape and dtype. The internal callback wrapper inspects the return
     shape to build a compatible JAX ShapeDtypeStruct for the pure callback.
 
-
-    Examples
-    --------
-    Identity basis from a named variable::
-
-        import liesel.model as lsl import jax.numpy as jnp
-
-        xvar = lsl.Var.new_obs(jnp.array([1.0, 2.0, 3.0]), name="x") b =
-        Basis(value=xvar)
     """
 
     def __init__(
