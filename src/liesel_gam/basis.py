@@ -109,6 +109,12 @@ class Basis(UserVar):
         If ``value`` is an array and ``xname`` is not provided, or if
         the created input variable has no name.
 
+    See Also
+    ---------
+
+    .TermBuilder : Initializes structured additive terms.
+    .BasisBuilder : Initializes structured additive terms.
+
     Notes
     -----
     The basis is evaluated once during initialization (via

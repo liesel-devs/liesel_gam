@@ -96,6 +96,9 @@ class BasisBuilder:
     --------
 
     .TermBuilder : Initializes structured additive terms.
+    .Basis : Basic basis class.
+    .LinBasis : Specialized basis for linear effects.
+    .MRFBasis : Specialized basis for Gaussian Markov random fields.
 
     Examples
     --------
