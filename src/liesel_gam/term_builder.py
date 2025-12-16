@@ -77,9 +77,6 @@ class TermBuilder:
 
     .BasisBuilder : Initializes :class:`.Basis` objects with fitting penalty matrices.
 
-    See Also
-    --------
-    .ps : P-Spline.
     """
 
     def __init__(
