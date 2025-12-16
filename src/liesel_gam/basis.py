@@ -103,8 +103,8 @@ class Basis(UserVar):
     See Also
     ---------
 
-    .TermBuilder : Initializes structured additive terms. .BasisBuilder : Initializes
-    structured additive terms.
+    .TermBuilder : Initializes structured additive terms.
+    .BasisBuilder : Initializesstructured additive terms.
 
     Notes
     -----
