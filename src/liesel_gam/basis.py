@@ -55,51 +55,47 @@ class Basis(UserVar):
     """
     General basis for a structured additive term.
 
-    The ``Basis`` class wraps either a provided observation variable or a raw
-    array and a basis-generation function. It constructs an internal
-    calculation node that produces the basis (design) matrix used by
-    smooth terms. The basis function may be executed via a
-    callback that does not need to be jax-compatible (the default, potentially slow)
-    with a jax-compatible function that is included in just-in-time-compilation
-    (when ``use_callback=False``).
+    The ``Basis`` class wraps either a provided observation variable or a raw array and
+    a basis-generation function. It constructs an internal calculation node that
+    produces the basis (design) matrix used by smooth terms. The basis function may be
+    executed via a callback that does not need to be jax-compatible (the default,
+    potentially slow) with a jax-compatible function that is included in
+    just-in-time-compilation (when ``use_callback=False``).
 
     Parameters
     ----------
     value
-        If a :class:`liesel.model.Var` or node is provided it is used as \
-        the input variable for the basis. Otherwise a raw array-like \
-        object may be supplied together with ``xname`` to create an \
-        observed variable internally.
+        If a :class:`liesel.model.Var` or node is provided it is used as the input
+        variable for the basis. Otherwise a raw array-like object may be supplied
+        together with ``xname`` to create an observed variable internally.
     basis_fn
-        Function mapping the input variable's values to a basis matrix or \
-        vector. It must accept the input array and any ``basis_kwargs`` \
-        and return an array of shape ``(n_obs, n_bases)`` (or a scalar/1-d \
-        array for simpler bases). By default this is the identity \
-        function (``lambda x: x``).
+        Function mapping the input variable's values to a basis matrix or vector. It
+        must accept the input array and any ``basis_kwargs`` and return an array of
+        shape ``(n_obs, n_bases)`` (or a scalar/1-d array for simpler bases). By default
+        this is the identity function (``lambda x: x``).
     name
-        Optional name for the basis object. If omitted, a sensible name \
-        is constructed from the input variable's name (``B(<xname>)``).
+        Optional name for the basis object. If omitted, a sensible name is constructed
+        from the input variable's name (``B(<xname>)``).
     xname
-        Required when ``value`` is a raw array: provides a name for the \
-        observation variable that will be created.
+        Required when ``value`` is a raw array: provides a name for the observation
+        variable that will be created.
     use_callback
-        If ``True`` (default) the basis_fn is wrapped in a JAX \
-        ``pure_callback`` via :func:`make_callback` to allow arbitrary \
-        Python basis functions while preserving JAX tracing. If ``False`` \
-        the function is used directly and must be jittable via JAX.
+        If ``True`` (default) the basis_fn is wrapped in a JAX ``pure_callback`` via
+        :func:`make_callback` to allow arbitrary Python basis functions while preserving
+        JAX tracing. If ``False`` the function is used directly and must be jittable via
+        JAX.
     cache_basis
-        If ``True`` the computed basis is cached in a persistent \
-        calculation node (``lsl.Calc``), which avoids re-computation \
-        when not required, but uses memory. If ``False`` a transient \
-        calculation node (``lsl.TransientCalc``) is used and the basis \
-        will be recomputed with each evaluation of ``Basis.value``, \
-        but not stored in memory.
+        If ``True`` the computed basis is cached in a persistent calculation node
+        (``lsl.Calc``), which avoids re-computation when not required, but uses memory.
+        If ``False`` a transient calculation node (``lsl.TransientCalc``) is used and
+        the basis will be recomputed with each evaluation of ``Basis.value``, but not
+        stored in memory.
     penalty
-        Penalty matrix associated with the basis. If ``"identity"``, \
-        a default identity penalty is created based on the number \
-        of basis functions. If *None*, an identity penalty is assumed, but
-        not materialized, which saves memory but must be handled explicitly later,
-        if downstream functionality relies on an explicit penalty matrix.
+        Penalty matrix associated with the basis. If ``"identity"``, a default identity
+        penalty is created based on the number of basis functions. If *None*, an
+        identity penalty is assumed, but not materialized, which saves memory but must
+        be handled explicitly later, if downstream functionality relies on an explicit
+        penalty matrix.
     **basis_kwargs
         Additional keyword arguments forwarded to ``basis_fn``.
 
@@ -107,25 +103,24 @@ class Basis(UserVar):
     See Also
     ---------
 
-    .TermBuilder : Initializes structured additive terms.
-    .BasisBuilder : Initializes structured additive terms.
+    .TermBuilder : Initializes structured additive terms. .BasisBuilder : Initializes
+    structured additive terms.
 
     Notes
     -----
-    The basis is evaluated once during initialization (via
-    ``self.update()``) to determine its shape and dtype. The internal
-    callback wrapper inspects the return shape to build a compatible
-    JAX ShapeDtypeStruct for the pure callback.
+    The basis is evaluated once during initialization (via ``self.update()``) to
+    determine its shape and dtype. The internal callback wrapper inspects the return
+    shape to build a compatible JAX ShapeDtypeStruct for the pure callback.
 
 
     Examples
     --------
     Identity basis from a named variable::
 
-        import liesel.model as lsl
-        import jax.numpy as jnp
-        xvar = lsl.Var.new_obs(jnp.array([1.,2.,3.]), name='x')
-        b = Basis(value=xvar)
+        import liesel.model as lsl import jax.numpy as jnp
+
+        xvar = lsl.Var.new_obs(jnp.array([1.0, 2.0, 3.0]), name="x") b =
+        Basis(value=xvar)
     """
 
     def __init__(
