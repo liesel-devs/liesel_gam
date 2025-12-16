@@ -53,7 +53,7 @@ def _validate_bs(bs):
             raise ValueError(f"Allowed values for 'bs' are: {allowed}; got {bs=}.")
 
 
-def validate_formula(formula: str) -> None:
+def _validate_formula(formula: str) -> None:
     if "~" in formula:
         raise ValueError("'~' in formulas is not supported.")
 
@@ -72,7 +72,7 @@ def validate_formula(formula: str) -> None:
             )
 
 
-def validate_penalty_order(penalty_order: int):
+def _validate_penalty_order(penalty_order: int):
     if not isinstance(penalty_order, int):
         raise TypeError(
             f"'penalty_order' must be int or None, got {type(penalty_order)}"
@@ -243,7 +243,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
-        validate_penalty_order(penalty_order)
+        _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
 
@@ -284,7 +284,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
-        validate_penalty_order(penalty_order)
+        _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cr', k={k}, m=c({penalty_order}))"
@@ -330,7 +330,7 @@ class BasisBuilder:
         the smoothing parameter goes to infinity a normal cubic spline tends to a
         straight line.)
         """
-        validate_penalty_order(penalty_order)
+        _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cs', k={k}, m=c({penalty_order}))"
@@ -370,7 +370,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
-        validate_penalty_order(penalty_order)
+        _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cc', k={k}, m=c({penalty_order}))"
@@ -421,10 +421,10 @@ class BasisBuilder:
         if knots is not None:
             knots = np.asarray(knots)
         if isinstance(penalty_order, int):
-            validate_penalty_order(penalty_order)
+            _validate_penalty_order(penalty_order)
             penalty_order_seq: Sequence[str] = [str(penalty_order)]
         else:
-            [validate_penalty_order(p) for p in penalty_order]
+            [_validate_penalty_order(p) for p in penalty_order]
             penalty_order_seq = [str(p) for p in penalty_order]
 
         spec = (
@@ -468,7 +468,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
-        validate_penalty_order(penalty_order)
+        _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
@@ -589,7 +589,7 @@ class BasisBuilder:
 
             m_args.append(str(penalty_order_default))
         else:
-            validate_penalty_order(penalty_order)
+            _validate_penalty_order(penalty_order)
             m_args.append(str(penalty_order))
 
         if remove_null_space_completely:
@@ -634,7 +634,7 @@ class BasisBuilder:
         if not penalty_order:
             m_args.append(str(ceil((d + 1) / 2)))
         else:
-            validate_penalty_order(penalty_order)
+            _validate_penalty_order(penalty_order)
             m_args.append(str(penalty_order))
 
         m_str = "c(" + ", ".join(m_args) + ")"
@@ -726,7 +726,7 @@ class BasisBuilder:
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinBasis:
-        validate_formula(formula)
+        _validate_formula(formula)
         spec = fo.ModelSpec(formula, output="numpy")
 
         # evaluate model matrix once to get a spec with structure information
