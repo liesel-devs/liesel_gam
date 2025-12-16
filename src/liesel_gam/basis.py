@@ -216,10 +216,21 @@ class Basis(UserVar):
 
     @property
     def constraint(self) -> str | None:
+        """
+        The type of constraint applied to this basis and penalty (if any).
+
+        See :meth:`.Basis.constrain` for details.
+        """
         return self._constraint
 
     @property
     def reparam_matrix(self) -> Array | None:
+        """
+        Reparameterization matrix used for constraint of this basis and penalty (if
+        any).
+
+        See :meth:`.Basis.constrain` for details.
+        """
         return self._reparam_matrix
 
     def _validate_xname(self, value: lsl.Var | lsl.Node | ArrayLike, xname: str | None):
@@ -241,7 +252,7 @@ class Basis(UserVar):
     @property
     def penalty(self) -> lsl.Value | None:
         """
-        The penalty matrix wrapped as a :class:`liesel.model.Value`.
+        Penalty matrix, wrapped as a :class:`liesel.model.Value` (if any).
         """
         return self._penalty
 
@@ -261,14 +272,19 @@ class Basis(UserVar):
             )
         return pen_val
 
-    def update_penalty(self, value: ArrayLike | lsl.Value):
+    def update_penalty(self, value: ArrayLike | lsl.Value) -> None:
         """
-        Update the penalty matrix for this basis.
+        Updates the penalty matrix for this basis.
+
+        If :attr:`.Basis.penalty` is not None, this method will only update the
+        value of the penalty node, not the whole object. Even if the argument to
+        this method is a node.
 
         Parameters
         ----------
         value
-            New penalty matrix or an already-wrapped :class:`liesel.model.Value`.
+            New penalty matrix or a :class:`liesel.model.Value` wrapping a penalty
+            matrix.
         """
         if self._penalty is None:
             self._penalty = self._validate_penalty_shape(value)
@@ -329,14 +345,65 @@ class Basis(UserVar):
         """
         Diagonalize the penalty via an eigenvalue decomposition.
 
-        This method computes a transformation that diagonalizes
-        the penalty matrix and updates the internal basis function such that
-        subsequent evaluations use the accordingly transformed basis. The penalty is
-        updated to the diagonalized version.
+        This method computes a transformation that diagonalizes the penalty matrix and
+        updates the internal basis function such that subsequent evaluations use the
+        accordingly transformed basis. The penalty is updated to the diagonalized
+        version.
+
+        Parameters
+        ----------
+        atol
+            Absolute tolerance used in testing whether the existing penalty is already
+            diagonal. If that is the case, the basis instance is returned without any
+            further changes.
 
         Returns
         -------
         The modified basis instance (self).
+
+        Notes
+        -----
+
+        Penalty diagonalization works via an eigenvalue decomposition of the penalty
+        matrix. Let the eigenvalue decomposition of the :math:`d \\times d` penalty
+        matrix :math:`\\mathbf{K}` be given by
+
+        .. math::
+
+            \\mathbf{K} = \\mathbf{U} \\boldsymbol{\\Lambda} \\mathbf{U}^\\top,
+
+        where :math:`\\boldsymbol{\\Lambda} = \\operatorname{diag}(\\lambda_1, \\dots,
+        \\lambda_r)` contains the eigenvalues of :math:`\\mathbf{K}` in decreasing order
+        and :math:`\\mathbf{U}` the corresponding eigenvectors. Let :math:`r` denote the
+        rank of :math:`\\mathbf{K}`.
+
+        The function obtains a reparameterization matrix :math:`\\mathbf{Z}` as
+
+        .. math::
+
+            \\mathbf{Z} = \\mathbf{U} \\boldsymbol{\\Lambda}^{-1/2},
+
+        where :math:`\\boldsymbol{\\Lambda}^{-1/2} =
+        \\operatorname{diag}(\\lambda_1^{-1/2}, \\dots, \\lambda_r^{-1/2},
+        \\mathbf{0}_{d-r}^\\top)`. The element :math:`\\mathbf{0}_{d-r}^\\top` is a
+        zero-vector of length :math:`d-r`, corresponding to the zero eigenvalues of the
+        penalty matrix.
+
+        The basis matrix :math:`\\mathbf{B}` is then updated as :math:`\\mathbf{B}_Z =
+        \\mathbf{B} \\mathbf{Z}`, and the penalty matrix is updated to the :math:`d
+        \\times d` identity matrix.
+
+        The basis function is likewise updated to evaluate to the reparamterized basis
+        matrix during prediction.
+
+        References
+        ----------
+
+        Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+        system for building structured additive distributional regression models with
+        tensor product interactions. TEST, 28(1), 1–39.
+        https://doi.org/10.1007/s11749-019-00631-z
+
         """
         if self.penalty is None:
             raise TypeError("Basis.penalty is None, cannot apply transformation.")
@@ -363,9 +430,9 @@ class Basis(UserVar):
         """
         Scale the penalty matrix by its infinite norm.
 
-        The penalty matrix is divided by its infinity norm (max absolute row
-        sum) so that its values are numerically well-conditioned for
-        downstream use. The updated penalty replaces the previous one.
+        The penalty matrix is divided by its infinity norm (max absolute row sum) so
+        that its values are numerically well-conditioned for downstream use. The updated
+        penalty replaces the previous one.
 
         Returns
         -------
@@ -424,14 +491,114 @@ class Basis(UserVar):
         Parameters
         ----------
         constraint
-            Type of constraint or custom linear constraint matrix to apply.
-            If an array is supplied, the constraint will be \
-            ``A @ coef == 0``, where ``A`` is the supplied constraint matrix.
+            Type of constraint or custom linear constraint matrix to apply. If an array
+            is supplied, the constraint will be ``A @ coef == 0``, where ``A`` is the
+            supplied array (the constraint matrix).
+
 
         Returns
         -------
         The modified basis instance (self).
-        """
+
+        Notes
+        -----
+
+        This method implements the procedure detailed by Kneib et al. (2019). For the
+        following exposition, which is quoted almost verbatim from Kneib et al. (2019),
+        assume that this basis is used to evaluate a function
+
+        .. math::
+
+            s(\\mathbf{x}) = \\mathbf{B}(\\mathbf{x}) \\boldsymbol{\\gamma},
+
+        where :math:`\\mathbf{B}(\\mathbf{x})` is the basis matrix of dimension :math:`N
+        \\times D` and :math:`\\boldsymbol{\\gamma} \\in \\mathbb{R}^D` denotes the
+        coefficient vector of a functional effect subject to linear constraints of the
+        form
+
+        .. math::
+
+            \\mathbf{A} \\boldsymbol{\\gamma} = \\mathbf{0}.
+
+        :math:`\\mathbf{A}` is an :math:`A \\times D` constraint matrix. To explicitly
+        remove the constrained component, we construct a complementary matrix
+        :math:`\\bar{\\mathbf{A}} \\in \\mathbb{R}^{(D-A) \\times D}` such that
+
+        .. math::
+
+            \\bar{\\mathbf{A}} \\mathbf{A}^\\top = \\mathbf{0},
+
+        and the stacked matrix :math:`(\\mathbf{A}^\\top,
+        \\bar{\\mathbf{A}}^\\top)^\\top` is of full rank. One possible construction of
+        :math:`\\bar{\\mathbf{A}}` is based on the eigenvalue decomposition of
+        :math:`\\mathbf{A}^\\top \\mathbf{A}`, using the eigenvectors corresponding to
+        zero eigenvalues. This is the construction of :math:`\\bar{\\mathbf{A}}` used in
+        this method. Under the full-rank assumption, the inverse of the composed matrix
+        exists and can be written as
+
+        .. math::
+
+            \\begin{pmatrix} \\mathbf{A} \\ \\bar{\\mathbf{A}} \\end{pmatrix}^{-1} =
+            \\left( \\mathbf{C}, \\bar{\\mathbf{C}} \\right),
+
+        where :math:`\\mathbf{C} \\in \\mathbb{R}^{D \\times A}` and
+        :math:`\\bar{\\mathbf{C}} \\in \\mathbb{R}^{D \\times (D-A)}`. This yields the
+        reparameterisation
+
+        .. math::
+
+            \\boldsymbol{\\gamma} = \\mathbf{C} \\boldsymbol{\\beta} +
+            \\bar{\\mathbf{C}} \\boldsymbol{\\alpha},
+
+        where :math:`\\boldsymbol{\\beta} = \\mathbf{A} \\boldsymbol{\\gamma} =
+        \\mathbf{0}` vanishes due to the constraint and :math:`\\boldsymbol{\\alpha} =
+        \\bar{\\mathbf{A}} \\boldsymbol{\\gamma}` represents the remaining unconstrained
+        coefficients. Applying this reparameterisation to the functional effect gives
+        :math:`\\bar{\\mathbf{f}} = \\bar{\\mathbf{B}} \\boldsymbol{\\alpha}`,
+        where the basis matrix is reparameterized as
+
+        .. math::
+
+            \\bar{\\mathbf{B}} = \\mathbf{B}(\\mathbf{x}) \\bar{\\mathbf{C}}.
+
+        Accordingly, the original penalty matrix :math:`\\mathbf{K}` is reparamterized
+        as
+
+        .. math::
+
+            \\bar{\\mathbf{K}} = \\bar{\\mathbf{C}}^\\top \\mathbf{K} \\bar{\\mathbf{C}}.
+
+
+        .. rubric:: Default constraint options
+
+        The default options correspond to the following constraint matrices:
+
+        - ``"sumzero_term"``: :math:`\\mathbf{A} = \\mathbf{1}^\\top \\mathbf{B}`,
+          where :math:`\\mathbf{B}` is the basis matrix. This is the preferred option
+          for a sum to zero constraint, because it centers the evaluated term.
+
+        - ``"sumzero_coef"``: :math:`\\mathbf{A} = \\mathbf{1}^\\top`.
+          This is an alternative sum to zero constraint, focusing only on ensuring
+          that the coefficients sum to zero.
+
+        - ``"constant_and_linear"``:
+          :math:`\\mathbf{A}=(\\mathbf{X}^\\top\\mathbf{X})^{-1}\\mathbf{X}^\\top
+          \\mathbf{B}`,
+          where :math:`\\mathbf{X} = [\\mathbf{1}, \\mathbf{x}]` is a design matrix
+          built with the covariate observations :math:`\\mathbf{x}` used in this
+          basis. This constraint removes both a constant (like ``"sumzero_term"``) and
+          a linear trend from the term modeled with this basis.
+
+
+
+        References
+        ----------
+
+        Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+        system for building structured additive distributional regression models with
+        tensor product interactions. TEST, 28(1), 1–39.
+        https://doi.org/10.1007/s11749-019-00631-z
+        """  # noqa: E501
         if not self.value.ndim == 2:
             raise ValueError(
                 "Constraints can only be applied to matrix-valued bases. "
