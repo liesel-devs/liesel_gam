@@ -476,6 +476,10 @@ class Basis(UserVar):
         """
         Apply a linear constraint to the basis and corresponding penalty.
 
+        When a constraint is applied, the type of constraint is saved to
+        :attr:`.Basis.constraint`, and the reparamterization matrix is saved to
+        :attr:`.Basis.reparam_matrix`.
+
         Parameters
         ----------
         constraint
@@ -622,10 +626,25 @@ class Basis(UserVar):
 
 
 class MRFBasis(Basis):
+    """
+    Dedicated basis object for Markov random fields.
+
+    See :class:`.Basis` for general usage information. This class additionally offers
+    information about the Markov random field setup in :attr:`.mrf_spec`.
+    """
+
     _mrf_spec: MRFSpec | None = None
 
     @property
     def mrf_spec(self) -> MRFSpec:
+        """
+        A named tuple, containing information about the Markov random field setup.
+
+        The :class:`.MRFSpec` has the attributes ``nb`` (neighborhood structure),
+        ``mapping`` (label-integer map for the region labels), and ``ordered_labels``
+        (ordered labels, such that the order correspond to the columns of the basis
+        matrix.)
+        """
         if self._mrf_spec is None:
             raise ValueError("No MRF spec defined.")
         return self._mrf_spec
@@ -640,12 +659,27 @@ class MRFBasis(Basis):
 
 
 class LinBasis(Basis):
+    """
+    Dedicated basis object for linear effects.
+
+    See :class:`.Basis` for general usage information. This class additionally offers
+
+    - :attr:`.model_spec`: The model spec used internally by ``formulaic`` to set up
+      the basis matrix.
+    - :attr:`.mappings`: A dictionary of label-integer mappings for all categorical
+      variables in this basis.
+    - :attr:`.column_names`: List of column names for this basis.
+    """
+
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
     _column_names: list[str] | None = None
 
     @property
     def model_spec(self) -> ModelSpec:
+        """
+        The model spec used internally by ``formulaic`` to set up the basis matrix.
+        """
         if self._model_spec is None:
             raise ValueError("No model spec defined.")
         return self._model_spec
@@ -660,6 +694,10 @@ class LinBasis(Basis):
 
     @property
     def mappings(self) -> dict[str, CategoryMapping]:
+        """
+        A dictionary of label-integer mappings for all categorical variables in this
+        basis.
+        """
         if self._mappings is None:
             raise ValueError("No model spec defined.")
         return self._mappings
@@ -685,6 +723,7 @@ class LinBasis(Basis):
 
     @column_names.setter
     def column_names(self, value: Sequence[str]):
+        """List of column names for this basis."""
         if not isinstance(value, Sequence):
             raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
 
@@ -706,6 +745,15 @@ class LinBasis(Basis):
 
 
 class MRFSpec(NamedTuple):
+    """
+    A named tuple, containing information about the Markov random field setup.
+
+    The :class:`.MRFSpec` has the attributes ``nb`` (neighborhood structure),
+    ``mapping`` (label-integer map for the region labels), and ``ordered_labels``
+    (ordered labels, such that the order correspond to the columns of the basis
+    matrix.)
+    """
+
     mapping: CategoryMapping
     nb: dict[str, list[str]] | None
     ordered_labels: list[str] | None
