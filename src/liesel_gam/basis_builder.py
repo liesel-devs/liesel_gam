@@ -126,7 +126,7 @@ class BasisBuilder:
             name=self.names.create(basis_name + "(" + Xname + ")"),
             use_callback=use_callback,
             cache_basis=cache_basis,
-            penalty=jnp.asarray(penalty),
+            penalty=penalty,
         )
 
         return basis
