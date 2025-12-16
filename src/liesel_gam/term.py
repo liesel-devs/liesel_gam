@@ -132,57 +132,50 @@ class StrctTerm(UserVar):
     """
     General structured additive term.
 
-    A structured additive term represents a smooth or structured effect in a
-    generalized additive model. The term wraps a design/basis matrix together
-    with a prior/penalty and a set of coefficients. The object exposes the
-    coefficient variable and evaluates the term as the matrix-vector product
-    of the basis and the coefficients.
-    The term evaluates to ``basis @ coef``.
+    You probably want to initialize a term using :meth:`.StrctTerm.f`, which will
+    automatically take the penalty matrix from the supplied basis and has automatic
+    naming that is convenient in most situations.
+
+    A structured additive term represents a smooth or structured effect in a generalized
+    additive model. The term wraps a design/basis matrix together with a prior/penalty
+    and a set of coefficients. The object exposes the coefficient variable and evaluates
+    the term as the matrix-vector product of the basis and the coefficients. The term
+    evaluates to ``basis @ coef``.
 
     Parameters
     ----------
     basis
-        A :class:`.Basis` instance that produces the design matrix for the \
-        term. The basis must evaluate to a 2-D array with shape ``(n_obs, n_bases)``.
+        A :class:`.Basis` instance that produces the design matrix for the term. The
+        basis must evaluate to a 2-D array with shape ``(n_obs, n_bases)``.
     penalty
-        Penalty matrix or a variable/value wrapping the penalty \
-        used to construct the multivariate normal prior for the coefficients.
+        Penalty matrix or a variable/value wrapping the penalty used to construct the
+        multivariate normal prior for the coefficients.
     scale
-        Scale parameter for the prior on the coefficients. This \
-        is typically either a scalar or a per-coefficient scale variable.
+        Scale parameter passed to the coefficient prior.
     name
-        Human-readable name for the term. Used for labelling variables and \
-        building sensible default names for internal nodes.
+        Term name.
     inference
-        :class:`liesel.goose.MCMCSpec` inference specification forwarded to coefficient\
-        creation.
+        Inference specification for this term's coefficient.
     coef_name
-        Name for the coefficient variable. If ``None``, a default name based \
-        on ``name`` will be used.
+        Name for the coefficient variable. If ``None``, a default name based on ``name``
+        will be used.
     _update_on_init
-        If ``True`` (default) the internal calculation/graph nodes are \
-        evaluated during initialization. Set to ``False`` to delay \
-        initial evaluation.
+        If ``True`` (default) the internal calculation/graph nodes are evaluated during
+        initialization. Set to ``False`` to delay initial evaluation.
+    validate_scalar_scale
+        If ``True`` (default), the term will error if the  ``scale`` variable does not
+        hold a scalar scale. This is appropriate for most cases. If ``False``, the term
+        will also allow an array-valued ``scale`` variable of shape ``(nbases,)``. This
+        only really makes sense when also reparameterizing the term using
+        :meth:`.factor_scale`. Only use this if you know exactly what you are doing and
+        you are certain that this is what you want.
 
-    Raises
-    ------
-    ValueError
-        If ``basis.value`` does not have two dimensions.
+    See Also
+    ---------
 
-    Attributes
-    ----------
-    scale
-        The scale variable used by the prior on the coefficients.
-    nbases
-        Number of basis functions (number of columns in the basis matrix).
-    basis
-        The basis object provided to the constructor.
-    coef
-        The coefficient variable created for this term. It holds the prior
-        (multivariate normal singular) and is used in the evaluation of the
-        term.
-    scale_is_factored
-        Whether the term has been reparameterized to the non-centered form.
+    .TermBuilder : Initializes structured additive terms. .BasisBuilder :
+    Initializesstructured additive terms. .Basis : Basis matrix object. .StrctTerm.f :
+    Alternative, more convenient constructor.
 
     """
 
@@ -200,7 +193,7 @@ class StrctTerm(UserVar):
         scale = _init_scale_ig(scale, validate_scalar=validate_scalar_scale)
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
 
-        self.basis = basis
+        self._basis = basis
 
         if isinstance(penalty, lsl.Var | lsl.Value):
             nparam = jnp.shape(penalty.value)[-1]
@@ -216,7 +209,7 @@ class StrctTerm(UserVar):
 
         if scale is not None:
             _validate_scalar_or_p_scale(scale.value, nparam)
-        self.coef = lsl.Var.new_param(
+        self._coef = lsl.Var.new_param(
             jnp.zeros(nparam), prior, inference=inference, name=coef_name
         )
         calc = lsl.Calc(
@@ -231,7 +224,7 @@ class StrctTerm(UserVar):
         if _update_on_init:
             self.coef.update()
 
-        self.scale_is_factored = False
+        self._scale_is_factored = False
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
@@ -240,11 +233,32 @@ class StrctTerm(UserVar):
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
     @property
+    def scale_is_factored(self) -> bool:
+        """
+        Whether the term has been reparameterized using :meth:`.factor_scale`.
+        """
+        return self._scale_is_factored
+
+    @property
+    def coef(self) -> lsl.Var:
+        """
+        The coefficient variable of this term.
+        """
+        return self._coef
+
+    @property
+    def basis(self) -> Basis:
+        """The basis matrix object of this term."""
+        return self._basis
+
+    @property
     def nbases(self) -> int:
+        """Number of basis functions (number of columns in the basis matrix)."""
         return jnp.shape(self.basis.value)[-1]
 
     @property
     def scale(self) -> lsl.Var | lsl.Node | None:
+        """The scale variable used by the prior on the coefficients."""
         return self._scale
 
     def _validate_scale_for_factoring(self):
@@ -302,15 +316,17 @@ class StrctTerm(UserVar):
 
     def factor_scale(self, atol: float = 1e-5) -> Self:
         """
-        Turns this term into a partially standardized form, which means the prior for
-        the coefficient will be turned from ``coef ~ N(0, scale^2 * inv(penalty))`` into
-        ``latent_coef ~ N(0, inv(penalty)); coef = scale * latent_coef``.
+        Turns this term into a partially standardized form.
+
+        This means the prior for the coefficient will be turned from ``coef ~ N(0,
+        scale^2 * inv(penalty))`` into ``latent_coef ~ N(0, inv(penalty)); coef = scale
+        * latent_coef``.
         """
 
         self._validate_scale_for_factoring()
         pen_rank = self._validate_penalty_for_factoring(atol)
 
-        if self.scale_is_factored:
+        if self._scale_is_factored:
             return self
 
         assert self.coef.dist_node is not None
@@ -337,7 +353,7 @@ class StrctTerm(UserVar):
         self.value_node["coef"] = scaled_coef
         self.coef.update()
         self.update()
-        self.scale_is_factored = True
+        self._scale_is_factored = True
 
         if hasattr(self.scale, "setup_gibbs_inference_factored"):
             try:
@@ -393,7 +409,7 @@ class StrctTerm(UserVar):
 
         Returns
         -------
-        A :class:`.Term` instance configured with the given basis and prior settings.
+        A term instance configured with the given basis and prior settings.
         """
         if not basis.x.name:
             raise ValueError("basis.x must be named.")
@@ -524,14 +540,19 @@ class StrctTerm(UserVar):
         """
         Diagonalize the penalty via an eigenvalue decomposition.
 
-        This method computes a transformation that diagonalizes
-        the penalty matrix and updates the internal basis function such that
-        subsequent evaluations use the accordingly transformed basis. The penalty is
-        updated to the diagonalized version.
+        This method computes a transformation that diagonalizes the penalty matrix and
+        updates the internal basis function such that subsequent evaluations use the
+        accordingly transformed basis. The penalty is updated to the diagonalized
+        version.
 
         Returns
         -------
         The modified term instance (self).
+
+        See Also
+        --------
+        .Basis.diagonalize_penalty : The term calls this method internally. More details
+            are documented there.
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.diagonalize_penalty(atol)
@@ -541,13 +562,18 @@ class StrctTerm(UserVar):
         """
         Scale the penalty matrix by its infinite norm.
 
-        The penalty matrix is divided by its infinity norm (max absolute row
-        sum) so that its values are numerically well-conditioned for
-        downstream use. The updated penalty replaces the previous one.
+        The penalty matrix is divided by its infinity norm (max absolute row sum) so
+        that its values are numerically well-conditioned for downstream use. The updated
+        penalty replaces the previous one.
 
         Returns
         -------
         The modified term instance (self).
+
+        See Also
+        --------
+        .Basis.scale_penalty : The term calls this method internally. More details
+            are documented there.
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.scale_penalty()
@@ -564,13 +590,18 @@ class StrctTerm(UserVar):
         Parameters
         ----------
         constraint
-            Type of constraint or custom linear constraint matrix to apply. \
-            If an array is supplied, the constraint will be \
-            ``A @ coef == 0``, where ``A`` is the supplied constraint matrix.
+            Type of constraint or custom linear constraint matrix to apply.  If an
+            array is supplied, the constraint will be ``A @ coef == 0``, where ``A``
+            is the supplied constraint matrix.
 
         Returns
         -------
         The modified term instance (self).
+
+        See Also
+        --------
+        .Basis.constrain : The term calls this method internally. More details
+            are documented there.
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.constrain(constraint)
