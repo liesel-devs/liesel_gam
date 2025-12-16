@@ -120,7 +120,7 @@ class BasisBuilder:
     def basis(
         self,
         *x: str,
-        basis_fn: Callable[[Array], Array] = lambda x: x,
+        basis_fn: Callable[[Array], Array],
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: ArrayLike | lsl.Value | None = None,
