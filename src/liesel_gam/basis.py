@@ -105,6 +105,7 @@ class Basis(UserVar):
 
     .TermBuilder : Initializes structured additive terms.
     .BasisBuilder : Initializesstructured additive terms.
+    .StrctTerm : A general structured additive term.
 
     Notes
     -----
