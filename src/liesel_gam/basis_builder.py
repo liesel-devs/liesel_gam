@@ -92,6 +92,11 @@ class BasisBuilder:
     names
         A name manager for creating unique names.
 
+    See Also
+    --------
+
+    .TermBuilder : Initializes structured additive terms.
+
     Examples
     --------
     >>> import liesel_gam as gam
@@ -290,6 +295,11 @@ class BasisBuilder:
         This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
+        References
+        ----------
+        Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational and
+        Graphical Statistics, 13(1), 183–212. https://doi.org/10.1198/1061860043010
+
         Examples
         --------
         >>> import liesel_gam as gam
@@ -309,10 +319,6 @@ class BasisBuilder:
         >>> bb.ps("x_nonlin", k=20, absorb_cons=False).value.shape
         (100, 20)
 
-        References
-        ----------
-        Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational and
-        Graphical Statistics, 13(1), 183–212. https://doi.org/10.1198/1061860043010
         """
         _validate_penalty_order(penalty_order)
         if knots is not None:
