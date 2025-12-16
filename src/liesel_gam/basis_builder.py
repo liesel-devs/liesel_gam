@@ -253,38 +253,36 @@ class BasisBuilder:
         k
             Number of (unpenalized) bases.
         basis_degree
-            Degree of the polynomials used in the B-spline basis function.
-            Default is 3 for cubic B-splines.
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
         penalty_order
             Order of the difference penalty. Default is 2 for penalizing second
             differences in coefficients.
         knots
             Knots used to set up the basis. If ``None`` (default), a set of equidistant
-            knots will be set up automatically, with the domain boundaries inferred
-            from the minimum and maximum of the observed values. The number of
-            knots must be ``k + basis_degree + 1``, and for the observed data, it must
-            be true that ``knots[basis_degree] < min(x)`` and
-            ``max(x) < knots[-basis_degree]``.
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values. The number of knots must be
+            ``k + basis_degree + 1``, and for the observed data, it must be true that
+            ``knots[basis_degree] < min(x)`` and ``max(x) < knots[-basis_degree]``.
         absorb_cons
             Whether the default identification constraint should be applied by
             reparameterization and absorbing the reparameterization matrix into the
-            basis and penalty matrices for computational efficiency.
-            If ``False``, the basis is unconstrained, if ``True`` it receives a
-            sum to zero constrained. Also see :meth:`.Basis.constrain`.
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
-            reparameterized into a diagonal matrix. In this case, the basis matrix
-            is reparameterized accordingly. This can be beneficial for posterior
-            geometry, which is why it is the default. Also see
-            :meth:`.Basis.diagonalize_penalty`.
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm
-            is one. This can improve numerical stability, which is why it is done by
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
             default. Also see :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will
-            be ``"B(x)"``. Names are made unique by appending a counter if necessary.
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
@@ -311,6 +309,10 @@ class BasisBuilder:
         >>> bb.ps("x_nonlin", k=20, absorb_cons=False).value.shape
         (100, 20)
 
+        References
+        ----------
+        Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational and
+        Graphical Statistics, 13(1), 183–212. https://doi.org/10.1198/1061860043010
         """
         _validate_penalty_order(penalty_order)
         if knots is not None:
