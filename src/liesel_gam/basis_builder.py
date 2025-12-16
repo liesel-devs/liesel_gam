@@ -82,6 +82,26 @@ def validate_penalty_order(penalty_order: int):
 
 
 class BasisBuilder:
+    """
+    Initializes :class:`.Basis` objects from data in a :class:`.PandasRegistry`.
+
+    Parameters
+    ----------
+    registry
+        A pandas registry, giving access to the data.
+    names
+        A name manager for creating unique names.
+
+    Examples
+    --------
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(n=100)
+    >>> registry = gam.PandasRegistry(df)
+    >>> bb = gam.BasisBuilder(registry)
+    >>> bb.ps("x_nonlin", k=20)
+    Basis(name="B(x_nonlin)")
+    """
+
     def __init__(
         self, registry: PandasRegistry, names: NameManager | None = None
     ) -> None:
@@ -89,8 +109,12 @@ class BasisBuilder:
         self.mappings: dict[str, CategoryMapping] = {}
         self.names = NameManager() if names is None else names
 
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(data_shape={self.registry.data.shape})"
+
     @property
     def data(self) -> pd.DataFrame:
+        """The dataframe wrapped by this builder's registry."""
         return self.registry.data
 
     def basis(
@@ -102,6 +126,82 @@ class BasisBuilder:
         penalty: ArrayLike | lsl.Value | None = None,
         basis_name: str = "B",
     ) -> Basis:
+        """
+        Initializes a general basis given a basis function.
+
+        Parameters
+        ----------
+        *x
+            Names of input variables.
+        basis_fn
+            Basis function. Must take a 2d-array as input and return a 2d array.
+        use_callback
+            If *True*, the basis function is evaluated using a Python callback,
+            which means that it does not have to be jit-compatible via JAX. This also
+            means that the basis must remain constant throughout estimation.
+            Passed on to :class:`.Basis`.
+        cache_basis
+            If ``True`` the computed basis is cached in a persistent
+            calculation node (``lsl.Calc``), which avoids re-computation
+            when not required. Passed on to :class:`.Basis`.
+        penalty
+            Penalty matrix associated with the basis.
+            Passed on to :class:`.Basis`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will
+            be ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Examples
+        --------
+
+        .. rubric:: Manually specified B-Spline basis
+
+        >>> from liesel.contrib.splines import basis_matrix, equidistant_knots
+        >>> from liesel.contrib.splines import pspline_penalty
+        >>> import liesel_gam as gam
+
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+
+        >>> knots = equidistant_knots(df["x_nonlin"].to_numpy(), n_param=20)
+        >>> pen = pspline_penalty(d=20)
+
+        The basis function should always expect a matrix-valued array as an input.
+
+        >>> def bspline_basis(x_mat):
+        ...     # x_mat is shape (n, 1)
+        ...     x_vec = x_mat.squeeze()  # shape (n,)
+        ...     return basis_matrix(x_vec, knots=knots)
+
+        >>> bb.basis("x_nonlin", basis_fn=bspline_basis, penalty=pen)
+        Basis(name="B(x_nonlin)")
+
+        .. rubric:: Manually specified linear basis
+
+        This is a minimal example for how a basis as a function of multiple variables
+        works.
+
+        >>> import jax.numpy as jnp
+        >>> import liesel_gam as gam
+
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+
+        >>> def linear_basis(x_mat):
+        ...     # x_mat is shape (n, 2)
+        ...     basis_mat = jnp.column_stack((jnp.ones(df.shape[0]), x_mat))
+        ...     return basis_mat
+
+        >>> basis = bb.basis("x_nonlin", "x_lin", basis_fn=linear_basis)
+        >>> basis
+        Basis(name="B(x_nonlin,x_lin)")
+
+        >>> basis.value.shape
+        (100, 3)
+        """
         if isinstance(penalty, lsl.Value):
             penalty.value = jnp.asarray(penalty.value)
         elif penalty is not None:

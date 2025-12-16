@@ -95,9 +95,11 @@ class Basis(UserVar):
         will be recomputed with each evaluation of ``Basis.value``, \
         but not stored in memory.
     penalty
-        Penalty matrix associated with the basis. If omitted, \
+        Penalty matrix associated with the basis. If ``"identity"``, \
         a default identity penalty is created based on the number \
-        of basis functions.
+        of basis functions. If *None*, an identity penalty is assumed, but
+        not materialized, which saves memory but must be handled explicitly later,
+        if downstream functionality relies on an explicit penalty matrix.
     **basis_kwargs
         Additional keyword arguments forwarded to ``basis_fn``.
 
