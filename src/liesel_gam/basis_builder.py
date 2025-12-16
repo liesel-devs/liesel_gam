@@ -185,7 +185,6 @@ class BasisBuilder:
 
         >>> import jax.numpy as jnp
         >>> import liesel_gam as gam
-
         >>> df = gam.demo_data(n=100)
         >>> registry = gam.PandasRegistry(df)
         >>> bb = gam.BasisBuilder(registry)
