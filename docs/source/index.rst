@@ -111,6 +111,7 @@ API Reference
 
     ~liesel_gam.PandasRegistry
     ~liesel_gam.CategoryMapping
+    ~liesel_gam.NameManager
     ~liesel_gam.VarIGPrior
     ~liesel_gam.ScaleIG
     ~liesel_gam.demo_data

@@ -14,6 +14,7 @@ from .dist import MultivariateNormalStructured as MultivariateNormalStructured
 from .dist import StructuredPenaltyOperator as StructuredPenaltyOperator
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs
+from .names import NameManager as NameManager
 from .plots import plot_1d_smooth as plot_1d_smooth
 from .plots import plot_1d_smooth_clustered as plot_1d_smooth_clustered
 from .plots import plot_2d_smooth as plot_2d_smooth
