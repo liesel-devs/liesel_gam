@@ -103,11 +103,6 @@ class Basis(UserVar):
     **basis_kwargs
         Additional keyword arguments forwarded to ``basis_fn``.
 
-    Raises
-    ------
-    ValueError
-        If ``value`` is an array and ``xname`` is not provided, or if
-        the created input variable has no name.
 
     See Also
     ---------
