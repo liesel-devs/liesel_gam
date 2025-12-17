@@ -39,6 +39,8 @@ class AdditivePredictor(UserVar):
                 distribution=None,
                 inference=gs.MCMCSpec(gs.IWLSKernel.untuned),
             )
+        elif isinstance(intercept, lsl.Var):
+            intercept_ = intercept
         else:
             intercept_ = 0.0
 

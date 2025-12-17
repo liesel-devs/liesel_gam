@@ -28,6 +28,11 @@ class TestPredictor:
         pred = gam.AdditivePredictor("loc")
         assert jnp.allclose(pred.value, 0.0)
 
+    def test_add_intercept(self) -> None:
+        a = lsl.Var(1.0)
+        pred = gam.AdditivePredictor("loc", intercept=a)
+        assert pred.intercept is a
+
     def test_add_term(self) -> None:
         pred = gam.AdditivePredictor("loc")
         pred += term1
