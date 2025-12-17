@@ -613,7 +613,7 @@ class TestMRFBasis:
 
         columb_polys
         basis = bases.mrf("district", polys=columb_polys)
-        _, neighbors, labels = basis.mrf_spec
+        _, neighbors, labels = basis.mrf_spec[:3]
 
         label_arr = np.asarray(list(columb_polys))
         # label_arr = np.asarray(labels)
@@ -624,31 +624,31 @@ class TestMRFBasis:
 
         # string numpy array
         basis2 = bases.mrf("district", nb=neighbor_labels)
-        _, neighbors2, labels2 = basis2.mrf_spec
+        _, neighbors2, labels2 = basis2.mrf_spec[:3]
 
         # list of strings
         neighbor_labels = {k: v.tolist() for k, v in neighbor_labels.items()}
         basis3 = bases.mrf("district", nb=neighbor_labels)
-        _, neighbors3, labels3 = basis3.mrf_spec
+        _, neighbors3, labels3 = basis3.mrf_spec[:3]
 
         # integer numpy array
         basis4 = bases.mrf("district", nb=nb_int)
-        _, neighbors4, labels4 = basis4.mrf_spec
+        _, neighbors4, labels4 = basis4.mrf_spec[:3]
 
         # list of integers
         nb_intlist = {k: v.tolist() for k, v in nb_int.items()}
         basis5 = bases.mrf("district", nb=nb_intlist)
-        _, neighbors5, labels5 = basis5.mrf_spec
+        _, neighbors5, labels5 = basis5.mrf_spec[:3]
 
         # float numpy array
         nb_float = {k: np.astype(v, float) for k, v in nb_int.items()}
         basis6 = bases.mrf("district", nb=nb_float)
-        _, neighbors6, labels6 = basis6.mrf_spec
+        _, neighbors6, labels6 = basis6.mrf_spec[:3]
 
         # list of floats
         nb_floatlist = {k: v.tolist() for k, v in nb_float.items()}
         basis7 = bases.mrf("district", nb=nb_floatlist)
-        _, neighbors7, labels7 = basis7.mrf_spec
+        _, neighbors7, labels7 = basis7.mrf_spec[:3]
 
         for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
             assert jnp.allclose(b.value, basis.value)
@@ -686,20 +686,20 @@ class TestMRFBasis:
         bases = BasisBuilder(registry)
 
         basis = bases.mrf("district", polys=columb_polys)
-        _, neighbors, labels = basis.mrf_spec
+        _, neighbors, labels = basis.mrf_spec[:3]
 
         basis2 = bases.mrf("district", nb=neighbors)
-        _, neighbors2, labels2 = basis2.mrf_spec
+        _, neighbors2, labels2 = basis2.mrf_spec[:3]
 
         with pytest.raises(ValueError):
             bases.mrf("district", penalty=basis.penalty.value)
         basis3 = bases.mrf(
             "district", penalty=basis.penalty.value, penalty_labels=labels
         )
-        _, neighbors3, labels3 = basis3.mrf_spec
+        _, neighbors3, labels3 = basis3.mrf_spec[:3]
 
         basis4 = bases.mrf("district", polys=columb_polys, nb=neighbors)
-        _, neighbors4, labels4 = basis4.mrf_spec
+        _, neighbors4, labels4 = basis4.mrf_spec[:3]
 
         with pytest.raises(ValueError):
             bases.mrf("district", polys=columb_polys, penalty=basis.penalty.value)
@@ -709,7 +709,7 @@ class TestMRFBasis:
             penalty=basis.penalty.value,
             penalty_labels=labels,
         )
-        _, neighbors5, labels5 = basis5.mrf_spec
+        _, neighbors5, labels5 = basis5.mrf_spec[:3]
 
         with pytest.raises(ValueError):
             bases.mrf("district", nb=neighbors, penalty=basis.penalty.value)
@@ -717,7 +717,7 @@ class TestMRFBasis:
         basis6 = bases.mrf(
             "district", nb=neighbors, penalty=basis.penalty.value, penalty_labels=labels
         )
-        _, neighbors6, labels6 = basis6.mrf_spec
+        _, neighbors6, labels6 = basis6.mrf_spec[:3]
 
         with pytest.raises(ValueError):
             bases.mrf(
@@ -733,7 +733,7 @@ class TestMRFBasis:
             penalty=basis.penalty.value,
             penalty_labels=labels,
         )
-        _, neighbors7, labels7 = basis7.mrf_spec
+        _, neighbors7, labels7 = basis7.mrf_spec[:3]
 
         for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
             assert jnp.allclose(b.value, basis.value)
@@ -780,16 +780,16 @@ class TestMRFBasis:
         bases = BasisBuilder(registry)
 
         basis = bases.mrf("district", k=20, polys=columb_polys)
-        _, neighbors, labels = basis.mrf_spec
+        _, neighbors, labels = basis.mrf_spec[:3]
 
         basis2 = bases.mrf("district", k=20, nb=neighbors)
-        _, neighbors2, labels2 = basis2.mrf_spec
+        _, neighbors2, labels2 = basis2.mrf_spec[:3]
 
         with pytest.raises(ValueError):
             bases.mrf("district", k=20, penalty=basis.penalty.value)
 
         basis4 = bases.mrf("district", k=20, polys=columb_polys, nb=neighbors)
-        _, neighbors4, labels4 = basis4.mrf_spec
+        _, neighbors4, labels4 = basis4.mrf_spec[:3]
 
         with pytest.raises(ValueError):
             bases.mrf("district", k=20, polys=columb_polys, penalty=basis.penalty.value)
