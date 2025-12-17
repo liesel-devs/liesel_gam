@@ -1,8 +1,3 @@
-.. liesel-ptm documentation master file, created by
-   sphinx-quickstart on Mon Jul  3 09:59:41 2023.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 Bayesian Generalized Additive Models in Liesel
 ==============================================
 
@@ -15,7 +10,6 @@ The library can be installed from PYPI:
 .. code:: bash
 
     $ pip install liesel_gam
-
 
 
 API Reference
