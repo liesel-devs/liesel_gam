@@ -146,10 +146,9 @@ class TestSmoothTerm:
 
     def test_init_ig(self) -> None:
         x = jnp.linspace(0, 1, 10)
-        term = gam.SmoothTerm.new_ig(
+        term = gam.SmoothTerm.f(
             basis=gam.Basis(jnp.c_[x, x], xname="x"),
-            penalty=jnp.eye(2),
-            name="t",
+            scale=gam.VarIGPrior(1.0, 0.005, 100.0**2),
         )
 
         assert term.scale is not None
@@ -164,10 +163,9 @@ class TestSmoothTerm:
 
     def test_init_ig_1d(self) -> None:
         x = jnp.linspace(0, 1, 10)
-        term = gam.SmoothTerm.new_ig(
+        term = gam.SmoothTerm.f(
             basis=gam.Basis(jnp.expand_dims(x, 1), xname="x"),
-            penalty=jnp.eye(1),
-            name="t",
+            scale=gam.VarIGPrior(1.0, 0.005, 100.0**2),
         )
         model = lsl.Model([term])
         assert isinstance(term.scale, lsl.Var)
@@ -181,10 +179,9 @@ class TestSmoothTerm:
 
     def test_init_ig_2d(self) -> None:
         x = jnp.linspace(0, 1, 10)
-        term = gam.SmoothTerm.new_ig(
+        term = gam.SmoothTerm.f(
             basis=gam.Basis(jnp.c_[x, x], xname="x"),
-            penalty=jnp.eye(2),
-            name="t",
+            scale=gam.VarIGPrior(1.0, 0.005, 100.0**2),
         )
         model = lsl.Model([term])
         assert isinstance(term.scale, lsl.Var)
@@ -343,11 +340,11 @@ class TestStrctTermFConstructor:
     def test_init_new_ig_factor_scale(self):
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x, xname="x")
-        term = gam.StrctTerm.new_ig(
-            basis, penalty=basis.penalty, factor_scale=True, name="test"
-        )
+        term = gam.StrctTerm.f(
+            basis, scale=gam.VarIGPrior(1.0, 0.005, 10.0**2)
+        ).factor_scale()
 
-        assert term.scale.value == pytest.approx(100.0)
+        assert term.scale.value == pytest.approx(10.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
 

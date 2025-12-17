@@ -4,19 +4,19 @@ import pytest
 
 import liesel_gam as gam
 
-term1 = gam.SmoothTerm.new_ig(
+term1 = gam.SmoothTerm.f(
     basis=gam.Basis.new_linear(jnp.array(1.0), xname="x1"),
-    penalty=jnp.eye(1),
-    name="s(x1)",
+    scale=gam.VarIGPrior(1.0, 0.005),
+    fname="s1",
 )
 
 term1.coef.value = jnp.array(1.0)
 term1.update()
 
-term2 = gam.SmoothTerm.new_ig(
+term2 = gam.SmoothTerm.f(
     basis=gam.Basis.new_linear(jnp.array(1.0), xname="x1"),
-    penalty=jnp.eye(1),
-    name="s(x2)",
+    scale=gam.VarIGPrior(1.0, 0.005),
+    fname="s2",
 )
 
 term2.coef.value = jnp.array(2.0)
