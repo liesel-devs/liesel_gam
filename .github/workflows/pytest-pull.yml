@@ -2,8 +2,12 @@ name: pytest-pull
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch: # trigger manually from GitHub UI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pytest:

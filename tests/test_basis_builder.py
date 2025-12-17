@@ -1,0 +1,1449 @@
+import logging
+
+import jax.numpy as jnp
+import liesel.model as lsl
+import numpy as np
+import pandas as pd
+import pytest
+from formulaic.errors import (
+    FactorEvaluationError,
+    FormulaParsingError,
+    FormulaSyntaxError,
+)
+from ryp import r, to_py
+
+import liesel_gam.term_builder as gb
+from liesel_gam.registry import PandasRegistry
+from liesel_gam.term_builder import BasisBuilder
+
+from .make_df import make_test_df
+
+
+@pytest.fixture(scope="module")
+def data():
+    return make_test_df()
+
+
+@pytest.fixture(scope="class")
+def bases(data) -> gb.BasisBuilder:
+    registry = gb.PandasRegistry(data, na_action="drop")
+    bases = gb.BasisBuilder(registry)
+    return bases
+
+
+class TestBasisBuilder:
+    def test_init(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        gb.BasisBuilder(registry)
+
+    def test_ri_basis(self) -> None:
+        data = pd.DataFrame(
+            {"x": pd.Categorical(["a", "b"], categories=["a", "b", "c"])}
+        )
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.ri("x")
+        assert basis.value.size == 2
+
+
+class TestFoBasisInputTypes:
+    def test_int(self, data):
+        """Int is turned into float."""
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("x_int")
+        assert jnp.issubdtype(basis.value.dtype, jnp.floating)
+
+        basis = bases.lin("x_Int64")  # get turned into float32
+        assert jnp.issubdtype(basis.value.dtype, jnp.floating)
+
+        basis = bases.lin("x_uint8")  # get turned into float32
+        assert jnp.issubdtype(basis.value.dtype, jnp.floating)
+
+    def test_string(self, data):
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(TypeError):
+            bases.lin("label")
+
+        data["label"] = data["label"].astype("str")
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("label")
+        basis.value.shape[1] == (len(data["label"].unique()) - 1)
+        assert "label" in bases.mappings
+
+    def test_date(self, data):
+        """Int is turned into float."""
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(RuntimeError):
+            bases.lin("date")
+
+        with pytest.raises(RuntimeError):
+            bases.lin("date_tz")
+
+        with pytest.raises(RuntimeError):
+            bases.lin("period_m")
+
+
+class TestFoBasisLinearNumeric:
+    def test_name(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y + x_float", xname="y,x", basis_name="B")
+
+        assert basis.name == "B(y,x)"
+
+    def test_removing_intercept_manually_is_forbidden(self, data):
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(ValueError):
+            bases.lin("-1 + y + x_float", xname="X")
+
+        with pytest.raises(ValueError):
+            bases.lin("0 + y + x_float", xname="X")
+
+    def test_adding_intercept_manually_is_forbidden(self, data):
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(ValueError):
+            bases.lin("1 + y + x_float", xname="X")
+
+    def test_removing_intercept_manually_does_not_interfere_with_names(self, data):
+        # edge case with unfortunate variable name
+        data["-1"] = data["x_float"]
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y + `-1`", xname="X")
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["-1"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+    def test_simple_linear(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y + x_float", xname="X")
+
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+
+class TestFoBasisOperators:
+    def test_string_literal(self, bases) -> None:
+        with pytest.raises(FormulaSyntaxError):
+            bases.lin("y + 'string_literal'", xname="X")
+
+    def test_numeric_literal(self, bases) -> None:
+        with pytest.raises(FormulaSyntaxError):
+            bases.lin("y + 5", xname="X")
+
+    def test_special_names_with_backticks(self, bases) -> None:
+        # name with space
+        basis = bases.lin("y + `with space`", xname="X")
+
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        with_space = bases.data["with space"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], with_space)
+
+        # weird name
+        basis = bases.lin("y + `weird:col*name`", xname="X")
+
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        weird_name = bases.data["weird:col*name"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], weird_name)
+
+    def test_python_function(self, bases) -> None:
+        def subtract_five(x):
+            return x - 5
+
+        basis = bases.lin(
+            "y + subtract_five(x_float)",
+            xname="X",
+            context={"subtract_five": subtract_five},
+        )
+
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy() - 5
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+    def test_quoted_python(self, bases) -> None:
+        basis = bases.lin("y + {x_float-5}", xname="X")
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy() - 5
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+    def test_grouped_operation(self, bases) -> None:
+        basis = bases.lin("y + (x_float-1)", xname="X")
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+    def test_wildcard(self, bases) -> None:
+        with pytest.raises(FormulaParsingError):
+            bases.lin(".", xname="X")
+
+    def test_nth_order_interactions(self, bases) -> None:
+        basis = bases.lin("(y + x_float + x_int)**2", xname="X")
+
+        assert basis.value.shape == (84, 6)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+        x_int = bases.data["x_int"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+        assert jnp.allclose(basis.value[:, 2], x_int)
+        assert jnp.allclose(basis.value[:, 3], y * x_float)
+        assert jnp.allclose(basis.value[:, 4], y * x_int)
+        assert jnp.allclose(basis.value[:, 5], x_float * x_int)
+
+        basis2 = bases.lin("(y + x_float + x_int)^2", xname="X")
+
+        assert jnp.allclose(basis.value, basis2.value)
+
+    def test_simple_linear_with_double_terms(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y + y + x_float", xname="X")
+
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+    def test_simple_interaction(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y + x_float + y:x_float", xname="X")
+
+        assert basis.value.shape == (84, 3)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+        assert jnp.allclose(basis.value[:, 2], y * x_float)
+
+    def test_interaction(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y*x_float", xname="X")
+
+        assert basis.value.shape == (84, 3)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+        assert jnp.allclose(basis.value[:, 2], y * x_float)
+
+    def test_interaction_with_double_terms(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("y + x_float + y:x_float + y*x_float", xname="X")
+
+        assert basis.value.shape == (84, 3)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+        assert jnp.allclose(basis.value[:, 2], y * x_float)
+
+    def test_nesting(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis1 = bases.lin("y/x_float", xname="X")
+        basis2 = bases.lin("y + y:x_float", xname="X")
+
+        assert jnp.allclose(basis1.value, basis2.value)
+
+        basis1 = bases.lin("(y + x_float) / x_int", xname="X")
+        basis2 = bases.lin("y + x_float + y:x_float:x_int", xname="X")
+
+        assert jnp.allclose(basis1.value, basis2.value)
+
+    def test_inverted_nesting(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis1 = bases.lin("y/x_float", xname="X")
+        basis2 = bases.lin("x_float %in% y", xname="X")
+
+        assert jnp.allclose(basis1.value, basis2.value)
+
+    def test_remove_term(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis1 = bases.lin("y + x_float - x_float", xname="X")
+        basis2 = bases.lin("y", xname="X")
+
+        assert jnp.allclose(basis1.value, basis2.value)
+
+    def test_inert_plus(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(FormulaSyntaxError):
+            bases.lin("y +", xname="X")
+
+    def test_split_formula(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(FormulaSyntaxError):
+            bases.lin(r"y + x_float \| x_int", xname="X")
+
+    def test_tilde_in_formula(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        with pytest.raises(ValueError):
+            bases.lin("y ~ x_float", xname="X")
+
+
+class TestFoBasisTransforms:
+    def test_identity_transform(self, bases) -> None:
+        basis = bases.lin("y + I(x_float-5)", xname="X")
+        assert basis.value.shape == (84, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy() - 5
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float)
+
+    def test_lookup_q(self, bases) -> None:
+        with pytest.raises(FactorEvaluationError):
+            bases.lin("y + Q('with space')", xname="X")
+
+    def test_center(self, bases) -> None:
+        data = make_test_df(perturb=False)
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = BasisBuilder(registry)
+        basis = bases.lin("y + center(x_float)", xname="X")
+        assert basis.value.shape == (89, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+        x_float = x_float - x_float.mean()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], x_float, rtol=1e-4)
+        assert basis.value[:, 1].mean() == pytest.approx(0.0, abs=1e-6)
+
+    def test_scale(self, bases) -> None:
+        data = make_test_df(perturb=False)
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = BasisBuilder(registry)
+        basis = bases.lin("y + scale(x_float)", xname="X")
+        assert basis.value.shape == (89, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+        x_float = (x_float - x_float.mean()) / x_float.std()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert ((basis.value[:, 1] - x_float) ** 2).sum() < 0.003
+        assert basis.value[:, 1].mean() == pytest.approx(0.0, abs=1e-6)
+        assert basis.value[:, 1].std() == pytest.approx(1.0, abs=1e-2)
+
+    def test_standardize(self, bases) -> None:
+        data = make_test_df(perturb=False)
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = BasisBuilder(registry)
+        basis = bases.lin("y + standardize(x_float)", xname="X")
+        assert basis.value.shape == (89, 2)
+
+        y = bases.data["y"].to_numpy()
+        x_float = bases.data["x_float"].to_numpy()
+        x_float = (x_float - x_float.mean()) / x_float.std()
+
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert ((basis.value[:, 1] - x_float) ** 2).sum() < 0.003
+        assert basis.value[:, 1].mean() == pytest.approx(0.0, abs=1e-6)
+        assert basis.value[:, 1].std() == pytest.approx(1.0, abs=1e-2)
+
+    def test_predict_with_scale(self) -> None:
+        data = make_test_df(perturb=False)
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = BasisBuilder(registry)
+        basis = bases.lin("y + scale(x_float)", xname="X")
+        assert basis.value.shape == (89, 2)
+
+        x_float = bases.data["x_float"].to_numpy()
+        x_mean = x_float.mean()
+        x_std = x_float.std()
+
+        new = np.linspace(0, 5, 30)
+
+        model = lsl.Model([basis])
+        model.update_state({"y": new, "x_float": new}, inplace=True)
+
+        assert basis.value.shape == (30, 2)
+
+        assert jnp.allclose(basis.value[:, 1], (new - x_mean) / x_std, atol=1e-1)
+        squared_error = ((basis.value[:, 1] - ((new - x_mean) / x_std)) ** 2).sum()
+        assert squared_error < 0.02
+
+    def test_lag(self, bases) -> None:
+        basis = bases.lin("y + lag(y)", xname="X")
+        assert basis.value.shape == (83, 2)
+
+        assert jnp.allclose(basis.value[:, 0], bases.data["y"].to_numpy()[1:])
+        assert jnp.allclose(basis.value[:, 1], bases.data["y"].to_numpy()[:-1])
+
+        basis = bases.lin("y + lag(y, 2)", xname="X")
+        assert basis.value.shape == (82, 2)
+        assert jnp.allclose(basis.value[:, 0], bases.data["y"].to_numpy()[2:])
+        assert jnp.allclose(basis.value[:, 1], bases.data["y"].to_numpy()[:-2])
+
+    def test_exp(self, bases) -> None:
+        basis = bases.lin("y + exp(y)", xname="X")
+        assert basis.value.shape == (84, 2)
+
+        assert jnp.allclose(basis.value[:, 1], np.exp(bases.data["y"].to_numpy()))
+
+    def test_poly(self, bases) -> None:
+        basis = bases.lin("poly(y, degree=3, raw=True)", xname="X")
+        assert basis.value.shape == (84, 3)
+
+        y = bases.data["y"].to_numpy()
+        assert jnp.allclose(basis.value[:, 0], y)
+        assert jnp.allclose(basis.value[:, 1], y**2)
+        assert jnp.allclose(basis.value[:, 2], y**3)
+
+    def test_bs(self, bases) -> None:
+        basis = bases.lin("bs(y, df=6, degree=3)", xname="X")
+        assert basis.value.shape == (84, 6)
+
+    def test_cs(self, bases) -> None:
+        basis = bases.lin("cs(y, df=6)", xname="X")
+        assert basis.value.shape == (84, 6)
+
+    def test_cc(self, bases) -> None:
+        basis = bases.lin("cc(y, df=6)", xname="X")
+        assert basis.value.shape == (84, 6)
+
+    def test_cr(self, bases) -> None:
+        basis = bases.lin("cc(y, df=6)", xname="X")
+        assert basis.value.shape == (84, 6)
+
+    def test_te(self, bases) -> None:
+        with pytest.raises(RuntimeError):
+            bases.lin("te(y, x_float)", xname="X")
+
+    def test_hashed(self, bases) -> None:
+        basis = bases.lin("hashed(y, levels=5)", xname="X")
+        assert basis.value.shape == (84, 5)
+
+
+class TestFoBasisLinearCategorical:
+    def test_boolean(self, data) -> None:
+        """
+        Boolean gets turned into dummy, but not treated inherently as categorical.
+        So it does not have a mapping.
+        """
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("flag_bool", xname="X")
+        assert not bases.mappings
+        assert basis.value.shape == (84, 1)
+
+    def test_include_object_variable_without_c(self, data) -> None:
+        """Behaves exactly like the default using C(name)."""
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("cat_unordered", xname="X")
+
+        mapping = bases.mappings["cat_unordered"].labels_to_integers_map
+
+        ncat = len(mapping)
+        assert basis.value.shape == (84, ncat - 1)
+
+        pd_codes = pd.Categorical(bases.data["cat_unordered"]).codes
+        bases_codes = bases.mappings["cat_unordered"].labels_to_integers(
+            bases.data["cat_unordered"]
+        )
+
+        assert np.all(pd_codes == bases_codes)
+
+        bool_cat2 = np.asarray(basis.value[:, 0] == 1)
+        cat2 = bases.data[bool_cat2]["cat_unordered"].to_numpy()
+        assert np.all(cat2 == "B")
+
+        bool_cat3 = np.asarray(basis.value[:, 1] == 1)
+        cat3 = bases.data[bool_cat3]["cat_unordered"].to_numpy()
+        assert np.all(cat3 == "C")
+
+    def test_simple_categorical_unordered(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("C(cat_unordered)", xname="X")
+
+        mapping = bases.mappings["cat_unordered"].labels_to_integers_map
+
+        ncat = len(mapping)
+        assert basis.value.shape == (84, ncat - 1)
+
+        pd_codes = pd.Categorical(bases.data["cat_unordered"]).codes
+        bases_codes = bases.mappings["cat_unordered"].labels_to_integers(
+            bases.data["cat_unordered"]
+        )
+
+        assert np.all(pd_codes == bases_codes)
+
+        bool_cat2 = np.asarray(basis.value[:, 0] == 1)
+        cat2 = bases.data[bool_cat2]["cat_unordered"].to_numpy()
+        assert np.all(cat2 == "B")
+
+        bool_cat3 = np.asarray(basis.value[:, 1] == 1)
+        cat3 = bases.data[bool_cat3]["cat_unordered"].to_numpy()
+        assert np.all(cat3 == "C")
+
+    def test_simple_categorical_ordered(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("C(cat_ordered)", xname="X")
+
+        mapping = bases.mappings["cat_ordered"].labels_to_integers_map
+
+        ncat = len(mapping)
+        assert basis.value.shape == (84, ncat - 1)
+
+        pd_codes = pd.Categorical(bases.data["cat_ordered"]).codes
+        bases_codes = bases.mappings["cat_ordered"].labels_to_integers(
+            bases.data["cat_ordered"]
+        )
+
+        assert np.all(pd_codes == bases_codes)
+
+        bool_cat2 = np.asarray(basis.value[:, 0] == 1)
+        cat2 = bases.data[bool_cat2]["cat_ordered"].to_numpy()
+        assert np.all(cat2 == "med")
+
+        bool_cat3 = np.asarray(basis.value[:, 1] == 1)
+        cat3 = bases.data[bool_cat3]["cat_ordered"].to_numpy()
+        assert np.all(cat3 == "high")
+
+    def test_category_with_unobserved_label(self) -> None:
+        data = pd.DataFrame(
+            {"x": pd.Categorical(["a", "b"], categories=["a", "b", "c"])}
+        )
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+        basis = bases.lin("C(x)", xname="X")
+        assert basis.value.shape == (2, 2)
+
+    def test_category_with_unobserved_label_logging(self, caplog) -> None:
+        data = pd.DataFrame(
+            {"x": pd.Categorical(["a", "b"], categories=["a", "b", "c"])}
+        )
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry)
+
+        with caplog.at_level(logging.INFO, logger="liesel_gam"):
+            basis = bases.lin("C(x)", xname="X")
+
+        assert basis.value.shape == (2, 2)
+        assert "categories without observations" in caplog.text
+        assert caplog.records[0].levelno == logging.INFO
+
+
+@pytest.fixture(scope="module")
+def columb():
+    r("library(mgcv)")
+    r("data(columb)")
+    columb = to_py("columb", format="pandas")
+    return columb
+
+
+@pytest.fixture(scope="module")
+def columb_polys():
+    r("library(mgcv)")
+    r("data(columb.polys)")
+    polys = to_py("columb.polys", format="numpy")
+    # turn to zero-based indecing
+    polys = {k: v - 1 for k, v in polys.items()}
+    return polys
+
+
+class TestMRFBasis:
+    def test_initialization_nb_strings(self, columb, columb_polys):
+        """
+        There are quite a few ways to initialize the MRF basis.
+        This test ensures that they all run and lead to consistent results, with
+        some hand-selected expected exceptions.
+        """
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        columb_polys
+        basis = bases.mrf("district", polys=columb_polys)
+        _, neighbors, labels = basis.mrf_spec[:3]
+
+        label_arr = np.asarray(list(columb_polys))
+        # label_arr = np.asarray(labels)
+        l2i = bases.mappings["district"].labels_to_integers
+        nb_int = {k: l2i(v) for k, v in neighbors.items()}
+
+        neighbor_labels = {k: label_arr[v] for k, v in nb_int.items()}
+
+        # string numpy array
+        basis2 = bases.mrf("district", nb=neighbor_labels)
+        _, neighbors2, labels2 = basis2.mrf_spec[:3]
+
+        # list of strings
+        neighbor_labels = {k: v.tolist() for k, v in neighbor_labels.items()}
+        basis3 = bases.mrf("district", nb=neighbor_labels)
+        _, neighbors3, labels3 = basis3.mrf_spec[:3]
+
+        # integer numpy array
+        basis4 = bases.mrf("district", nb=nb_int)
+        _, neighbors4, labels4 = basis4.mrf_spec[:3]
+
+        # list of integers
+        nb_intlist = {k: v.tolist() for k, v in nb_int.items()}
+        basis5 = bases.mrf("district", nb=nb_intlist)
+        _, neighbors5, labels5 = basis5.mrf_spec[:3]
+
+        # float numpy array
+        nb_float = {k: np.astype(v, float) for k, v in nb_int.items()}
+        basis6 = bases.mrf("district", nb=nb_float)
+        _, neighbors6, labels6 = basis6.mrf_spec[:3]
+
+        # list of floats
+        nb_floatlist = {k: v.tolist() for k, v in nb_float.items()}
+        basis7 = bases.mrf("district", nb=nb_floatlist)
+        _, neighbors7, labels7 = basis7.mrf_spec[:3]
+
+        for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
+            assert jnp.allclose(b.value, basis.value)
+            assert jnp.allclose(b.penalty.value, basis.penalty.value)
+
+        nb_list = [
+            neighbors2,
+            neighbors3,
+            neighbors4,
+            neighbors5,
+            neighbors6,
+            neighbors7,
+        ]
+        for nb in nb_list:
+            for key, nb_list in nb.items():
+                assert nb_list == neighbors[key]
+
+        for lab in [
+            labels2,
+            labels3,
+            labels4,
+            labels5,
+            labels6,
+            labels7,
+        ]:
+            assert lab == labels
+
+    def test_initialization_consistency(self, columb, columb_polys):
+        """
+        There are quite a few ways to initialize the MRF basis.
+        This test ensures that they all run and lead to consistent results, with
+        some hand-selected expected exceptions.
+        """
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        basis = bases.mrf("district", polys=columb_polys)
+        _, neighbors, labels = basis.mrf_spec[:3]
+
+        basis2 = bases.mrf("district", nb=neighbors)
+        _, neighbors2, labels2 = basis2.mrf_spec[:3]
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", penalty=basis.penalty.value)
+        basis3 = bases.mrf(
+            "district", penalty=basis.penalty.value, penalty_labels=labels
+        )
+        _, neighbors3, labels3 = basis3.mrf_spec[:3]
+
+        basis4 = bases.mrf("district", polys=columb_polys, nb=neighbors)
+        _, neighbors4, labels4 = basis4.mrf_spec[:3]
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", polys=columb_polys, penalty=basis.penalty.value)
+        basis5 = bases.mrf(
+            "district",
+            polys=columb_polys,
+            penalty=basis.penalty.value,
+            penalty_labels=labels,
+        )
+        _, neighbors5, labels5 = basis5.mrf_spec[:3]
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", nb=neighbors, penalty=basis.penalty.value)
+
+        basis6 = bases.mrf(
+            "district", nb=neighbors, penalty=basis.penalty.value, penalty_labels=labels
+        )
+        _, neighbors6, labels6 = basis6.mrf_spec[:3]
+
+        with pytest.raises(ValueError):
+            bases.mrf(
+                "district",
+                polys=columb_polys,
+                nb=neighbors,
+                penalty=basis.penalty.value,
+            )
+        basis7 = bases.mrf(
+            "district",
+            polys=columb_polys,
+            nb=neighbors,
+            penalty=basis.penalty.value,
+            penalty_labels=labels,
+        )
+        _, neighbors7, labels7 = basis7.mrf_spec[:3]
+
+        for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
+            assert jnp.allclose(b.value, basis.value)
+            assert jnp.allclose(b.penalty.value, basis.penalty.value)
+
+        nb_list = [
+            neighbors2,
+            neighbors3,
+            neighbors4,
+            neighbors5,
+            neighbors6,
+            neighbors7,
+        ]
+        for i, nb in enumerate(nb_list):
+            # nb_list[0]  # not none (has neighbors)
+            # nb_list[1]  # none (only penalty)
+            # nb_list[2]  # not none (polys and neighbors)
+            # nb_list[3]  # none (polys and penalty)
+            # nb_list[4]  # not none (neighbors and penalty)
+            # nb_list[5]  # not none (polys, neighbors and penalty)
+
+            if i in [1, 3]:
+                # because in these cases, the smooth does not compute the neighbor list
+                assert nb is None
+            else:
+                for key, nb_list in nb.items():
+                    assert nb_list == neighbors[key]
+
+        for lab in [
+            labels2,
+            labels3,
+            labels4,
+            labels5,
+            labels6,
+            labels7,
+        ]:
+            assert lab == labels
+
+    def test_initialization_consistency_low_rank(self, columb, columb_polys):
+        """
+        Low-rank approximations only work if the penalty is *not* supplied.
+        """
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        basis = bases.mrf("district", k=20, polys=columb_polys)
+        _, neighbors, labels = basis.mrf_spec[:3]
+
+        basis2 = bases.mrf("district", k=20, nb=neighbors)
+        _, neighbors2, labels2 = basis2.mrf_spec[:3]
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", k=20, penalty=basis.penalty.value)
+
+        basis4 = bases.mrf("district", k=20, polys=columb_polys, nb=neighbors)
+        _, neighbors4, labels4 = basis4.mrf_spec[:3]
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", k=20, polys=columb_polys, penalty=basis.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.mrf("district", k=20, nb=neighbors, penalty=basis.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.mrf(
+                "district",
+                k=20,
+                polys=columb_polys,
+                nb=neighbors,
+                penalty=basis.penalty.value,
+            )
+
+        for b in [basis2, basis4]:
+            assert jnp.allclose(b.value, basis.value)
+            assert jnp.allclose(b.penalty.value, basis.penalty.value)
+
+        nb_list = [
+            neighbors2,
+            neighbors4,
+        ]
+        for i, nb in enumerate(nb_list):
+            for key, nb_list in nb.items():
+                assert nb_list == neighbors[key]
+
+        for lab in [
+            labels2,
+            labels4,
+        ]:
+            assert lab == labels
+
+    def test_penalty_labels(self):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        # a - c - b
+
+        # c has 2 neighbors: a and b
+        # b has 1 neighbor: c
+        # a has 1 neighbor: c
+
+        K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        basis = bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+        K2 = basis.penalty.value
+
+        assert jnp.allclose(basis.value[:, 0], jnp.array([1.0, 0.0, 0.0, 0.0]))
+        assert jnp.allclose(basis.value[:, 1], jnp.array([0.0, 1.0, 0.0, 0.0]))
+        assert jnp.allclose(basis.value[:, 2], jnp.array([0.0, 0.0, 1.0, 1.0]))
+
+        assert jnp.allclose(K2[:, 0], jnp.array([1.0, 0.0, -1.0]))
+        assert jnp.allclose(K2[:, 1], jnp.array([0.0, 1.0, -1.0]))
+        assert jnp.allclose(K2[:, 2], jnp.array([-1.0, -1.0, 2.0]))
+
+        assert not jnp.allclose(K, K2)
+
+        basis = bases.mrf(
+            "district", penalty=K, penalty_labels=["c", "b", "a"], absorb_cons=True
+        )
+
+        assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
+        assert basis.penalty.value.shape[-1] == 2
+
+        basis = bases.mrf(
+            "district",
+            penalty=K,
+            penalty_labels=["c", "b", "a"],
+            absorb_cons=True,
+            diagonal_penalty=True,
+        )
+
+        assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
+        assert basis.penalty.value.shape[-1] == 2
+
+        basis = bases.mrf(
+            "district",
+            penalty=K,
+            penalty_labels=["c", "b", "a"],
+            absorb_cons=True,
+            diagonal_penalty=True,
+            scale_penalty=True,
+        )
+
+        assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
+        assert basis.penalty.value.shape[-1] == 2
+
+    def test_nb(self):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        nb = {"a": ["c"], "b": ["c"], "c": ["a", "b"]}
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        K = np.array([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [-1.0, -1.0, 2.0]])
+
+        assert jnp.allclose(basis.penalty.value, K)
+
+        nb = {"a": [2], "b": [2], "c": [0, 1]}
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert jnp.allclose(basis.penalty.value, K)
+
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        df["district"] = pd.Categorical(df["district"], categories=["c", "b", "a"])
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        nb = {"a": [2], "b": [2], "c": [0, 1]}
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert jnp.allclose(basis.penalty.value, K)
+
+        basis = bases.mrf(
+            "district",
+            nb=nb,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+            penalty=K,
+            penalty_labels=["c", "b", "a"],
+        )
+        assert not jnp.allclose(basis.penalty.value, K)
+
+    def test_warnings(self, caplog):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        # a - c - b
+
+        # c has 2 neighbors: a and b
+        # b has 1 neighbor: c
+        # a has 1 neighbor: c
+
+        K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+        nb = {"a": ["c"], "b": ["c"], "c": ["a", "b"]}
+        polys = {"a": jnp.ones((2, 2)), "b": jnp.ones((2, 2)), "c": jnp.ones((2, 2))}
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        bases.mrf("district", penalty=K, nb=nb, penalty_labels=["c", "b", "a"])
+        assert "'nb'" in caplog.records[0].message
+        assert caplog.records[0].levelname == "WARNING"
+
+        bases.mrf("district", penalty=K, polys=polys, penalty_labels=["c", "b", "a"])
+        assert "'polys'" in caplog.records[1].message
+        assert caplog.records[1].levelname == "WARNING"
+
+        bases.mrf(
+            "district", penalty=K, nb=nb, polys=polys, penalty_labels=["c", "b", "a"]
+        )
+        assert "'nb'" in caplog.records[2].message
+        assert caplog.records[2].levelname == "WARNING"
+        assert "'polys'" in caplog.records[3].message
+        assert caplog.records[3].levelname == "WARNING"
+
+    def test_validation(self, caplog):
+        df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
+        # a - c - b
+
+        # c has 2 neighbors: a and b
+        # b has 1 neighbor: c
+        # a has 1 neighbor: c
+
+        K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+
+        registry = PandasRegistry(df)
+        bases = BasisBuilder(registry)
+
+        with pytest.raises(TypeError, match="must be int"):
+            bases.mrf("district", k="1", penalty=K, penalty_labels=["c", "b", "a"])
+
+        with pytest.raises(ValueError, match="smaller than"):
+            bases.mrf("district", k=-2, penalty=K, penalty_labels=["c", "b", "a"])
+
+        with pytest.raises(ValueError, match="must be provided"):
+            bases.mrf("district", k=-1)
+
+        with pytest.raises(ValueError, match="'penalty_labels' has"):
+            bases.mrf("district", k=-1, penalty=K, penalty_labels=["c", "b"])
+
+        with pytest.raises(ValueError, match="Names in 'polys'"):
+            bases.mrf(
+                "district",
+                k=-1,
+                polys={"a": jnp.ones((2, 2)), "x": jnp.ones((2, 2))},
+            )
+
+        nb = {"a": [[1]], "b": ["c"], "c": ["a", "b"]}
+        with pytest.raises(ValueError, match="1d"):
+            bases.mrf("district", k=-1, nb=nb)
+
+        nb = {"a": ["c"], "b": ["c"], "d": ["a", "b"]}
+        with pytest.raises(ValueError, match="Names in 'nb'"):
+            bases.mrf("district", k=-1, nb=nb)
+
+        K = jnp.zeros((3, 3))
+        bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+        assert "rank deficiency" in caplog.records[0].message
+        assert caplog.records[0].levelname == "WARNING"
+
+        K = jnp.zeros((3, 2))
+        with pytest.raises(ValueError, match="square"):
+            bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+
+        K = jnp.zeros((2, 2))
+        with pytest.raises(ValueError, match="Dimensions of 'penalty'"):
+            bases.mrf("district", penalty=K, penalty_labels=["c", "b", "a"])
+
+
+def is_diagonal(M, atol=1e-5):
+    # mask for off-diagonal elements
+    off_diag_mask = ~jnp.eye(M.shape[-1], dtype=bool)
+    off_diag_values = M[off_diag_mask]
+    return jnp.all(jnp.abs(off_diag_values) < atol)
+
+
+class TestS:
+    def test_unsupported(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        with pytest.raises(ValueError):
+            bases._s("x", bs="ab", k=8)
+
+    def test_tp_univariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases._s("x", bs="tp", k=8)
+        assert b1.value.shape[-1] == 7
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases._s("x", bs="tp", k=8, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 7
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases._s("x", bs="tp", k=8, diagonal_penalty=False, scale_penalty=False)
+        assert b3.value.shape[-1] == 7
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases._s("x", bs="tp", k=8, absorb_cons=False)
+        assert b4.value.shape[-1] == 8
+        assert is_diagonal(b4.penalty.value)
+
+    def test_tp_bivariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases._s("x", "y", bs="tp", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases._s("x", "y", bs="tp", k=20, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 19
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases._s(
+            "x", "y", bs="tp", k=20, diagonal_penalty=False, scale_penalty=False
+        )
+        assert b3.value.shape[-1] == 19
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases._s("x", "y", bs="tp", k=20, absorb_cons=False)
+        assert b4.value.shape[-1] == 20
+        assert is_diagonal(b4.penalty.value)
+
+    def test_gp_univariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases._s("x", bs="gp", k=8)
+        assert b1.value.shape[-1] == 7
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases._s("x", bs="gp", k=8, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 7
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases._s("x", bs="gp", k=8, diagonal_penalty=False, scale_penalty=False)
+        assert b3.value.shape[-1] == 7
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases._s("x", bs="gp", k=8, absorb_cons=False)
+        assert b4.value.shape[-1] == 8
+        assert is_diagonal(b4.penalty.value)
+
+    def test_gp_bivariate(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases._s("x", "y", bs="gp", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases._s("x", "y", bs="gp", k=20, diagonal_penalty=False)
+        assert b2.value.shape[-1] == 19
+        assert not is_diagonal(b2.penalty.value)
+
+        b3 = bases._s(
+            "x", "y", bs="gp", k=20, diagonal_penalty=False, scale_penalty=False
+        )
+        assert b3.value.shape[-1] == 19
+        assert not is_diagonal(b3.penalty.value)
+        assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
+
+        b4 = bases._s("x", "y", bs="gp", k=20, absorb_cons=False)
+        assert b4.value.shape[-1] == 20
+        assert is_diagonal(b4.penalty.value)
+
+
+class TestKriging:
+    def test_default(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_kernel_names(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        names = [
+            "power_exponential",
+            "matern1.5",
+            "matern2.5",
+            "matern3.5",
+        ]
+        b = bases.kriging("x", "y", k=20, kernel_name="spherical")
+        assert b.value.shape[-1] == 19
+        assert is_diagonal(b.penalty.value)
+
+        for kname in names:
+            b2 = bases.kriging("x", "y", k=20, kernel_name=kname)
+            assert b2.value.shape[-1] == 19
+            assert is_diagonal(b2.penalty.value)
+            assert not jnp.allclose(b.value, b2.value)
+            assert jnp.allclose(b.penalty.value, b2.penalty.value)
+
+    def test_linear_trend(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.kriging("x", "y", k=20, linear_trend=False)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert not jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_range(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.kriging("x", "y", k=20, range=3.0)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_power_exponential_power(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.kriging("x", "y", k=20, kernel_name="power_exponential")
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.kriging(
+                "x",
+                "y",
+                k=20,
+                kernel_name="power_exponential",
+                power_exponential_power=3.0,
+            )
+
+        b2 = bases.kriging(
+            "x",
+            "y",
+            k=20,
+            kernel_name="power_exponential",
+            power_exponential_power=2.0,
+        )
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_knots(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        knots = jnp.linspace(columb["x"].min(), columb["x"].max(), 20)
+
+        b1 = bases.kriging("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.kriging("x", k=20, knots=knots)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+
+class TestThinPlate:
+    def test_default(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.tp("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_penalty_order(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.tp("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.tp("x", "y", k=20, penalty_order=2)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+        b3 = bases.tp("x", "y", k=20, penalty_order=3)
+        assert b3.value.shape[-1] == 19
+        assert is_diagonal(b3.penalty.value)
+
+        assert not jnp.allclose(b1.value, b3.value)
+        assert not jnp.allclose(b1.penalty.value, b3.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.tp("x", "y", k=20, penalty_order=-1)
+
+        with pytest.raises(ValueError):
+            bases.tp("x", "y", k=20, penalty_order=0)
+
+        with pytest.raises(TypeError):
+            bases.tp("x", "y", k=20, penalty_order=2.0)
+
+    def test_remove_null_space(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.tp("x", "y", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.tp("x", "y", k=20, remove_null_space_completely=True)
+        assert b2.value.shape[-1] == 17
+        assert is_diagonal(b2.penalty.value)
+
+    def test_knots(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        knots = jnp.linspace(columb["x"].min(), columb["x"].max(), 20)
+
+        b1 = bases.tp("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.tp("x", k=20, knots=knots)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        assert not jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+    def test_ts(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.ts("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+        b2 = bases.ts("x", "y", k=20)
+        assert b2.value.shape[-1] == 19
+        assert is_diagonal(b2.penalty.value)
+
+        b3 = bases.tp("x", "y", k=20)
+        assert b3.value.shape[-1] == 19
+        assert is_diagonal(b3.penalty.value)
+
+        assert not jnp.allclose(b3.value, b2.value)
+        assert not jnp.allclose(b3.penalty.value, b2.penalty.value)
+
+
+class TestRegressionSpline:
+    def test_cr(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cr("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_cs(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cs("x", k=20)
+        assert b1.value.shape[-1] == 19
+        assert is_diagonal(b1.penalty.value)
+
+    def test_cc(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cc("x", k=20)
+        assert b1.value.shape[-1] == 18
+        assert is_diagonal(b1.penalty.value)
+
+    def test_penalty_order(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        for bs in ["cr", "cs"]:
+            b1 = getattr(bases, bs)(
+                "x",
+                k=20,
+                absorb_cons=False,
+                scale_penalty=False,
+                diagonal_penalty=False,
+            )
+            assert b1.value.shape[-1] == 20
+            assert not is_diagonal(b1.penalty.value)
+
+            b2 = getattr(bases, bs)(
+                "x",
+                k=20,
+                penalty_order=2,
+                absorb_cons=False,
+                scale_penalty=False,
+                diagonal_penalty=False,
+            )
+            assert b2.value.shape[-1] == 20
+            assert not is_diagonal(b2.penalty.value)
+
+            assert jnp.allclose(b1.value, b2.value)
+            assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+            b3 = getattr(bases, bs)(
+                "x",
+                k=20,
+                penalty_order=3,
+                absorb_cons=False,
+                scale_penalty=False,
+                diagonal_penalty=False,
+            )
+            assert b3.value.shape[-1] == 20
+            assert not is_diagonal(b3.penalty.value)
+
+            assert jnp.allclose(b1.value, b3.value)
+            assert jnp.allclose(b1.penalty.value, b3.penalty.value)
+
+            with pytest.raises(ValueError):
+                getattr(bases, bs)("x", k=20, penalty_order=-1)
+
+            with pytest.raises(ValueError):
+                getattr(bases, bs)("x", k=20, penalty_order=0)
+
+            with pytest.raises(TypeError):
+                getattr(bases, bs)("x", k=20, penalty_order=2.0)
+
+    def test_penalty_order_cc(self, columb):
+        registry = PandasRegistry(columb)
+        bases = BasisBuilder(registry)
+
+        b1 = bases.cc(
+            "x",
+            k=20,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert b1.value.shape[-1] == 19
+        assert not is_diagonal(b1.penalty.value)
+
+        b2 = bases.cc(
+            "x",
+            k=20,
+            penalty_order=2,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert b2.value.shape[-1] == 19
+        assert not is_diagonal(b2.penalty.value)
+
+        assert jnp.allclose(b1.value, b2.value)
+        assert jnp.allclose(b1.penalty.value, b2.penalty.value)
+
+        b3 = bases.cc(
+            "x",
+            k=20,
+            penalty_order=3,
+            absorb_cons=False,
+            scale_penalty=False,
+            diagonal_penalty=False,
+        )
+        assert b3.value.shape[-1] == 19
+        assert not is_diagonal(b3.penalty.value)
+
+        assert jnp.allclose(b1.value, b3.value)
+        assert jnp.allclose(b1.penalty.value, b3.penalty.value)
+
+        with pytest.raises(ValueError):
+            bases.cc("x", k=20, penalty_order=-1)
+
+        with pytest.raises(ValueError):
+            bases.cc("x", k=20, penalty_order=0)
+
+        with pytest.raises(TypeError):
+            bases.cc("x", k=20, penalty_order=2.0)

@@ -6,11 +6,11 @@ from typing import Any, Self, cast
 import liesel.goose as gs
 import liesel.model as lsl
 
-from .var import BasisDot, Term, UserVar
+from .var import UserVar
 
 Array = Any
 
-term_types = Term | BasisDot | lsl.Var
+term_types = lsl.Var
 
 
 class AdditivePredictor(UserVar):
@@ -19,6 +19,7 @@ class AdditivePredictor(UserVar):
         name: str,
         inv_link: Callable[[Array], Array] | None = None,
         intercept: bool | lsl.Var = True,
+        intercept_name: str = "$\\beta{subscript}$",
     ) -> None:
         if inv_link is None:
 
@@ -30,11 +31,13 @@ class AdditivePredictor(UserVar):
             return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
 
         if intercept and not isinstance(intercept, lsl.Var):
+            name_cleaned = name.replace("$", "")
+
             intercept_: lsl.Var | float = lsl.Var.new_param(
-                name=f"{name}_intercept",
+                name=intercept_name.format(subscript="_{0," + name_cleaned + "}"),
                 value=0.0,
                 distribution=None,
-                inference=gs.MCMCSpec(gs.IWLSKernel),
+                inference=gs.MCMCSpec(gs.IWLSKernel.untuned),
             )
         else:
             intercept_ = 0.0
