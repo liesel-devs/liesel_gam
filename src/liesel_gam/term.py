@@ -613,6 +613,13 @@ SmoothTerm = StrctTerm
 
 
 class MRFTerm(StrctTerm):
+    """
+    Term object for Markov random fields.
+
+    Derived from :class:`.StrctTerm`, with a few additional attributes that give
+    access to information about the Markov random field setup.
+    """
+
     _neighbors = None
     _polygons = None
     _ordered_labels = None
@@ -621,6 +628,12 @@ class MRFTerm(StrctTerm):
 
     @property
     def neighbors(self) -> dict[str, list[str]] | None:
+        """
+        Dictionary of neighborhood structure (if available).
+
+        The keys are region labels. The values are lists of the labels of neighboring
+        regions.
+        """
         return self._neighbors
 
     @neighbors.setter
@@ -629,6 +642,11 @@ class MRFTerm(StrctTerm):
 
     @property
     def polygons(self) -> dict[str, ArrayLike] | None:
+        """
+        Dictionary of arrays. The keys of the dict are the region labels. The
+        corresponding values define each region through a 2d array of polygon
+        information.
+        """
         return self._polygons
 
     @polygons.setter
@@ -646,6 +664,9 @@ class MRFTerm(StrctTerm):
 
     @property
     def mapping(self) -> CategoryMapping:
+        """
+        A label-integer mapping for the regions in this term.
+        """
         if self._mapping is None:
             raise ValueError("No mapping defined.")
         return self._mapping
@@ -656,7 +677,12 @@ class MRFTerm(StrctTerm):
 
     @property
     def ordered_labels(self) -> list[str] | None:
-        """Ordered labels, if they are available."""
+        """
+        Ordered labels, if they are available.
+
+        Ordering is such that the order corresponds to the columns of the basis
+        and penalty matrices. Only available for unconstrained MRF.
+        """
         return self._ordered_labels
 
     @ordered_labels.setter
@@ -665,6 +691,25 @@ class MRFTerm(StrctTerm):
 
 
 class IndexingTerm(StrctTerm):
+    """
+    Term object for memory-efficient representation of sparse bases.
+
+    Derived from :class:`.StrctTerm`.
+    If the basis matrix of a term is a dummy matrix, where each column consists only of
+    binary (0/1) entries, and each row has only one non-zero entry, then it is not
+    necessary to store the full matrix in memory and evaluate the term as a dot product
+    ``basis @ coef``.
+
+    Instead, we can simply store a 1d array of indices, identifying the nonzero column
+    for each row of the basis matrix, and use this index to access to corresponding
+    coefficient. This scenario is common for independent random intercepts.
+
+    This class implements such a sparse representation.
+
+    In case you do need to materialize the full, sparse basis of such a term, you can
+    use :meth:`.IndexingTerm.init_full_basis`.
+    """
+
     def __init__(
         self,
         basis: Basis,
@@ -711,10 +756,17 @@ class IndexingTerm(StrctTerm):
 
     @property
     def nclusters(self) -> int:
+        """
+        Number of unique clusters in this term (equals the number of coefficients).
+        """
         nclusters = jnp.unique(self.basis.value).size
         return int(nclusters)
 
     def init_full_basis(self) -> Basis:
+        """
+        Materializes a :class:`.Basis` object that holds the full basis matrix
+        corresponding to this term.
+        """
         full_basis = Basis(
             self.basis.x, basis_fn=jax.nn.one_hot, num_classes=self.nclusters, name=""
         )
@@ -722,6 +774,13 @@ class IndexingTerm(StrctTerm):
 
 
 class RITerm(IndexingTerm):
+    """
+    Term object for memory-efficient representation of independent random intercepts.
+
+    Specialized subclass of :class:`.IndexingTerm`, which itself is derived from
+    :class:`.StrctTerm`.
+    """
+
     _labels = None
     _mapping = None
 
@@ -734,14 +793,11 @@ class RITerm(IndexingTerm):
 
         return int(nclusters)
 
-    def init_full_basis(self) -> Basis:
-        full_basis = Basis(
-            self.basis.x, basis_fn=jax.nn.one_hot, num_classes=self.nclusters, name=""
-        )
-        return full_basis
-
     @property
     def labels(self) -> list[str]:
+        """
+        List of labels for all clusters represented by this term.
+        """
         if self._labels is None:
             raise ValueError("No labels defined.")
         return self._labels
@@ -754,6 +810,9 @@ class RITerm(IndexingTerm):
 
     @property
     def mapping(self) -> CategoryMapping:
+        """
+        A label-integer mapping for the clusters in this term.
+        """
         if self._mapping is None:
             raise ValueError("No mapping defined.")
         return self._mapping
@@ -764,6 +823,15 @@ class RITerm(IndexingTerm):
 
 
 class BasisDot(UserVar):
+    """
+    Basic term variable for a dot-product ``basisl coef``.
+
+    In comparison to :class:`.StrctTerm`, this class makes fewer assumptions, since it
+    does not assume any prior distribution, or structure of the prior distribution, for
+    the coefficients. Instead, a prior for the coefficients of this term (if desired) is
+    defined manually as a :class:`liesel.model.Dist` in the ``prior`` argument.
+    """
+
     def __init__(
         self,
         basis: Basis,
@@ -814,6 +882,9 @@ class LinMixin:
 
     @property
     def model_spec(self) -> ModelSpec:
+        """
+        The model spec used internally by ``formulaic`` to set up the basis matrix.
+        """
         if self._model_spec is None:
             raise ValueError("No model spec defined.")
         return self._model_spec
@@ -828,6 +899,10 @@ class LinMixin:
 
     @property
     def mappings(self) -> dict[str, CategoryMapping]:
+        """
+        A dictionary of label-integer mappings for all categorical variables in this
+        term.
+        """
         if self._mappings is None:
             raise ValueError("No mappings defined.")
         return self._mappings
@@ -847,6 +922,7 @@ class LinMixin:
 
     @property
     def column_names(self) -> list[str]:
+        """List of column names for this term."""
         if self._column_names is None:
             raise ValueError("No column names defined.")
         return self._column_names
@@ -869,10 +945,20 @@ class LinMixin:
 
 
 class LinTerm(BasisDot, LinMixin):
+    """
+    Specialized :class:`.BasisDot` for general linear effects.
+    """
+
     pass
 
 
 class StrctLinTerm(StrctTerm, LinMixin):
+    """
+    Specialized :class:`.StrctTerm` for linear effects.
+
+    This term can be used, for example, to set up linear effects with a ridge prior.
+    """
+
     pass
 
 
@@ -1004,7 +1090,7 @@ class StrctTensorProdTerm(UserVar):
     @property
     def input_obs(self) -> dict[str, lsl.Var]:
         """
-        A dictionary of strong input input variables.
+        A dictionary of strong input variables.
         """
         return self._input_obs(self.bases)
 
