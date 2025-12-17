@@ -820,7 +820,7 @@ class TermBuilder:
         if factor_scale:
             term.factor_scale()
 
-        term.polygons = polys
+        term.polygons = basis.mrf_spec.polys
         term.neighbors = basis.mrf_spec.nb
         if basis.mrf_spec.ordered_labels is not None:
             term.ordered_labels = basis.mrf_spec.ordered_labels

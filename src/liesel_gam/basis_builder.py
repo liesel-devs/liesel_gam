@@ -1151,6 +1151,6 @@ class BasisBuilder:
 
             nb_out = {k: to_label(v) for k, v in nb_out.items()}
 
-        basis.mrf_spec = MRFSpec(mapping, nb_out, label_order)
+        basis.mrf_spec = MRFSpec(mapping, nb_out, label_order, polys)
 
         return basis
