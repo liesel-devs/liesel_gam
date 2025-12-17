@@ -14,6 +14,109 @@ term_types = lsl.Var
 
 
 class AdditivePredictor(UserVar):
+    """
+    A Liesel :class:`~liesel.model.Var` that represents an additive predictor.
+
+    This is a special variable that allows you to add other Liesel varibales using the
+    ``+=`` syntax (see examples).
+
+    Parameters
+    ----------
+    name
+        Name of the predictor variable.
+    inv_link
+        Inverse link function. If supplied, variables are added on the *link* level,
+        and the predictor variable's value will be ``inv_link(sum(*inputs))``, where
+        ``*inputs`` refers to the additive terms in this predictor.
+    intercept
+        Whether this predictor should be initialized with an intercept. You can supply
+        booleans, or a :class:`liesel.model.Var`. In the latter case, this var is
+        taken as the intercept. The default intercept has a constant prior.
+    intercept_name
+        Name of the automatically created intercept variable (if ``intercept=True``).
+        If this name contains the placeholder ``{subscript}``, it will be filled with
+        the predictor name to create a unique intercept name for this predictor.
+
+    Examples
+    --------
+    Basic example:
+
+    >>> import liesel_gam as gam
+    >>> import liesel.model as lsl
+
+    >>> loc = gam.AdditivePredictor("loc")
+
+    Now we add a variable using the ``+`` syntax. The value of the predictor is the
+    sum of the values of its inputs.
+    >>> loc += lsl.Var.new_value(1.0, name="s(x)")
+    >>> loc.value
+    1.0
+
+    The input terms can be accessed:
+
+    >>> loc.terms
+    {'s(x)': Var(name="s(x)")}
+
+    This term got initialized with a default intercept, which has no distribution
+    node (corresponding to a constant prior).
+
+    >>> loc.intercept
+    Var(name="$\\beta_{0,loc}$")
+    >>> print(loc.intercept.dist_node)
+    None
+
+    After adding a second term, the value of the predictor is updated:
+
+    >>> loc += lsl.Var.new_value(2.5, name="s(x2)")
+    >>> loc.terms
+    {'s(x)': Var(name="s(x)"), 's(x2)': Var(name="s(x2)")}
+    >>> loc.value
+    3.5
+
+    Using an inverse link function:
+
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> import liesel_gam as gam
+    >>> scale = gam.AdditivePredictor("scale", inv_link=jnp.exp)
+    >>> scale += lsl.Var.new_value(1.0, name="s(x)")
+    >>> scale.terms
+    {'s(x)': Var(name="s(x)")}
+    >>> scale.intercept
+    Var(name="$\\beta_{0,scale}$")
+    >>> scale.value
+    Array(2.7182817, dtype=float32, weak_type=True)
+
+    Using a custom intercept:
+
+    >>> import liesel.model as lsl
+    >>> import tensorflow_probability.substrates.jax.distributions as tfd
+    >>> import liesel_gam as gam
+    >>> intercept_var = lsl.Var.new_param(
+    ...     value=3.0,
+    ...     distribution=lsl.Dist(tfd.Normal, loc=0.0, scale=10.0),
+    ...     name="b0",
+    ... )
+    >>> loc = gam.AdditivePredictor("loc", intercept=intercept_var)
+    >>> loc.intercept
+    Var(name="b0")
+    >>> loc.value
+    3.0
+    >>> loc.intercept.dist_node
+    Dist(name="b0_log_prob")
+
+    Multiple terms can be added at the same time:
+
+    >>> import liesel.model as lsl
+    >>> import liesel_gam as gam
+    >>> loc = gam.AdditivePredictor("loc")
+    >>> sx1 = lsl.Var.new_value(1.0, name="s(x1)")
+    >>> sx2 = lsl.Var.new_value(1.0, name="s(x2)")
+    >>> loc += sx1, sx2
+    >>> loc.terms
+    {'s(x1)': Var(name="s(x1)"), 's(x2)': Var(name="s(x2)")}
+    """
+
     def __init__(
         self,
         name: str,
@@ -51,6 +154,7 @@ class AdditivePredictor(UserVar):
 
     @property
     def intercept(self) -> lsl.Var | lsl.Node:
+        """This term's intercept."""
         return self.value_node["intercept"]
 
     @intercept.setter
@@ -68,6 +172,19 @@ class AdditivePredictor(UserVar):
         return self
 
     def append(self, term: term_types) -> None:
+        """
+        Appends a single term to this predictor's sum inputs.
+
+        Examples
+        --------
+        >>> import liesel.model as lsl
+        >>> import liesel_gam as gam
+        >>> loc = gam.AdditivePredictor("loc")
+        >>> sx1 = lsl.Var.new_value(1.0, name="s(x)")
+        >>> loc.append(sx1)
+        >>> loc.terms
+        {'s(x)': Var(name="s(x)")}
+        """
         if not isinstance(term, term_types):
             raise TypeError(f"{term} is of unsupported type {type(term)}.")
 
@@ -79,6 +196,20 @@ class AdditivePredictor(UserVar):
         self.update()
 
     def extend(self, terms: Sequence[term_types]) -> None:
+        """
+        Appends a sequence of terms to this predictor's sum inputs.
+
+        Examples
+        --------
+        >>> import liesel.model as lsl
+        >>> import liesel_gam as gam
+        >>> loc = gam.AdditivePredictor("loc")
+        >>> sx1 = lsl.Var.new_value(1.0, name="s(x1)")
+        >>> sx2 = lsl.Var.new_value(1.0, name="s(x2)")
+        >>> loc.extend([sx1, sx2])
+        >>> loc.terms
+        {'s(x1)': Var(name="s(x1)"), 's(x2)': Var(name="s(x2)")}
+        """
         for term in terms:
             self.append(term)
 
