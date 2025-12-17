@@ -858,23 +858,6 @@ class BasisDot(UserVar):
         super().__init__(calc, name=name)
 
 
-class Intercept(UserVar):
-    def __init__(
-        self,
-        name: str,
-        value: ArrayLike | float = 0.0,
-        distribution: lsl.Dist | None = None,
-        inference: InferenceTypes = None,
-    ) -> None:
-        super().__init__(
-            value=jnp.asarray(value),
-            distribution=distribution,
-            name=name,
-            inference=inference,
-        )
-        self.parameter = True
-
-
 class LinMixin:
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None

@@ -26,11 +26,6 @@ def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
     return D.T @ D
 
 
-class TestIntercept:
-    def test_init(self) -> None:
-        gam.Intercept("test")
-
-
 class TestSmoothTerm:
     def test_init(self) -> None:
         x = jnp.linspace(0, 1, 10)
