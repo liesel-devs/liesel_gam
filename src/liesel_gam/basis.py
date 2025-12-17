@@ -530,7 +530,7 @@ class Basis(UserVar):
 
         .. math::
 
-            \\begin{pmatrix} \\mathbf{A} \\ \\bar{\\mathbf{A}} \\end{pmatrix}^{-1} =
+            (\\mathbf{A}^\\top, \\bar{\\mathbf{A}}^\\top)^{-\\top} =
             \\left( \\mathbf{C}, \\bar{\\mathbf{C}} \\right),
 
         where :math:`\\mathbf{C} \\in \\mathbb{R}^{D \\times A}` and
