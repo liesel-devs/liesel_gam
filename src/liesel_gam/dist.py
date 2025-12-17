@@ -477,7 +477,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         op: StructuredPenaltyOperator,
         validate_args: bool = False,
         allow_nan_stats: bool = True,
-        name: str = "MultivariateNormalStructuredSingular",
+        name: str = "MultivariateNormalStructured",
         include_normalizing_constant: bool = True,
     ):
         parameters = dict(locals())
