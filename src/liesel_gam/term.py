@@ -865,16 +865,27 @@ class StrctTensorProdTerm(UserVar):
     """
     General anisotropic structured additive tensor product term.
 
-    A bivariate tensor product can have:
-
-    1. One scale parameter (when using ita)
-    2. Two scale parameters (when using include_main_effects)
-    3. Three scale parameters (when using common_scale and include_main_effects,
-        or adding main effects separately)
-    4. Four scale parameters (when adding main effects separately)
-
-    Option four is the most flexible one, since it also allows you to use different
-    basis dimensions for the main effects and the interaction.
+    Parameters
+    ----------
+    *marginals
+        Marginal terms.
+    common_scale
+        A single, common scale to cover both marginal dimensions, resulting in an
+        isotropic tensor product.
+    name
+        Name of the term
+    coef_name
+        Name of the coefficient variable. If ``None``, created automatically based on
+        ``name``.
+    basis_name
+        Name of the basis variable. This variable is internally created to represent
+        the tensor product of the marginal basis matrices. If ``None``, the name
+        will be created automatically based on the names of the observed input
+        variables to the marginal terms.
+    include_main_effects
+        If ``True``, the marginal terms will be added to this term's value.
+    _update_on_init
+        Whether to update the term upon initialization.
     """
 
     def __init__(
@@ -1036,8 +1047,26 @@ class StrctTensorProdTerm(UserVar):
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         fname: str = "ta",
         inference: InferenceTypes = None,
+        include_main_effects: bool = False,
         _update_on_init: bool = True,
     ) -> Self:
+        """
+        Alternative constructor with more opinionated automatic naming.
+
+        Parameters
+        ----------
+        *marginals
+            Marginal terms.
+        common_scale
+            A single, common scale to cover both marginal dimensions, resulting in an
+            isotropic tensor product.
+        name
+            Name of the term
+        include_main_effects
+            If ``True``, the marginal terms will be added to this term's value.
+        _update_on_init
+            Whether to update the term upon initialization.
+        """
         xnames = list(cls._input_obs(cls._get_bases(marginals)))
         name = fname + "(" + ",".join(xnames) + ")"
 
@@ -1050,6 +1079,7 @@ class StrctTensorProdTerm(UserVar):
             coef_name=coef_name,
             name=name,
             basis_name=None,
+            include_main_effects=include_main_effects,
             _update_on_init=_update_on_init,
         )
 
