@@ -252,20 +252,19 @@ class BasisBuilder:
         basis_name: str = "B",
     ) -> Basis:
         """
-        Initializes a B-spline basis with a discrete (P-spline) penalty matrix.
+        B-spline basis with a discrete (P-spline) penalty matrix.
 
         Parameters
         ----------
         x
             Name of input variable.
         k
-            Number of (unpenalized) bases.
+            Number of (unconstrained) bases.
         basis_degree
             Degree of the polynomials used in the B-spline basis function. Default is 3
             for cubic B-splines.
         penalty_order
-            Order of the difference penalty. Default is 2 for penalizing second
-            differences in coefficients.
+            Order of the penalty.
         knots
             Knots used to set up the basis. If ``None`` (default), a set of equidistant
             knots will be set up automatically, with the domain boundaries inferred from
@@ -298,10 +297,16 @@ class BasisBuilder:
         This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
+        This method internally calls the R package mgcv to set up the basis and penalty.
+
         References
         ----------
-        Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational and
-        Graphical Statistics, 13(1), 183–212. https://doi.org/10.1198/1061860043010
+        - Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational
+          and Graphical Statistics, 13(1), 183–212.
+          https://doi.org/10.1198/1061860043010
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
 
         Examples
         --------
@@ -364,6 +369,72 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        """
+        Cubic regression spline basis and penalty matrix.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        See Also
+        --------
+
+        .cs : Cubic regression splines with additinal shrinkage on the null space.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.cr("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
+        """
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
@@ -405,10 +476,64 @@ class BasisBuilder:
         basis_name: str = "B",
     ) -> Basis:
         """
-        s(x,bs="cs") specifies a penalized cubic regression spline which has had its
-        penalty modified to shrink towards zero at high enough smoothing parameters (as
-        the smoothing parameter goes to infinity a normal cubic spline tends to a
-        straight line.)
+        Cubic regression spline basis and penalty matrix with null space penalty.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.cs("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
         """
         _validate_penalty_order(penalty_order)
         if knots is not None:
@@ -450,6 +575,70 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        """
+        Cyclic cubic regression spline basis and penalty matrix.
+
+        Basis for  a penalized cubic regression spline whose ends match, up to second
+        derivative.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        Cyclicity is enforced by matching the function and its derivatives at the domain
+        boundaries. This method internally calls the R package mgcv to set up the basis
+        and penalty. The mgcv documentation provides further details.
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.cc("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
+        """
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
@@ -492,11 +681,68 @@ class BasisBuilder:
         basis_name: str = "B",
     ) -> Basis:
         """
-        The integrated square of the m[2]th derivative is used as the penalty. So
-        m=c(3,2) is a conventional cubic spline. Any further elements of m, after the
-        first 2, define the order of derivative in further penalties. If m is supplied
-        as a single number, then it is taken to be m[1] and m[2]=m[1]-1, which is only a
-        conventional smoothing spline in the m=3, cubic spline case.
+        B-spline basis with integrated squared derivative penalties.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        basis_degree
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
+        penalty_order
+            Order of the penalty. If this is a sequence of integers, a
+            penalty of the integer's order is added for each entry in the sequence.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis
+        and penalty. The mgcv documentation provides further details.
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.bs("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
         """
         if knots is not None:
             knots = np.asarray(knots)
@@ -548,6 +794,73 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
+        """
+        Cyclic P-spline basis and penalty matrix.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        basis_degree
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values. The number of knots must be
+            ``k + basis_degree + 1``, and for the observed data, it must be true that
+            ``knots[basis_degree] < min(x)`` and ``max(x) < knots[-basis_degree]``.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational
+          and Graphical Statistics, 13(1), 183–212.
+          https://doi.org/10.1198/1061860043010
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.cp("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
+        """
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
@@ -650,13 +963,69 @@ class BasisBuilder:
         remove_null_space_completely: bool = False,
     ) -> Basis:
         """
-        For penalty_order:
-        m = penalty_order
-        Quote from MGCV docs
-        The default is to set m (the order of derivative in the thin plate spline
-        penalty) to the smallest value satisfying 2m > d+1 where d is the number of
-        covariates of the term: this yields ‘visually smooth’ functions.
-        In any case 2m>d must be satisfied.
+        Thin plate spline basis and penalty matrix.
+
+        Parameters
+        ----------
+        *x
+            Names of input variables (one or more).
+        k
+            Number of (unconstrained) bases.
+        penalty_order
+            Order of the penalty. Quote from mgcv: "The default is to set this to the
+            smallest value satisfying ``2*penalty_order > d+1`` where ``d`` is the
+            number of covariates of the term."
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set knots will be
+            set up automatically.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+        remove_null_space_completely
+            If ``True``, the unpenalized part of the smooth, corresponding to the null
+            space of the penalty matrix, is removed completely.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Wood, S.N. (2003) Thin-plate regression splines. Journal of the Royal
+          Statistical Society (B) 65(1):95-114.
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.tp("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
         """
         d = len(x)
         m_args = []
@@ -701,13 +1070,66 @@ class BasisBuilder:
         basis_name: str = "B",
     ) -> Basis:
         """
-        For penalty_order:
-        m = penalty_order
-        Quote from MGCV docs
-        The default is to set m (the order of derivative in the thin plate spline
-        penalty) to the smallest value satisfying 2m > d+1 where d is the number of
-        covariates of the term: this yields ‘visually smooth’ functions.
-        In any case 2m>d must be satisfied.
+        Thin plate spline basis and penalty matrix with null space penalty.
+
+        Parameters
+        ----------
+        *x
+            Names of input variables (one or more).
+        k
+            Number of (unconstrained) bases.
+        penalty_order
+            Order of the penalty. Quote from mgcv: "The default is to set this to the
+            smallest value satisfying ``2*penalty_order > d+1`` where ``d`` is the
+            number of covariates of the term."
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set knots will be
+            set up automatically.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Wood, S.N. (2003) Thin-plate regression splines. Journal of the Royal
+          Statistical Society (B) 65(1):95-114.
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.ts("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
         """
         d = len(x)
         m_args = []
@@ -753,9 +1175,69 @@ class BasisBuilder:
         basis_name: str = "B",
     ) -> Basis:
         """
+        Gaussian process models with a fixed range parameter in a
+        basis-penalty-parameterization, often referred to as Kriging.
 
-        - If range=None, the range parameter will be estimated as in Kammann and \
-            Wand (2003)
+        Parameters
+        ----------
+        *x
+            Name of input variables (one or more).
+        k
+            Number of (unconstrained) bases.
+        kernel_name
+            Selects the kernel / covariance function to use.
+        linear_trend
+            Whether to include or remove a linear trend.
+        range
+            Range parameter. If ``None``, estimated as in Kamman & Wand (2003).
+        power_exponential_power
+            Power for the power exponential kernel.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Kammann, E. E. and M.P. Wand (2003) Geoadditive Models. Applied Statistics
+          52(1):1-18.
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.gp("x_nonlin", k=20)
+        Basis(name="B(x_nonlin)")
+
         """
         m_kernel_dict = {
             "spherical": 1,
@@ -806,6 +1288,94 @@ class BasisBuilder:
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinBasis:
+        r"""
+        Linear design matrix without penalty.
+
+        Parameters
+        ----------
+        formula
+            Right-hand side of a model formula, as understood by formulaic_. Most of
+            formulaic's grammar_ is supported. See notes for details.
+        xname
+            If provided, the design matrix will be named ``{basis_name}({xname})``, for
+            example ``B(x)``, is ``basis_name="B"`` and ``xname="x"``.
+        basis_name
+            Name of the basis variable.
+        include_intercept
+            Whether to include an intercept column in the basis.
+        context
+            Dictionary of additional Python objects that should be made available to
+            formulaic when constructing the design matrix. Gets passed to
+            ``formulaic.ModelSpec.get_model_matrix()``.
+
+        Notes
+        -----
+
+        The following formulaic syntax is supported:
+
+        - ``+`` for adding a term
+        - ``a:b`` for simple interactions
+        - ``a*b`` for expanding to ``a + b + a:b``
+        - ``(a + b)**n`` for n-th order interactions
+        - ``a / b`` for nesting
+        - ``C(a, ...)`` for categorical effects
+        - ``b %in% a`` for inverted nesting
+        - ``{a+1}`` for quoted Python code to be executed
+        - ```weird name``` backtick-strings for weird names
+        - Other transformations like ``center(a)``, ``scale(a)``, or ``lag(a)``, see
+          grammar_.
+        - Python functions
+
+        Not supported:
+
+        - String literals
+        - Numeric literals
+        - Wildcard ``"."``
+        - ``\|`` for splitting a formula
+        - ``"~"`` in formula, since this method supports only the right-hand side of a
+          Wilkinson formula.
+        - ``1 +``, ``0 +``, or ``-1`` in formula, since intercept addition is handled
+          via the argument ``include_intercept``.
+
+        References
+        ----------
+
+        - Python library formulaic: https://matthewwardrop.github.io/formulaic/latest/
+
+        Examples
+        --------
+
+        Simple example:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.lin("x_lin + x_nonlin + x_cat")
+        LinBasis(name="X")
+
+        Customized categorical encoding:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.lin("x_lin + x_nonlin + C(x_cat, contr.sum)")
+        LinBasis(name="X")
+
+        Interaction:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.lin("x_lin * x_cat")
+        LinBasis(name="X")
+
+
+        .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
+        .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
+        """
         _validate_formula(formula)
         spec = fo.ModelSpec(formula, output="numpy")
 
@@ -892,6 +1462,43 @@ class BasisBuilder:
         basis_name: str = "B",
         penalty: ArrayLike | None = None,
     ) -> Basis:
+        """
+        Random intercept basis.
+
+        Parameters
+        ----------
+        cluster
+            Name of the cluster variable.
+        basis_name
+            Name of the basis variable.
+        penalty
+            Custom penalty matrix to use. Default is an iid penalty.
+
+        Notes
+        ------
+        If the penalty is iid, then each column of the basis consists only of binary
+        (0/1) entries, and each row has only one non-zero entry. In this case it is not
+        necessary to store the full matrix in memory and evaluate the term as a dot
+        product ``basis @ coef``.
+
+        Instead, we can simply store a 1d array of indices, identifying the nonzero
+        column for each row of the basis matrix, and use this index to access the
+        corresponding coefficient. This scenario is common for independent random
+        intercepts.
+
+        This method returns such a sparse representation of the random intercept
+        basis if ``penalty=None``.
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.ri("x_cat")
+        Basis(name="B(x_cat)")
+
+        """
         if penalty is not None:
             penalty = jnp.asarray(penalty)
         result = self.registry.get_obs_and_mapping(cluster)

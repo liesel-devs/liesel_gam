@@ -617,7 +617,7 @@ class IndexingTerm(StrctTerm):
     ``basis @ coef``.
 
     Instead, we can simply store a 1d array of indices, identifying the nonzero column
-    for each row of the basis matrix, and use this index to access to corresponding
+    for each row of the basis matrix, and use this index to access the corresponding
     coefficient. This scenario is common for independent random intercepts.
 
     This class implements such a sparse representation.
