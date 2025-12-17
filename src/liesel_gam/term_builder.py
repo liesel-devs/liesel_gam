@@ -210,7 +210,6 @@ class TermBuilder:
         formula: str,
         prior: lsl.Dist | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
-        include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinTerm:
         r"""
@@ -248,6 +247,8 @@ class TermBuilder:
 
         """
 
+        include_intercept = False
+
         basis = self.bases.lin(
             formula,
             xname="",
@@ -279,10 +280,11 @@ class TermBuilder:
         formula: str,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
-        include_intercept: bool = False,
         context: dict[str, Any] | None = None,
         factor_scale: bool = False,
     ) -> StrctLinTerm:
+        include_intercept = False
+
         basis = self.bases.lin(
             formula,
             xname="",
