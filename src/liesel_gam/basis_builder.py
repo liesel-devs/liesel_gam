@@ -1235,7 +1235,7 @@ class BasisBuilder:
         >>> df = gam.demo_data(n=100)
         >>> registry = gam.PandasRegistry(df)
         >>> bb = gam.BasisBuilder(registry)
-        >>> bb.gp("x_nonlin", k=20)
+        >>> bb.kriging("x_nonlin", k=20)
         Basis(name="B(x_nonlin)")
 
         """
@@ -1534,32 +1534,134 @@ class BasisBuilder:
         basis_name: str = "B",
     ) -> MRFBasis:
         """
-        Polys: Dictionary of arrays. The keys of the dict are the region labels.
-            The corresponding values define the region by defining polygons.
-        nb: Dictionary of array. The keys of the dict are the region labels.
-            The corresponding values indicate the neighbors of the region.
-            If it is a list or array of strings, the values are the labels of the
-            neighbors.
-            If it is a list or array of integers, the values are the indices of the
+        Gaussian Markov random field basis and penalty.
+
+        The preferred way to initialize these is by supplying ``polys``, because this
+        enables plotting via :func:`plot_regions`.
+
+        Parameters
+        ----------
+        x
+            Name of the region variable.
+        k
+            If ``-1``, this is a "full-rank" (up to identifiability constraint) Markov
+            random field. If ``k`` is an integer smaller than the number of unique
+            regions, a low-rank field will be returned, see Wood (2017), Sections 5.8.1
+            and 5.4.2.
+        polys
+            Dictionary of arrays. The keys of the dict are the region labels. The
+            corresponding values define the region by defining polygons. The
+            neighborhood structure can be inferred from this polygon information.
+        nb
+            Dictionary of array. The keys of the dict are the region labels. The
+            corresponding values indicate the neighbors of the region. If the values are
+            lists or arrays of strings, the values are the labels of the neighbors. If
+            they are lists or arrays of integers, the values are the indices of the
             neighbors. Indices correspond to regions based on an alphabetical ordering
             of regions.
-        penalty: If penalty is supplied, it takes precedence over both nb and polys,
-            and the arguments '
+        penalty
+            If a penalty is supplied explicitly, it takes precedence over a potential
+            penalty derived from both nb and polys.
+        penalty_labels
+            If a penalty is supplied explicitly, labels must also be specified. The
+            labels create the association between penalty columns and region labels. The
+            values of this sequence should be the string labels of unique regions in
+            ``x``.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        basis_name
+            Function-name for the basis matrix. If ``"B"``, and the basis is a function
+            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            ``"B(x)"``. Names are made unique by appending a counter if necessary.
+
+        See Also
+        --------
+        .plot_regions : Plots MCMC results on a map of the regions.
+        .plot_polys : Plots a map based on polygons.
+        .plot_forest : Plots regions with uncertainty in a forest plot.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        Returns
+        -------
+
+            Comments on the :class:`.MRFSpec` attached to the returned
+            :class:`.MRFBasis` variable:
+
+            - If either polys or nb are supplied, the returned MRFSpec will contain
+              nb.
+            - If only a penalty matrix is supplied, the returned MRFSpec will *not*
+              contain nb.
+            - Returning the label order only makes sense if the basis is *not*
+              reparameterized, because only then we have a clear correspondence of
+              parameters to labels. If the basis is reparameterized, with
+              ``absorb_cons=True`` or of low rank with ``k ≠ -1``, there is no such
+              correspondence in a clear way, so the label order is None.
 
 
-        mgcv does not concern itself with your category ordering. It *will* order
-        categories alphabetically. Penalty columns have to take this into account.
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> print(df.x_cat.unique())
+        ['a' 'b' 'c']
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
+        >>> bb.mrf("x_cat", nb=nb)
+        MRFBasis(name="B(x_cat)")
 
-        Comments on return value:
+        To inspect the penalty and the dummy-coded basis matrix:
 
-        - If either polys or nb are supplied, the returned container will contain nb.
-        - If only a penalty matrix is supplied, the returned container will *not*
-          contain nb.
-        - Returning the label order only makes sense if the basis is *not*
-          reparameterized, because only then we have a clear correspondence of
-          parameters to labels.
-          If the basis is reparameterized, there's no such correspondence in a clear
-          way, so the returned label order is None.
+        >>> basis = bb.mrf(
+        ...     "x_cat",
+        ...     nb=nb,
+        ...     absorb_cons=False,
+        ...     diagonal_penalty=False,
+        ...     scale_penalty=False,
+        ... )
+
+        >>> basis.penalty.value
+        Array([[ 2., -1., -1.],
+               [-1.,  1.,  0.],
+               [-1.,  0.,  1.]], dtype=float32)
+
+        >>> basis.value[:5, ...]
+        Array([[1., 0., 0.],
+               [0., 1., 0.],
+               [1., 0., 0.],
+               [0., 1., 0.],
+               [0., 0., 1.]], dtype=float32)
+
+        >>> basis.mrf_spec.ordered_labels
+        ['a', 'b', 'c']
+
+
+        References
+        ----------
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
 
         """
 
