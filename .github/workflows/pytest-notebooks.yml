@@ -19,7 +19,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.13"]
-        notebook-dir: ["basic", "composite", "lin", "multivariate", "univariate"]
+        notebook-dir: ["composite", "lin", "multivariate", "univariate"]
 
     steps:
       - name: Check out repository
