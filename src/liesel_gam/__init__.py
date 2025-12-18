@@ -4,6 +4,7 @@ from .__about__ import __version__ as __version__
 from .basis import Basis as Basis
 from .basis import LinBasis as LinBasis
 from .basis import MRFBasis as MRFBasis
+from .basis import MRFSpec as MRFSpec
 from .basis_builder import BasisBuilder as BasisBuilder
 from .category_mapping import CategoryMapping as CategoryMapping
 from .category_mapping import series_is_categorical as series_is_categorical
