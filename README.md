@@ -1,5 +1,6 @@
 # Bayesian Generalized Additive Models in Liesel
 
+[![readthedocs](https://readthedocs.org/projects/liesel_gam/badge/?version=latest)](https://liesel-gam.readthedocs.io/latest/)
 [![pypi](https://img.shields.io/pypi/v/liesel_gam?color=blue)](https://pypi.org/project/liesel_gam)
 [![pre-commit](https://github.com/liesel-devs/liesel_gam/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/actions/workflows/pre-commit.yml)
 [![notebooks](https://github.com/liesel-devs/liesel_gam/actions/workflows/pytest-notebooks.yml/badge.svg)](https://github.com/liesel-devs/liesel_gam/tree/main/notebooks)
