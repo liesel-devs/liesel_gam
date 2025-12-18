@@ -1288,7 +1288,7 @@ class BasisBuilder:
         include_intercept: bool = False,
         context: dict[str, Any] | None = None,
     ) -> LinBasis:
-        r"""
+        """
         Linear design matrix without penalty.
 
         Parameters
@@ -1331,7 +1331,7 @@ class BasisBuilder:
         - String literals
         - Numeric literals
         - Wildcard ``"."``
-        - ``\|`` for splitting a formula
+        - ``\\|`` for splitting a formula
         - ``"~"`` in formula, since this method supports only the right-hand side of a
           Wilkinson formula.
         - ``1 +``, ``0 +``, or ``-1`` in formula, since intercept addition is handled
