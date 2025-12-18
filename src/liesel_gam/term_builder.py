@@ -75,7 +75,107 @@ class TermBuilder:
     See Also
     --------
 
-    .BasisBuilder : Initializes :class:`.Basis` objects with fitting penalty matrices.
+    .BasisBuilder : Initializes :class:`.Basis` objects with penalty matrices.
+
+    Notes
+    ------
+
+    By default, the coefficients for each term created with this termbuilder will
+    be equipped with the TermBuilder's default inference specification.
+    This default specification corresponds to a blockwise sampling scheme, with
+    each term's coefficients forming a single block. See the examples for how to
+    modify the default blockwise setup.
+
+    Examples
+    --------
+
+    Basic example using defaults, initializing a P-spline:
+
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(100)
+    >>> tb = gam.TermBuilder.from_df(df)
+    >>> tb.ps("x_nonlin", k=20)
+    StrctTerm(name="ps(x_nonlin)")
+
+    Changing the default inference. This still means, each term is sampled in a 
+    separate block.
+
+    >>> import liesel.goose as gs
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(100)
+    >>> tb = gam.TermBuilder.from_df(df, default_inference=gs.MCMCSpec(gs.NUTSKernel))
+    >>> tb.ps("x_nonlin", k=20)
+    StrctTerm(name="ps(x_nonlin)")
+
+    Changing default inference, such that all term's coefficients are collected in the 
+    same block. Note that the scales are still sampled individually; by default with
+    Gibbs kernels.
+
+    >>> import liesel.goose as gs
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(100)
+    >>> tb = gam.TermBuilder.from_df(
+    ...     df,
+    ...     default_inference=gs.MCMCSpec(gs.NUTSKernel, kernel_group="1"),
+    ... )
+    >>> tb.ps("x_nonlin", k=20)
+    StrctTerm(name="ps(x_nonlin)")
+
+    Changing the default scale. Here, we change the default scales to have a HalfNormal 
+    prior, and sample them on inverse-softplus level using independent IWLS kernels.
+
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> import tensorflow_probability.substrates.jax.bijectors as tfb
+    >>> import tensorflow_probability.substrates.jax.distributions as tfd
+    >>> import liesel_gam as gam
+
+    >>> def scale_fn():
+    ...     prior = lsl.Dist(
+    ...         tfd.HalfNormal,
+    ...         scale=jnp.array(20.0),
+    ...     )
+    ...     scale = lsl.Var.new_param(
+    ...         jnp.array(0.1),
+    ...         distribution=prior,
+    ...         name="{x}",  # placeholder for the automatically generated name
+    ...     )
+    ...     scale.transform(
+    ...         tfb.Softplus(),
+    ...         inference=gs.MCMCSpec(gs.IWLSKernel.untuned), # inference for scales
+    ...         name="h({x})",  # {x} is a placeholder
+    ...     )
+    ...     return scale
+    
+    
+    >>> df = gam.demo_data(100)
+    >>> tb = gam.TermBuilder.from_df(df, default_scale_fn=scale_fn)
+    >>> tb.ps("x_nonlin", k=20)
+    StrctTerm(name="ps(x_nonlin)")
+
+    Using a name prefix:
+
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(100)
+    >>> tb = gam.TermBuilder.from_df(df, prefix_names_by="loc.")
+    >>> tb.ps("x_nonlin", k=20)
+    StrctTerm(name="loc.ps(loc.x_nonlin)")
+
+    If you don't want the name prefix to appear on the covariate names, too, initialize
+    the :class:`.PandasRegistry` individually. This way, you can for example use the
+    same registry for two TermBuilder instances.
+
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(100)
+    >>> registry = gam.PandasRegistry(df)
+
+    >>> tb1 = gam.TermBuilder(registry, prefix_names_by="loc.")
+    >>> tb1.ps("x_nonlin", k=20)
+    StrctTerm(name="loc.ps(x_nonlin)")
+    
+    >>> tb2 = gam.TermBuilder(registry, prefix_names_by="scale.")
+    >>> tb2.ps("x_nonlin", k=20)
+    StrctTerm(name="scale.ps(x_nonlin)")
 
     """
 
@@ -107,36 +207,36 @@ class TermBuilder:
         term_name: str,
     ) -> lsl.Var:
         """
-        Fully initializes a scale variable with a term-related name.
-
-        The behavior depends on the type of the ``scale`` argument.
-
-        - If it is ``"default"``, the return will be created based on the \
-            ``default_scale_fn`` argument supplied to the TermBuilder upon \
-            initialization.
-        - If it is a :class:`.VarIGPrior`, the return \
-            will be ``scale = sqrt(var)``, where \
-            ``var ~ InverseGamma(concentration, scale)``, with concentration and scale \
-            given by the :class:`.VarIGPrior` object. For most terms, this \
-            will mean that a fitting Gibbs sampler can be automatically set up for \
-            ``var``. The exceptions to this rule are :meth:`.ta`, :meth:`.tf`, and \
-            :meth:`.tx`.
-        - If it is a ``float``, the return will be ``lsl.Var.new_value`` holding this \
-            float.
-        - If it is a :class:`liesel.model.Var` object, the return will be this \
-            object. If you supply a :class:`liesel.model.Var`, you can use the place-\
-            holder ``{x}`` in its name to allow this method to fill in the \
-            ``term_name``.
+        Initializes a scale variable with a term-related name.
 
         Parameters
         ----------
         scale
             Scale object.
         term_name
-            Name of the term this scale corresponds to. If you supply a \
-            :class:`liesel.model.Var`, you can use the place-\
-            holder ``{x}`` in its name to allow this method to fill in the \
-            ``term_name``.
+            Name of the term this scale corresponds to. If you supply a
+            :class:`liesel.model.Var`, you can use the place- holder ``{x}`` in its name
+            to allow this method to fill in the ``term_name``.
+
+        Notes
+        -----
+        The behavior depends on the type of the ``scale`` argument.
+
+        - If it is ``"default"``, the return will be created based on the
+            ``default_scale_fn`` argument supplied to the TermBuilder upon
+            initialization.
+        - If it is a :class:`.VarIGPrior`, the return
+            will be ``scale = sqrt(var)``, where ``var ~ InverseGamma(concentration,
+            scale)``, with concentration and scale given by the :class:`.VarIGPrior`
+            object. For most terms, this will mean that a fitting Gibbs sampler can be
+            automatically set up for ``var``. The exceptions to this rule are
+            :meth:`.ta`, :meth:`.tf`, and :meth:`.tx`.
+        - If it is a ``float``, the return will be ``lsl.Var.new_value`` holding this
+            float.
+        - If it is a :class:`liesel.model.Var` object, the return will be this
+            object. If you supply a :class:`liesel.model.Var`, you can use the place-
+            holder ``{x}`` in its name to allow this method to fill in an automatically
+            generated name based on the ``term_name``.
         """
         if scale == "default":
             if isinstance(self._default_scale_fn, VarIGPrior):
@@ -176,6 +276,14 @@ class TermBuilder:
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
     ) -> TermBuilder:
+        """
+        Initializes a TermBuilder from a dictionary that holds the data.
+
+        Internally, this will create a :class:`.PandasRegistry` with
+        ``na_action="drop"``.
+
+        The other arguments are passed on to the init.
+        """
         return cls.from_df(
             pd.DataFrame(data),
             prefix_names_by=prefix_names_by,
@@ -191,6 +299,14 @@ class TermBuilder:
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
     ) -> TermBuilder:
+        """
+        Initializes a TermBuilder from a pandas dataframe.
+
+        Internally, this will create a :class:`.PandasRegistry` with
+        ``na_action="drop"``.
+
+        The other arguments are passed on to the init.
+        """
         registry = PandasRegistry(
             data, na_action="drop", prefix_names_by=prefix_names_by
         )
@@ -202,6 +318,11 @@ class TermBuilder:
         )
 
     def labels_to_integers(self, newdata: dict) -> dict:
+        """
+        Processes a ``newdata`` dictionary, replacing labels of caterogical variables
+        with their integer representation, such that they can be understood by
+        :meth:`liesel.model.Model.predict`.
+        """
         return labels_to_integers(newdata, self.bases.mappings)
 
     # formula
@@ -212,39 +333,99 @@ class TermBuilder:
         inference: InferenceTypes | None | Literal["default"] = "default",
         context: dict[str, Any] | None = None,
     ) -> LinTerm:
-        r"""
-        Supported:
-        - {a+1} for quoted Python
-        - `weird name` backtick-strings for weird names
-        - (a + b)**n for n-th order interactions
-        - a:b for simple interactions
-        - a*b for expanding to a + b + a:b
-        - a / b for nesting
-        - b %in% a for inverted nesting
-        - Python functions
-        - bs
-        - cr
-        - cs
-        - cc
-        - hashed
+        """
+        Linear term without penalty.
 
-        .. warning:: If you use bs, cr, cs, or cc, be aware that these will not
-            lead to terms that include a penalty. In most cases, you probably want
-            to use :meth:`~.TermBuilder.ps` or other penalized smooths instead.
+        Parameters
+        ----------
+        formula
+            Right-hand side of a model formula, as understood by formulaic_. Most of
+            formulaic's grammar_ is supported. See notes for details.
+        prior
+            An optional prior for this term's coefficient. The default is a constant
+            prior.
+        inference
+            An optional :class:`liesel.goose.MCMCSpec` instance (or other valid
+            inference object). If omitted, the term's default inference specification
+            is used.
+        context
+            Dictionary of additional Python objects that should be made available to
+            formulaic when constructing the design matrix. Gets passed to
+            ``formulaic.ModelSpec.get_model_matrix()``.
+
+        Notes
+        -----
+
+        This term evaluates to :math:`\\mathbf{X}\\boldsymbol{\\beta}`, where
+        :math:`\\mathbf{X}` is a linear-effect design matrix. The coefficient
+        vector receives a constant prior by default,
+        :math:`\\boldsymbol{\\beta} \\sim \\text{const}`, but a custom prior can be
+        passed in the argument ``prior`` as a :class:`liesel.model.Dist`.
+
+        The following formulaic syntax is supported:
+
+        - ``+`` for adding a term
+        - ``a:b`` for simple interactions
+        - ``a*b`` for expanding to ``a + b + a:b``
+        - ``(a + b)**n`` for n-th order interactions
+        - ``a / b`` for nesting
+        - ``C(a, ...)`` for categorical effects
+        - ``b %in% a`` for inverted nesting
+        - ``{a+1}`` for quoted Python code to be executed
+        - ```weird name``` backtick-strings for weird names
+        - Other transformations like ``center(a)``, ``scale(a)``, or ``lag(a)``, see
+          grammar_.
+        - Python functions
 
         Not supported:
 
         - String literals
         - Numeric literals
-        - Wildcard "."
-        - \| for splitting a formula
-        - "te" tensor products
+        - Wildcard ``"."``
+        - ``\\|`` for splitting a formula
+        - ``"~"`` in formula, since this method supports only the right-hand side of a
+          Wilkinson formula.
+        - ``1 +``, ``0 +``, or ``-1`` in formula, since intercept addition is handled
+          via the argument ``include_intercept``.
 
-        - "~" in formula
-        - 1 + in formula
-        - 0 + in formula
-        - -1 in formula
+        References
+        ----------
 
+        - Python library formulaic: https://matthewwardrop.github.io/formulaic/latest/
+
+        Examples
+        --------
+
+        Simple example:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.lin("x_lin + x_nonlin + x_cat")
+        LinBasis(name="X")
+
+        Customized categorical encoding:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.lin("x_lin + x_nonlin + C(x_cat, contr.sum)")
+        LinBasis(name="X")
+
+        Interaction:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> registry = gam.PandasRegistry(df)
+        >>> bb = gam.BasisBuilder(registry)
+        >>> bb.lin("x_lin * x_cat")
+        LinBasis(name="X")
+
+
+        .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
+        .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
 
         include_intercept = False
