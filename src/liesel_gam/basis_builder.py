@@ -1528,9 +1528,9 @@ class BasisBuilder:
         nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
         penalty_labels: Sequence[str] | None = None,
-        absorb_cons: bool = False,
-        diagonal_penalty: bool = False,
-        scale_penalty: bool = False,
+        absorb_cons: bool = True,
+        diagonal_penalty: bool = True,
+        scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> MRFBasis:
         """
