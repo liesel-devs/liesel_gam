@@ -841,8 +841,8 @@ class MultivariateNormalStructured(tfd.Distribution):
         --------
             The returned constructor takes the following arguments:
 
-            - *loc*: Location array with shape (B, J), where B is the batch shape and J is
-              the event shape.
+            - *loc*: Location array with shape (B, J), where B is the batch shape and
+              J is the event shape.
             - *scales*: Array of scales for the marginal smooths, has shape (B, M) where
               B is the batch shape and M is the number of marginal smooths.
 

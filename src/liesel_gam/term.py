@@ -193,7 +193,8 @@ class StrctTerm(UserVar):
     - :math:`i=1, \dots, N` is the observation index,
     - :math:`\mathbf{x}_i^\top = [x_{i,1}, \dots, x_{i,M}]` are covariate
       observations, where :math:`M` denotes the number of covariates,
-    - :math:`\mathbf{b}(\mathbf{x}_i)^\top = [B_1(\mathbf{x}_i), \dots, B_J(\mathbf{x}_i)]`
+    - :math:`\mathbf{b}(\mathbf{x}_i)^\top = [B_1(\mathbf{x}_i),
+      \dots, B_J(\mathbf{x}_i)]`
       are a set of basis function evaluations, and
     - :math:`\boldsymbol{\beta}^\top = [\beta_1, \dots, \beta_J]`
       are the corresponding coefficients.
@@ -826,6 +827,8 @@ class BasisDot(UserVar):
 
 
 class LinMixin:
+    """Mixin that adds attributes for linear terms to a class."""
+
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
     _column_names: list[str] | None = None

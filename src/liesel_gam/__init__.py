@@ -33,6 +33,7 @@ from .summary import summarise_nd_smooth as summarise_nd_smooth
 from .summary import summarise_regions as summarise_regions
 from .term import BasisDot as BasisDot
 from .term import IndexingTerm as IndexingTerm
+from .term import LinMixin as LinMixin
 from .term import LinTerm as LinTerm
 from .term import MRFTerm as MRFTerm
 from .term import RITerm as RITerm

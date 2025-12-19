@@ -79,6 +79,7 @@ API Reference
     ~liesel_gam.StrctTensorProdTerm
     ~liesel_gam.LinTerm
     ~liesel_gam.StrctLinTerm
+    ~liesel_gam.LinMixin
     ~liesel_gam.IndexingTerm
     ~liesel_gam.RITerm
     ~liesel_gam.MRFTerm
