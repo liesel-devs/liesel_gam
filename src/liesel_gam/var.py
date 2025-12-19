@@ -182,9 +182,9 @@ class ScaleIG(UserVar):
     References
     -----------
 
-    Section 9.6.3 in 
-    
-    Fahrmeir, L., Kneib, T., Lang, S., & Marx, B. (2013). Regression—Models, methods 
+    Section 9.6.3 in
+
+    Fahrmeir, L., Kneib, T., Lang, S., & Marx, B. (2013). Regression—Models, methods
     and applications. Springer. https://doi.org/10.1007/978-3-642-34333-9
 
     """
