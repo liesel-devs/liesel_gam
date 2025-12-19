@@ -113,6 +113,48 @@ class Basis(UserVar):
     determine its shape and dtype. The internal callback wrapper inspects the return
     shape to build a compatible JAX ShapeDtypeStruct for the pure callback.
 
+    Examples
+    --------
+    Implementing a B-spline basis manually:
+
+    >>> from liesel.contrib.splines import (
+    ...     basis_matrix,
+    ...     equidistant_knots,
+    ...     pspline_penalty,
+    ... )
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(n=100)
+
+    >>> knots = equidistant_knots(df["x_nonlin"].to_numpy(), n_param=20)
+    >>> pen = pspline_penalty(d=20)
+
+    >>> def bspline_basis(x):
+    ...     return basis_matrix(x, knots=knots)
+
+    >>> gam.Basis(
+    ...     value=df["x_nonlin"].to_numpy(),
+    ...     basis_fn=bspline_basis,
+    ...     xname="x",
+    ...     penalty=pen,
+    ... )
+    Basis(name="B(x)")
+
+    Implementing a fixed basis matrix (without using the basis function). This is
+    not recommended, because it means you cannot simply supply new covariate values
+    to :meth:`liesel.model.Model.predict` for evaluating the basis matrix for
+    predictions.
+
+    >>> from liesel.contrib.splines import equidistant_knots, basis_matrix
+    >>> import liesel_gam as gam
+    >>> df = gam.demo_data(n=100)
+
+    >>> knots = equidistant_knots(df["x_nonlin"].to_numpy(), n_param=20)
+    >>> def bspline_basis(x):
+    ...     return basis_matrix(x, knots=knots)
+
+    >>> x = df["x_nonlin"].to_numpy()
+    >>> gam.Basis(value=bspline_basis(x), name="B(x)")
+    Basis(name="B(x)")
     """
 
     def __init__(
