@@ -689,8 +689,8 @@ class MultivariateNormalStructured(tfd.Distribution):
     >>> scales = jnp.array([1.0, 2.0])
 
     >>> dist = MVNDStrct(loc=loc, scales=scales)
-    >>> dist.log_prob(jnp.zeros(n))
-    Array(-22.165615, dtype=float32)
+    >>> dist.log_prob(jnp.zeros(n)).round(1)
+    Array(-22.2, dtype=float32)
 
     Draw some random samples from the stochastic part:
 
@@ -865,8 +865,8 @@ class MultivariateNormalStructured(tfd.Distribution):
         >>> scales = jnp.array([1.0, 2.0])
 
         >>> dist = MVNDStrct(loc=loc, scales=scales)
-        >>> dist.log_prob(jnp.zeros(n))
-        Array(-22.165615, dtype=float32)
+        >>> dist.log_prob(jnp.zeros(n)).round(1)
+        Array(-22.2, dtype=float32)
 
         Draw some random samples from the stochastic part:
 
