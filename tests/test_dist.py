@@ -464,7 +464,6 @@ class TestMultivariateNormalStructuredSingular:
         d2 = gd.MultivariateNormalStructured.from_penalties(
             loc=loc, scales=scales, penalties=[K1, K2]
         )
-
         x = jax.random.normal(jax.random.key(1), (n,))
 
         assert jnp.allclose(d1.log_prob(x), d2.log_prob(x))

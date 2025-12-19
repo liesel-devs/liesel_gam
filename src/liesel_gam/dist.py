@@ -15,6 +15,68 @@ Array = jax.typing.ArrayLike
 
 
 class MultivariateNormalSingular(tfd.Distribution):
+    r"""
+    Potentially rank-deficient multivariate Gaussian distribution used as a prior in
+    structured additive terms.
+
+    Implements the :class:`tfp.distributions.Distribution` interface.
+
+    Parameters
+    -----------
+    loc
+        Location array of shape (B, J) where B is the batching dimension and J is the
+        number of coefficients; the event shape of this distribution.
+    scale
+        Scale array of shape (B,), where B is the batching dimension. This is
+        :math:`\tau = \sqrt{\tau^2}`.
+    penalty
+        Penalty matrix of shape (B, J, J), where B is the batching dimension and J is
+        the number of coefficients; the event shape of this distribution.
+    penalty_rank
+        Array of shape (B,),  where B is the batching dimension, giving the rank of the
+        penalty matrix. This is required in addition to the penalty for computational
+        efficiency, to avoid re-computing the rank of the penalty matrix in each
+        execution.
+
+    See Also
+    --------
+    .StrctTerm : Structured additive term object, a Liesel var that uses this
+      distribution.
+    .MultivariateNormalStructured : More general distribution, implementing the prior
+      for tensor product terms.
+
+    Notes
+    -----
+    The coefficient :math:`\boldsymbol{\beta} \in \mathbb{R}^{J \times 1}`
+    in a structured additive term receives a potentially rank-deficient
+    multivariate normal prior
+
+    .. math::
+
+        p(\boldsymbol{\beta}) \propto
+        \left(\frac{1}{\tau^2}\right)^{\operatorname{rk}(\mathbf{K})/2} \exp \left( -
+        \frac{1}{\tau^2} \boldsymbol{\beta}^\top \mathbf{K} \boldsymbol{\beta} \right)
+
+    with the potentially rank-deficient penalty matrix :math:`\mathbf{K}` of rank
+    :math:`\operatorname{rk}(\mathbf{K})`. The variance parameter :math:`\tau^2` acts as
+    an inverse smoothing parameter.
+
+    .. rubric:: Sampling from this distribution.
+
+    Sampling from this distribution is implemented, but note that, if
+    :math:`\mathbf{K}` is rank-deficient, samples are drawn only
+    from the stochastic part of the distribution; the constant part will remain fixed
+    to zero. For sampling, we use a generalized inverse of the potentially
+    rank-deficient penalty matrix :math:`\mathbf{K}`.
+
+    References
+    ----------
+    - Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+      system for building structured additive distributional regression models with
+      tensor product interactions. TEST, 28(1), 1–39.
+      https://doi.org/10.1007/s11749-019-00631-z
+    """
+
     def __init__(
         self,
         loc: Array,
@@ -235,16 +297,31 @@ def _kron_sum_quadratic(x: jax.Array, Ks: Sequence[jax.Array]) -> jax.Array:
 
 class StructuredPenaltyOperator:
     """
-    - scales is an array with shape (B,K), where B is the batch shape and K is the
-      number of penalties. Each scale parameter corresponds to one penalty.
-    - penalties is a sequence of length K, containing arrays with shape (B, Di, Di).
-      B is the batch shape.
-      (Di, Di) is the block size of the individual penalty and can differ between
-      elements of the penalties sequence.
-      N = prod([p.shape[-1] for p in penalties]).
-    - penalties_eigvalues is a sequence of length K, containing arrays of shape (B, Di).
-    - penalties_eigvectors is a sequence of length K, containing arrays of shape
-      (B, Di, Di).
+    Operator for efficiently computing the pseudo log determinant and
+    quadratic form of a structured tensor product precision matrix.
+
+    Parameters
+    ----------
+    scales
+        Array of shape (B, M), where B is the batch shape and M is the number of
+        marginal penalties
+    penalties
+        Sequence of length M, containing array of shape (B, Jm, Jm), where
+        B is the batch shape, and Jm is the block size of the individual penalty.
+        This block size can differ between elements of the penalty sequence.
+    penalties_eigenvalues
+        Sequence of arrays of shape (B, Jm), containing the eigenvalues of the
+        marignal penalties.
+    masks
+        Boolean array of shape (B, J) where B is the batch shape and
+        ``J = prod(J1, ... JM)``
+        is the dimension of the overall precision matrix. The mask indicates the
+        nonzero eigenvalues of the overall precision matrix,
+        where a ``True`` entry means that the corresponding eigenvalue is nonzero.
+        If ``None``, will be inferred from ``penalties_eigenvalues`` and ``tol``
+        at runtime.
+    tol
+        Used to infer ``masks`` at runtime, if ``masks=None`` was passed.
     """
 
     def __init__(
@@ -278,6 +355,14 @@ class StructuredPenaltyOperator:
         eps: float = 1e-6,
         validate_args: bool = False,
     ) -> Self:
+        """
+        Shortcut for initializing the operator from marignal scales and penalties
+        (expensive).
+
+        Computes the eigenvalue decompositions of the marginal penalties and the
+        ``mask`` at runtime, so this is not appropriate for repeated execution if
+        computational efficiency is a concern.
+        """
         evs = [jnp.linalg.eigh(K) for K in penalties]
         evals = [ev.eigenvalues for ev in evs]
 
@@ -293,12 +378,25 @@ class StructuredPenaltyOperator:
 
     @cached_property
     def variances(self) -> jax.Array:
+        """
+        Array of marginal variances (squares of marginal scales).
+        """
         return jnp.square(self._scales)
 
     def materialize_precision(self) -> jax.Array:
+        """
+        Materializes the full J x J overall precision matrix.
+
+        Usually not necessary, mostly useful for testing and checking.
+        """
         return self._materialize_precision(self.variances)
 
     def materialize_penalty(self) -> jax.Array:
+        """
+        Materializes the full J x J overall precision matrix.
+
+        Usually not necessary, mostly useful for testing and checking.
+        """
         return self._materialize_precision(jnp.ones_like(self.variances))
 
     def _materialize_precision(self, variances: jax.Array) -> jax.Array:
@@ -370,6 +468,15 @@ class StructuredPenaltyOperator:
         return diag
 
     def log_pdet(self) -> jax.Array:
+        """
+        Efficiently computes the log pseudo-determinant of the overall precision matrix.
+
+        Implements the result obtained by Bach & Klein (2025).
+
+        Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
+        Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
+        https://doi.org/10.1007/s11222-025-10569-y
+        """
         variances = self.variances  # shape (B..., K)
         batch_shape = variances.shape[:-1]
         K = variances.shape[-1]
@@ -404,6 +511,13 @@ class StructuredPenaltyOperator:
         return logdet
 
     def quad_form(self, x: jax.Array) -> jax.Array:
+        """
+        Efficiently computes a quadratic form ``x.T @ P @ x``.
+
+        ``P`` is the overall precision matrix of the tensor product. The quadratic form
+        is computed without actually materializing the full precision matrix by
+        exploiting its structured composition of marginal precisions.
+        """
         variances = self.variances  # shape (B..., K)
         batch_shape = variances.shape[:-1]
         batch_shape_x = x.shape[:-1]
@@ -456,19 +570,133 @@ class StructuredPenaltyOperator:
 
 
 class MultivariateNormalStructured(tfd.Distribution):
-    """
-    - loc is an array with shape (B, N), where B is the batch shape and N is the
-      event shape.
-    - scales is an array with shape (B,K), where B is the batch shape and K is the
-      number of penalties. Each scale parameter corresponds to one penalty.
-    - penalties is a sequence of length K, containing arrays with shape (B, Di, Di).
-      B is the batch shape.
-      (Di, Di) is the block size of the individual penalty and can differ between
-      elements of the penalties sequence.
-      N = prod([p.shape[-1] for p in penalties]).
-    - penalties_eigvalues is a sequence of length K, containing arrays of shape (B, Di).
-    - penalties_eigvectors is a sequence of length K, containing arrays of shape
-      (B, Di, Di).
+    r"""
+    Potentially rank-deficient multivariate Gaussian distribution for the prior used in
+    structured tensor product terms.
+
+    Implements the :class:`tfp.distributions.Distribution` interface.
+
+    Parameters
+    ----------
+    loc
+        Location array with shape (B, J), where B is the batch shape and J is the
+        event shape.
+    op
+        A structured penalty operator for efficient computation of the
+        pseudo log-determinant and quadratic form.
+    include_normalizing_constant
+        Whether to include the normalizing constant when computing the
+        log density in the ``.log_prob`` method. If True, the returned log
+        probability will be equal to the log probability returned by a
+        ``MultivariateNormalFullCovariance``, if all marginal penalty matrices
+        are of full rank.
+
+    Notes
+    -----
+
+    This distribution is the prior used for the coefficient vector
+    in :class:`.StrctTensorProdTerm`.
+
+    It is a potentially rank-deficient multivariate
+    Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as
+
+    .. math::
+
+        p(\boldsymbol{\beta} | \boldsymbol{\tau}^2)
+        \propto
+        \operatorname{Det}(\mathbf{K}(\boldsymbol{\tau}^2))^{1/2}
+        \exp \left(
+        - \frac{1}{2}
+        \boldsymbol{\beta}^\top
+        \mathbf{K}(\boldsymbol{\tau}^2)
+        \boldsymbol{\beta}
+        \right),
+
+    with the precision matrix constructed from marginal penalties
+    :math:`\tilde{\mathbf{K}}_1, \dots, \tilde{\mathbf{K}}_M`
+    and variance parameters :math:`\tau^2_1,\dots, \tau^2_M` as
+
+    .. math::
+
+        \mathbf{K}(\boldsymbol{\tau}^2)
+        = \frac{\mathbf{K}_1}{\tau^2_1}
+        +
+        \cdots
+        +
+        \frac{\mathbf{K}_M}{\tau^2_M},
+
+    where
+
+    .. math::
+
+        \mathbf{K}_m = \mathbf{I}_{J_1}
+        \otimes \cdots \otimes
+        \mathbf{I}_{J_{m-1}}
+        \otimes
+          \tilde{\mathbf{K}}_m
+        \otimes
+        \mathbf{I}_{J_{m+1}}
+        \otimes
+        \cdots
+        \mathbf{I}_{J_{M}},
+
+    and :math:`\mathbf{I}_{J_m}` denotes the identity matrix of dimension
+    :math:`J_m \times J_m`.
+
+    Since :math:`\mathbf{K}(\boldsymbol{\tau}^2)` may be rank-deficient,
+    :math:`\operatorname{Det}(\mathbf{K}(\boldsymbol{\tau}^2))` is the
+    pseudo-determinant, or generalized determinant.
+
+    This class exploits the clearly defined structure of the precision matrix
+    to obtain a computationally and memory-efficient evaluation of the prior.
+    We also implement the results obtained by Bach & Klein (2025) for efficiently
+    computing the pseudo-determinant; a key prerequisite for making higher-dimensional
+    tensor products feasible.
+
+    .. rubric:: Sampling from this distribution.
+
+    Sampling from this distribution is implemented, but note that, if
+    :math:`\mathbf{K}(\boldsymbol{\tau}^2)` is rank-deficient, samples are drawn only
+    from the stochastic part of the distribution; the constant part will remain fixed
+    to zero. For sampling, we use a generalized inverse of the potentially
+    rank-deficient precision matrix :math:`\mathbf{K}(\boldsymbol{\tau}^2)`.
+
+
+    References
+    ----------
+    - Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+      system for building structured additive distributional regression models with
+      tensor product interactions. TEST, 28(1), 1–39.
+      https://doi.org/10.1007/s11749-019-00631-z
+    - Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
+      Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
+      https://doi.org/10.1007/s11222-025-10569-y
+
+    Examples
+    --------
+    >>> import jax
+    >>> import jax.numpy as jnp
+    >>> from liesel.contrib.splines import pspline_penalty
+    >>> import liesel_gam as gam
+
+    >>> K1 = pspline_penalty(6)
+    >>> K2 = pspline_penalty(8)
+
+    >>> MVNDStrct = gam.MultivariateNormalStructured.get_locscale_constructor([K1, K2])
+
+    >>> n = K1.shape[-1] * K2.shape[-1]
+    >>> loc = jnp.zeros(n)
+    >>> scales = jnp.array([1.0, 2.0])
+
+    >>> dist = MVNDStrct(loc=loc, scales=scales)
+    >>> dist.log_prob(jnp.zeros(n))
+    Array(-22.165615, dtype=float32)
+
+    Draw some random samples from the stochastic part:
+
+    >>> xnew = dist.sample(sample_shape=(2,), seed=jax.random.key(1))
+    >>> xnew.shape
+    (2, 48)
     """
 
     def __init__(
@@ -556,6 +784,9 @@ class MultivariateNormalStructured(tfd.Distribution):
         include_normalizing_constant: bool = True,
     ) -> Self:
         """
+        Initializes the distribution directly from marginal scales and penalties
+        (computationally expensive).
+
         This is expensive, because it computes eigenvalue decompositions of all
         penalty matrices. Should only be used when performance is irrelevant.
         """
@@ -580,6 +811,69 @@ class MultivariateNormalStructured(tfd.Distribution):
         allow_nan_stats: bool = True,
         include_normalizing_constant: bool = True,
     ) -> Callable[[Array, Array], "MultivariateNormalStructured"]:
+        """
+        Creates a constructor for this distribution that takes a location array and
+        an array of marginal scales.
+
+        Parameters
+        ----------
+        penalties
+            Sequence of arrays, the penalty matrices of the marginal smooths.
+        tol
+            Tolerance used when computing the ranks of the marginal penalties and the
+            pseudo log-determinant. Any eigenvalue of a marginal penalty smaller than
+            this tolerance will be treated as zero.
+        precompute_masks
+            Whether to pre-compute and store the indices referring to non-zero
+            and zero eigenvalues, are compare the eigenvalues to the tolerance
+            in every function call at runtime. Pre-computing is safer, because this
+            allows us to run an additional check whether the zero- and non-zero
+            eigenvalues are successfully distinguished by the tolrance.
+        include_normalizing_constant
+            Whether to include the normalizing constant when computing the
+            log density in the ``.log_prob`` method. If True, the returned log
+            probability will be equal to the log probability returned by a
+            ``MultivariateNormalFullCovariance``, if all marginal penalty matrices
+            are of full rank.
+
+
+        Returns
+        --------
+            The returned constructor takes the following arguments:
+
+            - *loc*: Location array with shape (B, J), where B is the batch shape and J is
+              the event shape.
+            - *scales*: Array of scales for the marginal smooths, has shape (B, M) where
+              B is the batch shape and M is the number of marginal smooths.
+
+        Examples
+        --------
+        >>> import jax
+        >>> import jax.numpy as jnp
+        >>> from liesel.contrib.splines import pspline_penalty
+        >>> import liesel_gam as gam
+
+        >>> K1 = pspline_penalty(6)
+        >>> K2 = pspline_penalty(8)
+
+        >>> MVNDStrct = gam.MultivariateNormalStructured.get_locscale_constructor(
+        ...     [K1, K2]
+        ... )
+
+        >>> n = K1.shape[-1] * K2.shape[-1]
+        >>> loc = jnp.zeros(n)
+        >>> scales = jnp.array([1.0, 2.0])
+
+        >>> dist = MVNDStrct(loc=loc, scales=scales)
+        >>> dist.log_prob(jnp.zeros(n))
+        Array(-22.165615, dtype=float32)
+
+        Draw some random samples from the stochastic part:
+
+        >>> xnew = dist.sample(sample_shape=(2,), seed=jax.random.key(1))
+        >>> xnew.shape
+        (2, 48)
+        """
         penalties_ = [jnp.asarray(p) for p in penalties]
         evs = [jnp.linalg.eigh(K) for K in penalties]
         evals = [ev.eigenvalues for ev in evs]

@@ -43,7 +43,7 @@ def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> d
 
 
 class TermBuilder:
-    """
+    r"""
     Initializes structured additive model terms.
 
     The terms returned by the methods of this class are all instances of
@@ -60,17 +60,23 @@ class TermBuilder:
         Names created by this TermBuilder will be prefixed by the string supplied here.
     default_inference
         Defines the default inference specification for terms created by this builder.
+        Not that this default inference is only used for the coefficient variables
+        of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for the
+        scale variables (:attr:`.StrctTerm.scale`).
     default_scale_fn
-        A function or :class:`.VarIGPrior` object that defines the default scale \
-        for structured additive terms initialized by this builder. If this is a \
-        function, it must take no arguments and return a :class:`liesel.model.Var` \
-        that acts as the scale. If it is a :class:`.VarIGPrior`, the default scale \
-        will be ``scale = sqrt(var)``, where \
-        ``var ~ InverseGamma(concentration, scale)``, with concentration and scale \
-        given by the :class:`.VarIGPrior` object. For most terms, this \
-        will mean that a fitting Gibbs sampler can be automatically set up for \
-        ``var``. The exceptions to this rule are :meth:`.ta`, :meth:`.tf`, and \
-        :meth:`.tx`.
+        A function or :class:`.VarIGPrior` object that defines the default scale
+        for structured additive terms initialized by this builder. If this is a
+        function, it must take no arguments and return a :class:`liesel.model.Var`
+        that acts as the scale. If it is a :class:`.VarIGPrior`, the default scale
+        will be ``scale = sqrt(var)``, where
+        ``var ~ InverseGamma(concentration, scale)``, with concentration and scale
+        given by the :class:`.VarIGPrior` object. For most terms, this
+        will mean that a fitting Gibbs sampler can be automatically set up for
+        ``var``. The exceptions to this rule are :meth:`.ta`, :meth:`.tf`, and
+        :meth:`.tx`. Note that, if you supply a custom default scale function, you
+        should make sure that the ``inference`` attribute of your custom scale
+        is defined, otherwise your custom scale may not be included in MCMC
+        sampling.
 
     See Also
     --------
@@ -79,6 +85,56 @@ class TermBuilder:
 
     Notes
     ------
+
+    The terms created by this builder generally have the form
+
+    .. math::
+        s(\mathbf{x}_i) = \sum_{j=1}^J B_j(\mathbf{x}_i) \beta_j
+        = \mathbf{b}(\mathbf{x}_i)^\top \boldsymbol{\beta}
+
+    where
+
+    - :math:`i=1, \dots, N` is the observation index,
+    - :math:`\mathbf{x}_i^\top = [x_{i,1}, \dots, x_{i,M}]` are covariate
+      observations, where :math:`M` denotes the number of covariates,
+    - :math:`\mathbf{b}(\mathbf{x}_i)^\top = [B_1(\mathbf{x}_i),
+      \dots, B_J(\mathbf{x}_i)]`
+      are a set of basis function evaluations, and
+    - :math:`\boldsymbol{\beta}^\top = [\beta_1, \dots, \beta_J]`
+      are the corresponding coefficients.
+
+    In many cases, :math:`\mathbf{x}_i` will consist
+    of only one covariate, except for linear effects (:meth:`.lin`, :meth:`.slin`) or
+    tensor product smooths (:meth:`.tf`, :meth:`.tx`).
+
+    The basis matrix for such a term is
+
+    .. math::
+
+        \mathbf{B} = \begin{bmatrix}
+        \mathbf{b}(\mathbf{x}_1)^\top \\
+        \vdots \\
+        \mathbf{b}(\mathbf{x}_N)^\top
+        \end{bmatrix}.
+
+    The coefficient receives a potentially rank-deficient multivariate normal prior
+
+    .. math::
+
+        p(\boldsymbol{\beta}) \propto \left(
+        \frac{1}{\tau^2}\right)^{\operatorname{rk}(\mathbf{K})/2}
+        \exp \left(
+        - \frac{1}{\tau^2} \boldsymbol{\beta}^\top \mathbf{K} \boldsymbol{\beta}
+        \right)
+
+    with the potentially rank-deficient penalty matrix :math:`\mathbf{K}` of rank
+    :math:`\operatorname{rk}(\mathbf{K})`. The variance
+    parameter :math:`\tau^2` acts as an inverse smoothing parameter.
+
+    The choice of basis functions :math:`B_j` and penalty matrix :math:`\mathbf{K}`
+    determines the nature of the term.
+
+    .. rubric:: Sampling specification
 
     By default, the coefficients for each term created with this termbuilder will
     be equipped with the TermBuilder's default inference specification.
@@ -97,7 +153,7 @@ class TermBuilder:
     >>> tb.ps("x_nonlin", k=20)
     StrctTerm(name="ps(x_nonlin)")
 
-    Changing the default inference. This still means, each term is sampled in a 
+    Changing the default inference. This still means, each term is sampled in a
     separate block.
 
     >>> import liesel.goose as gs
@@ -107,7 +163,7 @@ class TermBuilder:
     >>> tb.ps("x_nonlin", k=20)
     StrctTerm(name="ps(x_nonlin)")
 
-    Changing default inference, such that all term's coefficients are collected in the 
+    Changing default inference, such that all term's coefficients are collected in the
     same block. Note that the scales are still sampled individually; by default with
     Gibbs kernels.
 
@@ -121,7 +177,7 @@ class TermBuilder:
     >>> tb.ps("x_nonlin", k=20)
     StrctTerm(name="ps(x_nonlin)")
 
-    Changing the default scale. Here, we change the default scales to have a HalfNormal 
+    Changing the default scale. Here, we change the default scales to have a HalfNormal
     prior, and sample them on inverse-softplus level using independent IWLS kernels.
 
     >>> import jax.numpy as jnp
@@ -142,12 +198,12 @@ class TermBuilder:
     ...     )
     ...     scale.transform(
     ...         tfb.Softplus(),
-    ...         inference=gs.MCMCSpec(gs.IWLSKernel.untuned), # inference for scales
+    ...         inference=gs.MCMCSpec(gs.IWLSKernel.untuned),  # inference for scales
     ...         name="h({x})",  # {x} is a placeholder
     ...     )
     ...     return scale
-    
-    
+
+
     >>> df = gam.demo_data(100)
     >>> tb = gam.TermBuilder.from_df(df, default_scale_fn=scale_fn)
     >>> tb.ps("x_nonlin", k=20)
@@ -172,7 +228,7 @@ class TermBuilder:
     >>> tb1 = gam.TermBuilder(registry, prefix_names_by="loc.")
     >>> tb1.ps("x_nonlin", k=20)
     StrctTerm(name="loc.ps(x_nonlin)")
-    
+
     >>> tb2 = gam.TermBuilder(registry, prefix_names_by="scale.")
     >>> tb2.ps("x_nonlin", k=20)
     StrctTerm(name="scale.ps(x_nonlin)")
@@ -334,7 +390,7 @@ class TermBuilder:
         context: dict[str, Any] | None = None,
     ) -> LinTerm:
         """
-        Linear term without penalty.
+        Linear term.
 
         Parameters
         ----------
@@ -352,6 +408,10 @@ class TermBuilder:
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
             ``formulaic.ModelSpec.get_model_matrix()``.
+
+        See Also
+        --------
+        .slin : Linear term with identity penalty matrix, leading to a ridge prior.
 
         Notes
         -----
@@ -464,6 +524,79 @@ class TermBuilder:
         context: dict[str, Any] | None = None,
         factor_scale: bool = False,
     ) -> StrctLinTerm:
+        """
+        Linear term with an identity penalty matrix, leading to a ridge prior.
+
+        Parameters
+        ----------
+        formula
+            Right-hand side of a model formula, as understood by formulaic_. Most of
+            formulaic's grammar_ is supported. See notes for details.
+        prior
+            An optional prior for this term's coefficient. The default is a constant
+            prior.
+        inference
+            An optional :class:`liesel.goose.MCMCSpec` instance (or other valid
+            inference object). If omitted, the term's default inference specification
+            is used.
+        context
+            Dictionary of additional Python objects that should be made available to
+            formulaic when constructing the design matrix. Gets passed to
+            ``formulaic.ModelSpec.get_model_matrix()``.
+
+        See Also
+        --------
+        .lin : Linear term with constant prior.
+
+        Notes
+        -----
+
+        The following formulaic syntax is supported:
+
+        - ``+`` for adding a term
+        - ``a:b`` for simple interactions
+        - ``a*b`` for expanding to ``a + b + a:b``
+        - ``(a + b)**n`` for n-th order interactions
+        - ``a / b`` for nesting
+        - ``C(a, ...)`` for categorical effects
+        - ``b %in% a`` for inverted nesting
+        - ``{a+1}`` for quoted Python code to be executed
+        - ```weird name``` backtick-strings for weird names
+        - Other transformations like ``center(a)``, ``scale(a)``, or ``lag(a)``, see
+          grammar_.
+        - Python functions
+
+        Not supported:
+
+        - String literals
+        - Numeric literals
+        - Wildcard ``"."``
+        - ``\\|`` for splitting a formula
+        - ``"~"`` in formula, since this method supports only the right-hand side of a
+          Wilkinson formula.
+        - ``1 +``, ``0 +``, or ``-1`` in formula, since intercept addition is handled
+          via the argument ``include_intercept``.
+
+        References
+        ----------
+
+        - Python library formulaic: https://matthewwardrop.github.io/formulaic/latest/
+
+        Examples
+        --------
+
+        Simple example:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(n=100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.slin("x_lin")
+        StrctLinTerm(name="slin(X)")
+
+
+        .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
+        .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
+        """
         include_intercept = False
 
         basis = self.bases.lin(

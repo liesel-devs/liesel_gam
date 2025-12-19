@@ -76,12 +76,13 @@ API Reference
     :nosignatures:
 
     ~liesel_gam.StrctTerm
+    ~liesel_gam.StrctTensorProdTerm
     ~liesel_gam.LinTerm
     ~liesel_gam.StrctLinTerm
     ~liesel_gam.IndexingTerm
     ~liesel_gam.RITerm
     ~liesel_gam.MRFTerm
-    ~liesel_gam.StrctTensorProdTerm
+    ~liesel_gam.BasisDot
 
 
 .. rubric:: Distribution

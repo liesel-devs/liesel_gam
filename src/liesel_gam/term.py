@@ -129,7 +129,7 @@ def _validate_scalar_or_p_scale(scale_value: Array, p):
 
 
 class StrctTerm(UserVar):
-    """
+    r"""
     General structured additive term.
 
     You probably want to initialize a term using :meth:`.StrctTerm.f`, which will
@@ -173,9 +173,60 @@ class StrctTerm(UserVar):
     See Also
     ---------
 
-    .TermBuilder : Initializes structured additive terms. .BasisBuilder :
-    Initializesstructured additive terms. .Basis : Basis matrix object. .StrctTerm.f :
-    Alternative, more convenient constructor.
+    .TermBuilder : Initializes structured additive terms.
+    .BasisBuilder : Initializes structured additive term basis matrices.
+    .Basis : Basis matrix object.
+    .StrctTerm.f : Alternative, more convenient constructor.
+    .StrctTensorProdTerm : Anisotropic tensor product terms.
+
+    Notes
+    -----
+
+    The terms created by this builder generally have the form
+
+    .. math::
+        s(\mathbf{x}_i) = \sum_{j=1}^J B_j(\mathbf{x}_i) \beta_j
+        = \mathbf{b}(\mathbf{x}_i)^\top \boldsymbol{\beta}
+
+    where
+
+    - :math:`i=1, \dots, N` is the observation index,
+    - :math:`\mathbf{x}_i^\top = [x_{i,1}, \dots, x_{i,M}]` are covariate
+      observations, where :math:`M` denotes the number of covariates,
+    - :math:`\mathbf{b}(\mathbf{x}_i)^\top = [B_1(\mathbf{x}_i), \dots, B_J(\mathbf{x}_i)]`
+      are a set of basis function evaluations, and
+    - :math:`\boldsymbol{\beta}^\top = [\beta_1, \dots, \beta_J]`
+      are the corresponding coefficients.
+
+    In many cases, :math:`\mathbf{x}_i` will consist
+    of only one covariate.
+
+    The basis matrix for such a term is
+
+    .. math::
+
+        \mathbf{B} = \begin{bmatrix}
+        \mathbf{b}(\mathbf{x}_1)^\top \\
+        \vdots \\
+        \mathbf{b}(\mathbf{x}_N)^\top
+        \end{bmatrix}.
+
+    The coefficient receives a potentially rank-deficient multivariate normal prior
+
+    .. math::
+
+        p(\boldsymbol{\beta}) \propto \left(\frac{1}{\tau^2}\right)^{
+        \operatorname{rk}(\mathbf{K})/2}
+        \exp \left(
+        - \frac{1}{\tau^2} \boldsymbol{\beta}^\top \mathbf{K} \boldsymbol{\beta}
+        \right)
+
+    with the potentially rank-deficient penalty matrix :math:`\mathbf{K}` of rank
+    :math:`\operatorname{rk}(\mathbf{K})`. The variance
+    parameter :math:`\tau^2` acts as an inverse smoothing parameter.
+
+    The choice of basis functions :math:`B_j` and penalty matrix :math:`\mathbf{K}`
+    determines the nature of the term.
 
     """
 
@@ -862,7 +913,7 @@ class StrctLinTerm(StrctTerm, LinMixin):
 
 
 class StrctTensorProdTerm(UserVar):
-    """
+    r"""
     General anisotropic structured additive tensor product term.
 
     Parameters
@@ -871,21 +922,139 @@ class StrctTensorProdTerm(UserVar):
         Marginal terms.
     common_scale
         A single, common scale to cover both marginal dimensions, resulting in an
-        isotropic tensor product.
+        isotropic tensor product. This mean setting
+        :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
+        in the notation used below.
     name
         Name of the term
     coef_name
         Name of the coefficient variable. If ``None``, created automatically based on
         ``name``.
     basis_name
-        Name of the basis variable. This variable is internally created to represent
-        the tensor product of the marginal basis matrices. If ``None``, the name
-        will be created automatically based on the names of the observed input
-        variables to the marginal terms.
+        Name of the basis variable. This variable is internally created to represent the
+        tensor product of the marginal basis matrices. If ``None``, the name will be
+        created automatically based on the names of the observed input variables to the
+        marginal terms.
     include_main_effects
         If ``True``, the marginal terms will be added to this term's value.
     _update_on_init
         Whether to update the term upon initialization.
+
+    See Also
+    --------
+    .StrctTerm : Basic (isotropic) structured additive term.
+    .TermBuilder : Initializes structured additive terms.
+    .BasisBuilder : Initializes structured additive term basis matrices.
+    .Basis : Basis matrix object.
+    .StrctTerm.f : Alternative, more convenient constructor.
+
+    Notes
+    -----
+
+    Assumes that the term is a tensor product of :math:`M` marginal bases that can be
+    written as
+
+    .. math::
+
+        s(\mathbf{x}_i) = \sum_{j=1}^J B_j(\mathbf{x}_i)\beta_j =
+        \mathbf{b}^\top \boldsymbol{\beta},
+
+    where
+
+    - :math:`i=1, \dots, N` is the observation index,
+    - :math:`\mathbf{x}_i^\top = [x_{i,1}, \dots, x_{i,M}]` are covariate
+      observations, where :math:`M` denotes the number of covariates included in this
+      term,
+    - :math:`\mathbf{b}(\mathbf{x}_i)^\top = [B_1(\mathbf{x}_i),
+      \dots, B_J(\mathbf{x}_i)]`
+      are a set of basis function evaluations, and
+    - :math:`\boldsymbol{\beta}^\top = [\beta_1, \dots, \beta_J]`
+      are the corresponding coefficients.
+
+    The vector of basis function evaluations is the Kronecker product of the marginal
+    bases:
+
+    .. math::
+
+        \mathbf{b}_i(\mathbf{x}_i)^\top = \mathbf{b}_1(x_{i,1})^\top
+        \otimes \mathbf{b}_2(x_{i,2})^\top
+        \otimes \cdots \otimes
+        \mathbf{b}_M(x_{i,M})^\top,
+
+    In this notation, we assume that the marginal bases
+    often functions of just one covariate each, which is the common case.
+    The individual terms have (potentially different) basis dimensions
+    :math:`J_1, \dots, J_M`, such that the tensor product basis dimension is
+    :math:`J = \prod_{m=1}^M J_m`.
+
+    The coefficient vector is equipped with a potentially rank-deficient multivariate
+    Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as
+
+    .. math::
+
+        p(\boldsymbol{\beta} | \boldsymbol{\tau}^2)
+        \propto
+        \operatorname{Det}(\mathbf{K}(\boldsymbol{\tau}^2))^{1/2}
+        \exp \left(
+        - \frac{1}{2}
+        \boldsymbol{\beta}^\top
+        \mathbf{K}(\boldsymbol{\tau}^2)
+        \boldsymbol{\beta}
+        \right),
+
+    with the precision matrix constructed from marginal penalties
+    :math:`\tilde{\mathbf{K}}_1, \dots, \tilde{\mathbf{K}}_M`
+    and variance parameters :math:`\tau^2_1,\dots, \tau^2_M` as
+
+    .. math::
+
+        \mathbf{K}(\boldsymbol{\tau}^2)
+        = \frac{\mathbf{K}_1}{\tau^2_1}
+        +
+        \cdots
+        +
+        \frac{\mathbf{K}_M}{\tau^2_M},
+
+    where
+
+    .. math::
+
+        \mathbf{K}_m = \mathbf{I}_{J_1}
+        \otimes \cdots \otimes
+        \mathbf{I}_{J_{m-1}}
+        \otimes
+          \tilde{\mathbf{K}}_m
+        \otimes
+        \mathbf{I}_{J_{m+1}}
+        \otimes
+        \cdots
+        \mathbf{I}_{J_{M}},
+
+    and :math:`\mathbf{I}_{J_m}` denotes the identity matrix of dimension
+    :math:`J_m \times J_m`.
+
+    Since :math:`\mathbf{K}(\boldsymbol{\tau}^2)` may be rank-deficient,
+    :math:`\operatorname{Det}(\mathbf{K}(\boldsymbol{\tau}^2))` is the
+    pseudo-determinant, or generalized determinant.
+
+    This term exploits the clearly defined structure of the precision matrix
+    to obtain a computationally and memory-efficient evaluation of the prior,
+    implemented in the :class:`.MultivariateNormalStructured` distribution class.
+    We also implement the results obtained by Bach & Klein (2025) for efficiently
+    computing the pseudo-determinant; a key prerequisite for making higher-dimensional
+    tensor products feasible.
+
+
+    References
+    ----------
+    - Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+      system for building structured additive distributional regression models with
+      tensor product interactions. TEST, 28(1), 1–39.
+      https://doi.org/10.1007/s11749-019-00631-z
+    - Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
+      Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
+      https://doi.org/10.1007/s11222-025-10569-y
+
     """
 
     def __init__(

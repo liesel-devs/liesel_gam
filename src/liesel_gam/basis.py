@@ -473,7 +473,7 @@ class Basis(UserVar):
         constraint: ArrayLike
         | Literal["sumzero_term", "sumzero_coef", "constant_and_linear"],
     ) -> Self:
-        """
+        r"""
         Apply a linear constraint to the basis and corresponding penalty.
 
         When a constraint is applied, the type of constraint is saved to
@@ -500,84 +500,114 @@ class Basis(UserVar):
         assume that this basis is used to evaluate a function
 
         .. math::
+            s(\mathbf{x}_i) = \sum_{j=1}^J B_j(\mathbf{x}_i) \beta_j
+            = \mathbf{b}(\mathbf{x}_i)^\top \boldsymbol{\beta},
 
-            s(\\mathbf{x}) = \\mathbf{B}(\\mathbf{x}) \\boldsymbol{\\gamma},
+        where
 
-        where :math:`\\mathbf{B}(\\mathbf{x})` is the basis matrix of dimension :math:`N
-        \\times D` and :math:`\\boldsymbol{\\gamma} \\in \\mathbb{R}^D` denotes the
-        coefficient vector of a functional effect subject to linear constraints of the
+        - :math:`i=1, \dots, N` is the observation index,
+        - :math:`\mathbf{x}_i^\top = [x_{i,1}, \dots, x_{i,M}]` are covariate
+          observations, where :math:`M` denotes the number of covariates,
+        - :math:`\mathbf{b}^\top = [B_1(\mathbf{x}), \dots, B_J(\mathbf{x})]`
+          are a set of basis function evaluations, and
+        - :math:`\boldsymbol{\beta}^\top = [\beta_1, \dots, \beta_J]`
+          are the corresponding coefficients.
+
+        The basis matrix for such a term is
+
+        .. math::
+
+            \mathbf{B} = \begin{bmatrix}
+            \mathbf{b}(\mathbf{x}_1)^\top \\
+            \vdots \\
+            \mathbf{b}(\mathbf{x}_N)^\top
+            \end{bmatrix},
+
+        and the term can be written in matrix form as
+
+        .. math::
+
+            \mathbf{s} = \mathbf{B} \boldsymbol{\beta},
+
+        where :math:`\mathbf{B}` is the basis matrix of dimension :math:`N
+        \times J`. We consider :math:`\boldsymbol{\beta} \in \mathbb{R}^J` to be subject to linear constraints of the
         form
 
         .. math::
 
-            \\mathbf{A} \\boldsymbol{\\gamma} = \\mathbf{0}.
+            \mathbf{A} \boldsymbol{\beta} = \mathbf{0}.
 
-        :math:`\\mathbf{A}` is an :math:`A \\times D` constraint matrix. To explicitly
+        :math:`\mathbf{A}` is an :math:`A \times J` constraint matrix. To explicitly
         remove the constrained component, we construct a complementary matrix
-        :math:`\\bar{\\mathbf{A}} \\in \\mathbb{R}^{(D-A) \\times D}` such that
+        :math:`\bar{\mathbf{A}} \in \mathbb{R}^{(J-A) \times J}` such that
 
         .. math::
 
-            \\bar{\\mathbf{A}} \\mathbf{A}^\\top = \\mathbf{0},
+            \bar{\mathbf{A}} \mathbf{A}^\top = \mathbf{0},
 
-        and the stacked matrix :math:`(\\mathbf{A}^\\top,
-        \\bar{\\mathbf{A}}^\\top)^\\top` is of full rank. One possible construction of
-        :math:`\\bar{\\mathbf{A}}` is based on the eigenvalue decomposition of
-        :math:`\\mathbf{A}^\\top \\mathbf{A}`, using the eigenvectors corresponding to
-        zero eigenvalues. This is the construction of :math:`\\bar{\\mathbf{A}}` used in
+        and the stacked matrix :math:`[\mathbf{A}^\top,
+        \bar{\mathbf{A}}^\top]^\top` is of full rank. One possible construction of
+        :math:`\bar{\mathbf{A}}` is based on the eigenvalue decomposition of
+        :math:`\mathbf{A}^\top \mathbf{A}`, using the eigenvectors corresponding to
+        zero eigenvalues. This is the construction of :math:`\bar{\mathbf{A}}` used in
         this method. Under the full-rank assumption, the inverse of the composed matrix
         exists and can be written as
 
         .. math::
 
-            (\\mathbf{A}^\\top, \\bar{\\mathbf{A}}^\\top)^{-\\top} =
-            \\left( \\mathbf{C}, \\bar{\\mathbf{C}} \\right),
+            \begin{bmatrix}
+            \mathbf{A} \\
+            \bar{\mathbf{A}}
+            \end{bmatrix}^{-1}
+            =
+            \begin{bmatrix}
+            \mathbf{C}, \bar{\mathbf{C}} \end{bmatrix},
 
-        where :math:`\\mathbf{C} \\in \\mathbb{R}^{D \\times A}` and
-        :math:`\\bar{\\mathbf{C}} \\in \\mathbb{R}^{D \\times (D-A)}`. This yields the
+        where :math:`\mathbf{C} \in \mathbb{R}^{J \times A}` and
+        :math:`\bar{\mathbf{C}} \in \mathbb{R}^{J \times (J-A)}`. This yields the
         reparameterisation
 
         .. math::
 
-            \\boldsymbol{\\gamma} = \\mathbf{C} \\boldsymbol{\\beta} +
-            \\bar{\\mathbf{C}} \\boldsymbol{\\alpha},
+            \boldsymbol{\beta} = \mathbf{C} \boldsymbol{\alpha} +
+            \bar{\mathbf{C}} \boldsymbol{\gamma},
 
-        where :math:`\\boldsymbol{\\beta} = \\mathbf{A} \\boldsymbol{\\gamma} =
-        \\mathbf{0}` vanishes due to the constraint and :math:`\\boldsymbol{\\alpha} =
-        \\bar{\\mathbf{A}} \\boldsymbol{\\gamma}` represents the remaining unconstrained
+        where :math:`\boldsymbol{\alpha} = \mathbf{A} \boldsymbol{\beta} =
+        \mathbf{0}` vanishes due to the constraint and :math:`\boldsymbol{\gamma} =
+        \bar{\mathbf{A}} \boldsymbol{\beta}` represents the remaining unconstrained
         coefficients. Applying this reparameterisation to the functional effect gives
-        :math:`\\bar{\\mathbf{f}} = \\bar{\\mathbf{B}} \\boldsymbol{\\alpha}`,
+        :math:`\bar{\mathbf{s}} = \bar{\mathbf{B}} \boldsymbol{\alpha}`,
         where the basis matrix is reparameterized as
 
         .. math::
 
-            \\bar{\\mathbf{B}} = \\mathbf{B}(\\mathbf{x}) \\bar{\\mathbf{C}}.
+            \bar{\mathbf{B}} = \mathbf{B} \bar{\mathbf{C}}.
 
-        Accordingly, the original penalty matrix :math:`\\mathbf{K}` is reparamterized
+        Accordingly, the original penalty matrix :math:`\mathbf{K}` is reparamterized
         as
 
         .. math::
 
-            \\bar{\\mathbf{K}} = \\bar{\\mathbf{C}}^\\top \\mathbf{K} \\bar{\\mathbf{C}}.
+            \bar{\mathbf{K}} = \bar{\mathbf{C}}^\top \mathbf{K} \bar{\mathbf{C}}.
 
 
         .. rubric:: Default constraint options
 
         The default options correspond to the following constraint matrices:
 
-        - ``"sumzero_term"``: :math:`\\mathbf{A} = \\mathbf{1}^\\top \\mathbf{B}`,
-          where :math:`\\mathbf{B}` is the basis matrix. This is the preferred option
+        - ``"sumzero_term"``: :math:`\mathbf{A} = \mathbf{1}^\top \mathbf{B}`,
+          where :math:`\mathbf{B}` is the basis matrix. This is the preferred option
           for a sum to zero constraint, because it centers the evaluated term.
 
-        - ``"sumzero_coef"``: :math:`\\mathbf{A} = \\mathbf{1}^\\top`.
+        - ``"sumzero_coef"``: :math:`\mathbf{A} = \mathbf{1}^\top`.
           This is an alternative sum to zero constraint, focusing only on ensuring
           that the coefficients sum to zero.
 
         - ``"constant_and_linear"``:
-          :math:`\\mathbf{A}=(\\mathbf{X}^\\top\\mathbf{X})^{-1}\\mathbf{X}^\\top
-          \\mathbf{B}`,
-          where :math:`\\mathbf{X} = [\\mathbf{1}, \\mathbf{x}]` is a design matrix
-          built with the covariate observations :math:`\\mathbf{x}` used in this
+          :math:`\mathbf{A}=(\mathbf{X}^\top\mathbf{X})^{-1}\mathbf{X}^\top
+          \mathbf{B}`,
+          where :math:`\mathbf{X} = [\mathbf{1}, \mathbf{x}]` is a design matrix
+          built with the covariate observations :math:`\mathbf{x}` used in this
           basis. This constraint removes both a constant (like ``"sumzero_term"``) and
           a linear trend from the term modeled with this basis.
 
