@@ -924,7 +924,7 @@ class StrctTensorProdTerm(UserVar):
     *marginals
         Marginal terms.
     common_scale
-        A single, common scale to cover both marginal dimensions, resulting in an
+        A single, common scale to cover all marginal dimensions, resulting in an
         isotropic tensor product. This mean setting
         :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
         in the notation used below.

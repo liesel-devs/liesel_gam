@@ -94,7 +94,7 @@ class UserVar(lsl.Var):
 
 
 class ScaleIG(UserVar):
-    """
+    r"""
     A variable with an Inverse Gamma prior on its square.
 
     The variance parameter (i.e. the squared scale) is flagged as a parameter.
@@ -105,14 +105,60 @@ class ScaleIG(UserVar):
         Initial value of the variable.
     concentration
         Concentration parameter of the inverse gamma distribution.\
-        In some parameterizations, this parameter is called ``a``.
+        Often called ``a``.
     scale
         Scale parameter of the inverse gamma distribution.\
-        In some parameterizations, this parameter is called ``b``.
+        Often called ``b``.
     name
         Name of the variable.
-    inference
-        Inference type.
+
+    Notes
+    -----
+
+    This class assumes that this variable represents the scale parameter
+    :math:`\tau` in a structured additive term prior as described in
+    :class:`.StrctTerm`.
+
+    This class allows for easy setup of Gibbs sampling for :math:`\tau^2` via
+    :meth:`.setup_gibbs_inference`. The Gibbs sampler is defined as follows.
+
+    We have
+
+    .. math::
+
+        \tau^2 \sim \operatorname{InverseGamma}(a, b),
+
+    where a is the init argument ``concentration`` and b is the init argument
+    ``scale`` for :class:`.ScaleIG`. The value of this variable (ScaleIG) is
+    :math:`\tau = \sqrt{\tau^2}`.
+
+    In a structured additive term,
+    the coefficient :math:`\boldsymbol{\beta} \in \mathbb{R}^J`
+    receives a potentially rank-deficient multivariate normal prior
+
+    .. math::
+
+        p(\boldsymbol{\beta}) \propto \left(\frac{1}{\tau^2}\right)^{
+        \operatorname{rk}(\mathbf{K})/2}
+        \exp \left(
+        - \frac{1}{\tau^2} \boldsymbol{\beta}^\top \mathbf{K} \boldsymbol{\beta}
+        \right).
+
+    The full conditional distribution for :math:`\tau^2` is then an inverse Gamma
+    distribtion:
+
+    .. math::
+
+        \tau^2 | \cdot \sim \operatorname{InverseGamma}(\tilde{a}, \tilde{b})
+
+    with parameters
+
+    .. math::
+
+        \tilde{a}  & = a + 0.5 \operatorname{rk}(\mathbf{K}) \\
+        \tilde{b}  & = b + 0.5 \boldsymbol{\beta}^\top \mathbf{K} \boldsymbol{\beta}.
+
+    The Gibbs sampler for :math:`\tau^2` repeatedly draws from this full conditional.
     """
 
     def __init__(
@@ -122,7 +168,6 @@ class ScaleIG(UserVar):
         scale: float | lsl.Var | lsl.Node | ArrayLike,
         name: str = "",
         variance_name: str = "",
-        inference: InferenceTypes = None,
     ):
         value = jnp.asarray(value)
 
@@ -137,14 +182,38 @@ class ScaleIG(UserVar):
 
         variance_name = variance_name or _append_name(name, "_square")
 
-        self._variance_param = lsl.Var.new_param(
-            value**2, prior, inference=inference, name=variance_name
-        )
+        self._variance_param = lsl.Var.new_param(value**2, prior, name=variance_name)
         super().__init__(lsl.Calc(jnp.sqrt, self._variance_param), name=name)
 
     def setup_gibbs_inference(
         self, coef: lsl.Var, penalty: jax.typing.ArrayLike | None = None
     ) -> ScaleIG:
+        r"""
+        Sets up a :class:`liesel.goose.GibbsKernel` for this variable, assuming
+        that it is used as the variance parameter in a structured additive term.
+
+        See the docs for the class :class:`.ScaleIG` for a description of the
+        Gibbs sampler.
+
+        .. note::
+            Usually, this method does not have to be called manually, when you are
+            working
+            with :class:`.StrctTernm` objects or initializing terms using
+            :class:`.TermBuilder`.
+
+        Parameters
+        ----------
+        coef
+            Coefficient variable.
+        penalty
+            Penalty matrix. If ``None``, the penalty is assumed to be the identity
+            matrix of a dimension fitting the coefficient dimension.
+
+        See Also
+        --------
+        .StrctTerm : Structured additive term class.
+
+        """
         if self.value.size != 1:
             raise ValueError(
                 f"Gibbs sampler assumes scalar value, got size {self.value.size}."

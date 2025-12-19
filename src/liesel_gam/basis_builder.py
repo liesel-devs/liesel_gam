@@ -1537,7 +1537,7 @@ class BasisBuilder:
         Gaussian Markov random field basis and penalty.
 
         The preferred way to initialize these is by supplying ``polys``, because this
-        enables plotting via :func:`plot_regions`.
+        enables plotting via :func:`.plot_regions`.
 
         Parameters
         ----------

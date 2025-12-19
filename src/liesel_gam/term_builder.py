@@ -60,7 +60,7 @@ class TermBuilder:
         Names created by this TermBuilder will be prefixed by the string supplied here.
     default_inference
         Defines the default inference specification for terms created by this builder.
-        Not that this default inference is only used for the coefficient variables
+        Note that this inference is only used for the coefficient variables
         of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for the
         scale variables (:attr:`.StrctTerm.scale`).
     default_scale_fn
@@ -142,6 +142,45 @@ class TermBuilder:
     each term's coefficients forming a single block. See the examples for how to
     modify the default blockwise setup.
 
+
+    .. rubric:: Overview of commonly used terms
+
+    .. note::
+        **Basic terms**
+
+        - :meth:`.lin` : Linear term.
+        - :meth:`.slin` : Linear term with iid penalty (ridge prior).
+        - :meth:`.ps` : P-spline.
+        - :meth:`.tp` : Thin plate spline.
+        - :meth:`.ri` : Random intercept.
+        - :meth:`.mrf` : Markov random field (discrete spatial effect).
+        - :meth:`.kriging` : Low-rank gaussian process with fixed range.
+
+        **Combined terms and tensor products**
+
+        - :meth:`.rs` : Random slope.
+        - :meth:`.vc` : Varying coefficient.
+        - :meth:`.tx` : Tensor product interaction without main effects.
+        - :meth:`.tf` : Full tensor product with main effects.
+
+        **Specialized smooths**
+
+        - :meth:`.np` : P-splines without linear trend.
+        - :meth:`.cp` : Cyclic P-splines
+
+        **Custom smooths**
+
+        - :meth:`.f` : Supply your own basis function and penalty matrix.
+        - :class:`.StrctTerm` : Initialize a term independetly, potentially supplying
+          a constant basis matrix and your own penalty matrix.
+
+    .. tip::
+
+        If your model somewhere contains a categorical variable, pay attention
+        to the method :meth:`labels_to_integers`; this helps you bring a ``newdata``
+        dictionary into a form understood by :meth:`liesel.model.Model.predict`
+        easily by turning string labels into their integer representations.
+
     Examples
     --------
 
@@ -163,7 +202,7 @@ class TermBuilder:
     >>> tb.ps("x_nonlin", k=20)
     StrctTerm(name="ps(x_nonlin)")
 
-    Changing default inference, such that all term's coefficients are collected in the
+    Changing default inference, such that all terms' coefficients are collected in the
     same block. Note that the scales are still sampled individually; by default with
     Gibbs kernels.
 
@@ -641,6 +680,90 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        Cubic regression spline.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .cs : Cubic regression splines with additinal shrinkage on the null space.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.cr("x_nonlin", k=20)
+        StrctTerm(name="cr(x_nonlin)")
+        """
         basis = self.bases.cr(
             x=x,
             k=k,
@@ -681,6 +804,90 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        Cubic regression spline with additional null space shrinkage.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .cr : Cubic regression splines.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.cs("x_nonlin", k=20)
+        StrctTerm(name="cs(x_nonlin)")
+        """
         basis = self.bases.cs(
             x=x,
             k=k,
@@ -721,6 +928,91 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        Cyclic version of cubic regression spline.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .cr : Cubic regression splines.
+        .cs : Cubic regression splines with additinal shrinkage on the null space.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.cc("x_nonlin", k=20)
+        StrctTerm(name="cc(x_nonlin)")
+        """
         basis = self.bases.cc(
             x=x,
             k=k,
@@ -762,6 +1054,93 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        B-spline with integrated squared derivative penalties.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        basis_degree
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
+        penalty_order
+            Order of the penalty. If this is a sequence of integers, a
+            penalty of the integer's order is added for each entry in the sequence.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .ps : P-splines.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis
+        and penalty. The mgcv documentation provides further details.
+
+        References
+        ----------
+
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.bs("x_nonlin", k=20)
+        StrctTerm(name="bs(x_nonlin)")
+        """
         basis = self.bases.bs(
             x=x,
             k=k,
@@ -805,6 +1184,107 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        P-spline: A B-spline with a discrete penalty matrix.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        basis_degree
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .np : P-spline without linear trend.
+        .cp : Cyclic P-spline.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+
+        References
+        ----------
+        - Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational
+          and Graphical Statistics, 13(1), 183–212.
+          https://doi.org/10.1198/1061860043010
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.ps("x_nonlin", k=20)
+        StrctTerm(name="ps(x_nonlin)")
+
+        The default is a constrained basis:
+
+        >>> tb.ps("x_nonlin", k=20).basis.value.shape
+        (100, 19)
+
+        The constraint can be turned off by passing ``absorb_cons=False``:
+
+        >>> tb.ps("x_nonlin", k=20, absorb_cons=False).basis.value.shape
+        (100, 20)
+        """
         basis = self.bases.ps(
             x=x,
             k=k,
@@ -846,6 +1326,97 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        P-spline without linear trend.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        basis_degree
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .ps : P-spline.
+        .cp : Cyclic P-spline.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+
+        References
+        ----------
+        - Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational
+          and Graphical Statistics, 13(1), 183–212.
+          https://doi.org/10.1198/1061860043010
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.np("x_nonlin", k=20)
+        StrctTerm(name="np(x_nonlin)")
+        """
         basis = self.bases.ps(
             x=x,
             k=k,
@@ -894,6 +1465,97 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        Cyclic P-spline.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        basis_degree
+            Degree of the polynomials used in the B-spline basis function. Default is 3
+            for cubic B-splines.
+        penalty_order
+            Order of the penalty.
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set of equidistant
+            knots will be set up automatically, with the domain boundaries inferred from
+            the minimum and maximum of the observed values.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .ps : P-spline.
+        .np : P-spline without linear trend.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        See :class:`.Basis` for details.
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+
+        References
+        ----------
+        - Lang, S., & Brezger, A. (2004). Bayesian P-splines. Journal of Computational
+          and Graphical Statistics, 13(1), 183–212.
+          https://doi.org/10.1198/1061860043010
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.cp("x_nonlin", k=20)
+        StrctTerm(name="cp(x_nonlin)")
+        """
         basis = self.bases.cp(
             x=x,
             k=k,
@@ -930,6 +1592,71 @@ class TermBuilder:
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
     ) -> RITerm:
+        r"""
+        Random intercept.
+
+        Parameters
+        ----------
+        cluster
+            Name of the cluster variable.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty
+            Custom penalty matrix to use. Default is an iid penalty.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .rs : Random slope.
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        ------
+        If the penalty is iid, then each column of the basis consists only of binary
+        (0/1) entries, and each row has only one non-zero entry. In this case it is not
+        necessary to store the full matrix in memory and evaluate the term as a dot
+        product ``basis @ coef``.
+
+        Instead, we can simply store a 1d array of indices, identifying the nonzero
+        column for each row of the basis matrix, and use this index to access the
+        corresponding coefficient. This scenario is common for independent random
+        intercepts.
+
+        This method returns such a sparse representation of the random intercept
+        basis if ``penalty=None``.
+
+        Examples
+        ---------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.ri("x_cat")
+        RITerm(name="ri(x_cat)")
+
+        """
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
         fname = self.names.fname("ri", basis.x.name)
@@ -969,6 +1696,81 @@ class TermBuilder:
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
     ) -> lsl.Var:
+        r"""
+        Random slope.
+
+        Create a Liesel variable that evaluates to ``x * ri(cluster)``, where
+        ``ri(cluster)`` is a
+        random intercept initialized via :meth:`.ri` and ``x`` is either a covariate
+        directly, or a smooth term.
+
+        The ``scale`` argument of this method is the random intercept's
+        scale, it is passed to :meth:`.ri`. The same goes for ``penalty`` and
+        ``factor_scale``.
+
+        Parameters
+        ----------
+        x
+            Name of input variable, or a smooth represented by a :class:`.StrctTerm`.
+        cluster
+            Name of the cluster variable.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty
+            Custom penalty matrix to use. Default is an iid penalty.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .ri : Random intercept.
+        .BasisBuilder : Initializes the basis and penalty.
+
+
+        Examples
+        ---------
+
+        Random slope:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.rs(x="x_lin", cluster="x_cat")
+        Var(name="rs(x_lin|x_cat)")
+
+        Random scaling of a smooth term:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> psx = tb.ps("x_nonlin", k=20)
+        >>> tb.rs(x=psx, cluster="x_cat")
+        Var(name="rs(ps(x_nonlin)|x_cat)")
+
+        """
+
         ri = self.ri(
             cluster=cluster,
             scale=scale,
@@ -982,7 +1784,7 @@ class TermBuilder:
             xname = x
         else:
             x_var = x
-            xname = x_var.basis.x.name
+            xname = x_var.name
 
         fname = self.names.create("rs(" + xname + "|" + cluster + ")")
         term = lsl.Var.new_calc(
@@ -999,6 +1801,39 @@ class TermBuilder:
         x: str,
         by: StrctTerm,
     ) -> lsl.Var:
+        r"""
+        Varying coefficient term.
+
+        Parameters
+        ----------
+        x
+            Name of input variable.
+        by
+            Smooth term, a :class:`.StrctTerm` that represents the smoothly varying
+            coefficient of this term, for example a P-spline :meth:`.ps`.
+
+        Notes
+        -----
+
+        A varying coefficient term can be written as
+
+        .. math::
+
+            x \beta(z),
+
+        where :math:`x` is a covariate, and :math:`\beta(z)` is the linear effect of
+        this covariate, which smoothly varies as a function of another variable
+        :math:`z`.
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> psx = tb.ps("x_nonlin", k=20)
+        >>> tb.vc(x="x_lin", by=psx)
+        Var(name="x_lin*ps(x_nonlin)")
+        """
         fname = self.names.create(x + "*" + by.name)
         x_var = self.registry.get_obs(x)
 
@@ -1025,36 +1860,6 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
-        """
-        Works:
-        - tp (thin plate splines)
-        - ts (thin plate splines with slight null space penalty)
-
-        - cr (cubic regression splines)
-        - cs (shrinked cubic regression splines)
-        - cc (cyclic cubic regression splines)
-
-        - bs (B-splines)
-        - ps (P-splines)
-        - cp (cyclic P-splines)
-
-        Works, but not here:
-        - re (use .ri instead)
-        - mrf (used .mrf instead)
-        - te (use .te instead) (with the bases above)
-        - ti (use .ti instead) (with the bases above)
-
-        Does not work:
-        - ds (Duchon splines)
-        - sos (splines on the sphere)
-        - gp (gaussian process)
-        - so (soap film smooths)
-        - ad (adaptive smooths)
-
-        Probably disallow manually:
-        - fz (factor smooth interaction)
-        - fs (random factor smooth interaction)
-        """
         basis = self.bases._s(
             *x,
             k=k,
@@ -1086,9 +1891,9 @@ class TermBuilder:
     def mrf(
         self,
         x: str,
+        k: int = -1,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
-        k: int = -1,
         polys: dict[str, ArrayLike] | None = None,
         nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
@@ -1097,19 +1902,134 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> MRFTerm:
-        """
-        Polys: Dictionary of arrays. The keys of the dict are the region labels.
-            The corresponding values define the region by defining polygons.
-        nb: Dictionary of array. The keys of the dict are the region labels.
-            The corresponding values indicate the neighbors of the region.
-            If it is a list or array of strings, the values are the labels of the
-            neighbors.
-            If it is a list or array of integers, the values are the indices of the
-            neighbors.
+        r"""
+        Gaussian Markov random field.
+
+        The preferred way to initialize these is by supplying ``polys``, because this
+        enables plotting via :func:`.plot_regions`.
+
+        Parameters
+        ----------
+        x
+            Name of the region variable.
+        k
+            If ``-1``, this is a "full-rank" (up to identifiability constraint) Markov
+            random field. If ``k`` is an integer smaller than the number of unique
+            regions, a low-rank field will be returned, see Wood (2017), Sections 5.8.1
+            and 5.4.2.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        polys
+            Dictionary of arrays. The keys of the dict are the region labels. The
+            corresponding values define the region by defining polygons. The
+            neighborhood structure can be inferred from this polygon information.
+        nb
+            Dictionary of array. The keys of the dict are the region labels. The
+            corresponding values indicate the neighbors of the region. If the values are
+            lists or arrays of strings, the values are the labels of the neighbors. If
+            they are lists or arrays of integers, the values are the indices of the
+            neighbors. Indices correspond to regions based on an alphabetical ordering
+            of regions.
+        penalty
+            If a penalty is supplied explicitly, it takes precedence over a potential
+            penalty derived from both nb and polys.
+        penalty_labels
+            If a penalty is supplied explicitly, labels must also be specified. The
+            labels create the association between penalty columns and region labels. The
+            values of this sequence should be the string labels of unique regions in
+            ``x``.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+        .plot_regions : Plots MCMC results on a map of the regions.
+        .plot_polys : Plots a map based on polygons.
+        .plot_forest : Plots regions with uncertainty in a forest plot.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        Returns
+        -------
+
+            Comments on the additional attributes available on the returned
+            :class:`.MRFTerm` variable:
+
+            - If either polys or nb are supplied, the returned term will contain
+              information in :attr:`.MRFTerm.neighbors`.
+            - If only a penalty matrix is supplied, the returned MRFSpec will *not*
+              contain information in :attr:`.MRFTerm.neighbors`.
+            - :attr:`.MRFTerm.mapping` contains the map of region labels to integer
+              codes.
+            - :attr:`.MRFTerm.labels` contains the region labels.
+            - Returning the label order only makes sense if the basis is *not*
+              reparameterized, because only then we have a clear correspondence of
+              parameters to labels. If the basis is reparameterized, with
+              ``absorb_cons=True`` or of low rank with ``k ≠ -1``, there is no such
+              correspondence in a clear way, so the label order
+              in :attr:`.MRFTerm.ordered_labels` is None.
 
 
-        mgcv does not concern itself with your category ordering. It *will* order
-        categories alphabetically. Penalty columns have to take this into account.
+        Examples
+        --------
+        >>> import liesel_gam as gam
+
+        >>> df = gam.demo_data(n=100)
+        >>> nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
+        >>> print(df.x_cat.unique())
+        ['a' 'b' 'c']
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.mrf("x_cat", nb=nb)
+        MRFTerm(name="mrf(x_cat)")
+
+
+        References
+        ----------
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
         """
         basis = self.bases.mrf(
             x=x,
@@ -1158,6 +2078,109 @@ class TermBuilder:
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        General :class:`.StrctTerm`, initialized by passing a custom basis function.
+
+        .. note::
+            You can use :meth:`.StrctTerm.constrain` to apply linear constraints to your
+            custom term.
+
+        Parameters
+        ----------
+        *x
+            Variable number of input variable names. Can be one or more.
+        basis_fn
+            Basis function. Must take a 2d-array as input and return a 2d array.
+
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        use_callback
+            If *True*, the basis function is evaluated using a Python callback,
+            which means that it does not have to be jit-compatible via JAX. This also
+            means that the basis must remain constant throughout estimation.
+            Passed on to :class:`.Basis`.
+        cache_basis
+            If ``True`` the computed basis is cached in a persistent
+            calculation node (``lsl.Calc``), which avoids re-computation
+            when not required. Passed on to :class:`.Basis`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .StrctTerm.constrain : Apply constraints to a term after initialization.
+        .StrctTerm.diagonalize_penalty : Diagonalize the penalty of a term after
+          initialization.
+        .StrctTerm.scale_penalty : Scale the penalty of a term after
+          initialization.
+        .BasisBuilder.basis : Used by this method to set up the basis.
+
+        Examples
+        --------
+        Manually set up a P-spline:
+
+        >>> from liesel.contrib.splines import (
+        ...     basis_matrix,
+        ...     equidistant_knots,
+        ...     pspline_penalty,
+        ... )
+        >>> import liesel_gam as gam
+
+        >>> df = gam.demo_data(n=100)
+        >>> tb = gam.TermBuilder.from_df(df)
+
+        Set up basis function:
+
+        >>> knots = equidistant_knots(df["x_nonlin"].to_numpy(), n_param=20)
+        >>> pen = pspline_penalty(d=20)
+        >>> def bspline_basis(x_mat):
+        ...     # x_mat is shape (n, 1)
+        ...     x_vec = x_mat.squeeze()  # shape (n,)
+        ...     return basis_matrix(x_vec, knots=knots)
+
+        Initialize the term:
+
+        >>> fx = tb.f("x_nonlin", basis_fn=bspline_basis, penalty=pen)
+
+        The term currently has a basis of dimension (100, 20), since it is
+        unconstrained.
+
+        >>> fx.basis.value.shape
+        (100, 20)
+
+        You can use :meth:`.StrctTerm.constrain` to apply a constraint:
+
+        >>> fx.constrain("sumzero_term")
+        StrctTerm(name="f(x_nonlin)")
+
+        Now the basis dimension is reduced:
+
+        >>> fx.basis.value.shape
+        (100, 19)
+
+        """
         basis = self.bases.basis(
             *x,
             basis_fn=basis_fn,
@@ -1203,6 +2226,93 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        Gaussian process models with a fixed range parameter in a
+        basis-penalty-parameterization, often referred to as Kriging.
+
+        Parameters
+        ----------
+        *x
+            Name of input variables (one or more).
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        kernel_name
+            Selects the kernel / covariance function to use.
+        linear_trend
+            Whether to include or remove a linear trend.
+        range
+            Range parameter. If ``None``, estimated as in Kamman & Wand (2003).
+        power_exponential_power
+            Power for the power exponential kernel.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+
+        See Also
+        --------
+
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Kammann, E. E. and M.P. Wand (2003) Geoadditive Models. Applied Statistics
+          52(1):1-18.
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.kriging("x_nonlin", k=20)
+        StrctTerm(name="kriging(x_nonlin)")
+
+        """
         basis = self.bases.kriging(
             *x,
             k=k,
@@ -1245,6 +2355,93 @@ class TermBuilder:
         factor_scale: bool = False,
         remove_null_space_completely: bool = False,
     ) -> StrctTerm:
+        r"""
+        Thin plate spline.
+
+        Parameters
+        ----------
+        *x
+            Names of input variables (one or more).
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty_order
+            Order of the penalty. Quote from mgcv: "The default is to set this to the
+            smallest value satisfying ``2*penalty_order > d+1`` where ``d`` is the
+            number of covariates of the term."
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set knots will be
+            set up automatically.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+        remove_null_space_completely
+            If ``True``, the unpenalized part of the smooth, corresponding to the null
+            space of the penalty matrix, is removed completely.
+
+        See Also
+        --------
+
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Wood, S.N. (2003) Thin-plate regression splines. Journal of the Royal
+          Statistical Society (B) 65(1):95-114.
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.tp("x_nonlin", k=20)
+        StrctTerm(name="tp(x_nonlin)")
+        """
         basis = self.bases.tp(
             *x,
             k=k,
@@ -1285,6 +2482,93 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
     ) -> StrctTerm:
+        r"""
+        Thin plate spline with additional null space penalty.
+
+        Parameters
+        ----------
+        *x
+            Names of input variables (one or more).
+        k
+            Number of (unconstrained) bases.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
+        inference
+            Inference specification for this term's coefficient.
+            Note that this inference is only used for the coefficient variables
+            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
+            the scale variables (:attr:`.StrctTerm.scale`).
+        penalty_order
+            Order of the penalty. Quote from mgcv: "The default is to set this to the
+            smallest value satisfying ``2*penalty_order > d+1`` where ``d`` is the
+            number of covariates of the term."
+        knots
+            Knots used to set up the basis. If ``None`` (default), a set knots will be
+            set up automatically.
+        absorb_cons
+            Whether the default identification constraint should be applied by
+            reparameterization and absorbing the reparameterization matrix into the
+            basis and penalty matrices for computational efficiency. If ``False``, the
+            basis is unconstrained, if ``True`` it receives a sum to zero constrained.
+            Also see :meth:`.Basis.constrain`.
+        diagonal_penalty
+            Whether the penalty matrix associated with this term should be
+            reparameterized into a diagonal matrix. In this case, the basis matrix is
+            reparameterized accordingly. This can be beneficial for posterior geometry,
+            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+        scale_penalty
+            Whether the penalty matrix should be scaled such that its infinity norm is
+            one. This can improve numerical stability, which is why it is done by
+            default. Also see :meth:`.Basis.scale_penalty`.
+        factor_scale
+            Whether to factor out the scale in the prior for this term, turning it
+            into a partially (or fully) standardized form. See
+            :meth:`.StrctTerm.factor_scale` for details.
+        remove_null_space_completely
+            If ``True``, the unpenalized part of the smooth, corresponding to the null
+            space of the penalty matrix, is removed completely.
+
+        See Also
+        --------
+
+        .BasisBuilder : Initializes the basis and penalty.
+
+        Notes
+        -----
+
+        This method internally calls the R package mgcv to set up the basis and penalty.
+        The mgcv documentation provides further details.
+
+        References
+        ----------
+        - Wood, S.N. (2003) Thin-plate regression splines. Journal of the Royal
+          Statistical Society (B) 65(1):95-114.
+        - Wood, S.N. (2017) Generalized Additive Models: An Introduction with R (2nd
+          edition). Chapman and Hall/CRC.
+        - R package mgcv https://cran.r-project.org/web/packages/mgcv/index.html
+
+        Examples
+        --------
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.ts("x_nonlin", k=20)
+        StrctTerm(name="ts(x_nonlin)")
+        """
         basis = self.bases.ts(
             *x,
             k=k,
@@ -1311,7 +2595,7 @@ class TermBuilder:
             term.factor_scale()
         return term
 
-    def ta(
+    def _ta(
         self,
         *marginals: StrctTerm,
         common_scale: ScaleIG
@@ -1321,15 +2605,38 @@ class TermBuilder:
         | Literal["default"]
         | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
-        include_main_effects: bool = False,
         scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
             gs.HMCKernel
         ),
+        include_main_effects: bool = False,
         _fname: str = "ta",
     ) -> StrctTensorProdTerm:
-        """
-        Will remove any default gibbs samplers and replace them with scales_inferece
-        on a transformed version.
+        r"""
+        General anisotropic tensor product term.
+
+        .. warning::
+            This method remove any default gibbs samplers and replace them with
+            ``scales_inference`` on log level, since the full conditional for the
+            variance parameters is not known in closed form for an anisotropic
+            tensor product.
+
+        Parameters
+        ----------
+        *marginals
+            Marginal terms, subclasses of :class:`.StrctTerm`.
+        common_scale
+            A single, common scale to cover all marginal dimensions, resulting in an
+            isotropic tensor product. This mean setting
+            :math:`\tau^2_1 = \\dots = \tau^2_M = \tau^2` for all marginal smooths
+            in the notation used in :class:`.StrctTensorProdTerm`.
+        inference
+            Inference specification for this term's coefficient.
+        scales_inference
+            If ``"default"``, uses the default inference passed to the TermBuilder
+            upon initialization.
+        include_main_effects
+            If ``True``, the marginal terms will be added to this term's value.
+
         """
         inputs = ",".join(
             list(StrctTensorProdTerm._input_obs([t.basis for t in marginals]))
@@ -1382,7 +2689,148 @@ class TermBuilder:
             gs.HMCKernel
         ),
     ) -> StrctTensorProdTerm:
-        return self.ta(
+        r"""
+        General anisotropic tensor product interaction term without main effects.
+
+        Includes only the tensor product interaction. Corresponds to ``mgcv::ti``.
+
+        .. warning::
+            This method remove any default gibbs samplers and replace them with
+            ``scales_inference`` on log level, since the full conditional for the
+            variance parameters is not known in closed form for an anisotropic
+            tensor product.
+
+        Parameters
+        ----------
+        *marginals
+            Marginal terms, subclasses of :class:`.StrctTerm`.
+        common_scale
+            A single, common scale to cover all marginal dimensions, resulting in an
+            isotropic tensor product. This mean setting
+            :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
+            in the notation used in :class:`.StrctTensorProdTerm`.
+        inference
+            Inference specification for this term's coefficient.
+        scales_inference
+            If ``"default"``, uses the default inference passed to the TermBuilder
+            upon initialization.
+
+        See Also
+        --------
+        .StrctTensorProdTerm : The term class returned by this method; includes further
+          details.
+        .tf : Full tensor product, including main effects.
+
+        Examples
+        --------
+
+        Using only the interaction term:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        >>> ps1 = tb.ps("x_nonlin", k=7)
+        >>> ps2 = tb.ps("x_lin", k=7)
+
+        >>> pred += tb.tx(ps1, ps2)
+        >>> pred.terms
+        {'tx(x_nonlin,x_lin)': StrctTensorProdTerm(name="tx(x_nonlin,x_lin)")}
+
+        .. rubric:: Anova decomposition
+
+        Including the main effects (this corresponds to :meth:`.tf`):
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        >>> ps1 = tb.ps("x_nonlin", k=7)
+        >>> ps2 = tb.ps("x_lin", k=7)
+
+        >>> pred += ps1, ps2, tb.tx(ps1, ps2)
+        >>> len(pred.terms)
+        3
+
+        .. rubric:: Isotropic tensor product
+
+        >>> import liesel_gam as gam
+        >>> import tensorflow_probability.substrates.jax.bijectors as tfb
+        >>> import tensorflow_probability.substrates.jax.distributions as tfd
+
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        Marginal smooths:
+
+        >>> ps1 = tb.ps("x_nonlin", k=7)
+        >>> ps2 = tb.ps("x_lin", k=7)
+
+        Initializing the scale variable:
+
+        >>> scale = lsl.Var.new_param(
+        ...     1.0,
+        ...     distribution=lsl.Dist(tfd.HalfNormal, scale=20.0),
+        ...     name="{x}",
+        ... )
+        >>> log_scale = scale.transform(
+        ...     tfb.Exp(),
+        ...     inference=gs.MCMCSpec(gs.HMCKernel),
+        ...     name="ln({x})",
+        ... )
+
+        Initializing the interaction term:
+
+        >>> tx1 = tb.tx(ps1, ps2, common_scale=scale)
+
+        The :attr:`.StrctTensorProdTerm.scales` list now contains the same scale twice,
+        leading to an isotropic tensor product.
+
+        >>> tx1.scales[0]
+        Var(name="$\tau_{tx(x_nonlin,x_lin)}$")
+        >>> tx1.scales[1]
+        Var(name="$\tau_{tx(x_nonlin,x_lin)}$")
+
+
+        .. rubric:: Marginals with different dimensions
+
+        In the Anova decomposition of a tensor product, you can supply marginals with
+        more bases than the marginals used in the interaction term. This can be
+        helpful for managing the curse of dimensionality, as the parameter
+        count in the interaction term grows rapidly.
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        Independent marginal terms:
+
+        >>> ps1 = tb.ps("x_nonlin", k=20)
+        >>> ps2 = tb.ps("x_lin", k=20)
+        >>> pred += ps1, ps2
+
+        Adding an interaction term using marginals with fewer bases:
+
+        >>> pred += tb.tx(
+        ...     tb.ps("x_nonlin", k=7),
+        ...     tb.ps("x_lin", k=7),
+        ... )
+        >>> len(pred.terms)
+        3
+
+
+        Note that this term has four variance parameters: Two of them govern the
+        independent marginals, and another two govern the interaction term. This
+        added flexibility when using :meth:`.tx` is a further difference to
+        :meth:`.tf`.
+        """
+        return self._ta(
             *marginals,
             common_scale=common_scale,
             inference=self._get_inference(inference),
@@ -1405,7 +2853,74 @@ class TermBuilder:
             gs.HMCKernel
         ),
     ) -> StrctTensorProdTerm:
-        return self.ta(
+        r"""
+        General full anisotropic tensor product term, including main effects and
+        interction.
+
+        Corresponds to ``mgcv::te``.
+
+        .. warning::
+            This method remove any default gibbs samplers and replace them with
+            ``scales_inference`` on log level, since the full conditional for the
+            variance parameters is not known in closed form for an anisotropic
+            tensor product.
+
+        Parameters
+        ----------
+        *marginals
+            Marginal terms, subclasses of :class:`.StrctTerm`.
+        common_scale
+            A single, common scale to cover all marginal dimensions, resulting in an
+            isotropic tensor product. This mean setting
+            :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
+            in the notation used in :class:`.StrctTensorProdTerm`.
+        inference
+            Inference specification for this term's coefficient.
+        scales_inference
+            If ``"default"``, uses the default inference passed to the TermBuilder
+            upon initialization.
+
+        See Also
+        --------
+        .StrctTensorProdTerm : The term class returned by this method; includes further
+          details.
+        .tx : Tensor product interaction term, without main effects.
+
+        Examples
+        --------
+
+        Using only the interaction term:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        >>> ps1 = tb.ps("x_nonlin", k=7)
+        >>> ps2 = tb.ps("x_lin", k=7)
+
+        >>> pred += tb.tf(ps1, ps2)
+        >>> pred.terms
+        {'tf(x_nonlin,x_lin)': StrctTensorProdTerm(name="tf(x_nonlin,x_lin)")}
+
+        To illustrate the difference to :meth:`.tx`, consider this example, which
+        is practically equivalent:
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        >>> ps1 = tb.ps("x_nonlin", k=7)
+        >>> ps2 = tb.ps("x_lin", k=7)
+
+        >>> pred += ps1, ps2, tb.tx(ps1, ps2)
+        >>> len(pred.terms)
+        3
+        """
+        return self._ta(
             *marginals,
             common_scale=common_scale,
             inference=self._get_inference(inference),
@@ -1465,11 +2980,11 @@ def _biject_and_replace_star_gibbs_with(
             # so we don't change anything
             return var
     if param.name:
-        trafo_name = "h(" + param.name + ")"
+        trafo_name = "ln(" + param.name + ")"
     else:
         trafo_name = None
     transformed = param.transform(
-        bijector=tfb.Softplus(), inference=inference, name=trafo_name
+        bijector=tfb.Exp(), inference=inference, name=trafo_name
     )
     if trafo_name is None:
         transformed.name = ""
