@@ -15,7 +15,8 @@ The library can be installed from PYPI:
 API Reference
 -------------
 
-.. rubric:: High-level API
+High-level API
+***************
 
 .. autosummary::
     :toctree: generated
@@ -26,7 +27,8 @@ API Reference
     ~liesel_gam.TermBuilder
     ~liesel_gam.BasisBuilder
 
-.. rubric:: Plots
+Plots
+***************
 
 .. autosummary::
     :toctree: generated
@@ -40,7 +42,8 @@ API Reference
     ~liesel_gam.plot_regions
     ~liesel_gam.plot_1d_smooth_clustered
 
-.. rubric:: Summary
+Summary
+***************
 
 .. autosummary::
     :toctree: generated
@@ -57,7 +60,8 @@ API Reference
     ~liesel_gam.polys_to_df
 
 
-.. rubric:: Bases
+Bases
+***************
 
 .. autosummary::
     :toctree: generated
@@ -69,7 +73,8 @@ API Reference
     ~liesel_gam.LinBasis
 
 
-.. rubric:: Terms
+Terms and Variables
+***************
 
 .. autosummary::
     :toctree: generated
@@ -85,9 +90,12 @@ API Reference
     ~liesel_gam.RITerm
     ~liesel_gam.MRFTerm
     ~liesel_gam.BasisDot
+    ~liesel_gam.ScaleIG
+    ~liesel_gam.UserVar
 
 
-.. rubric:: Distribution
+Distribution
+***************
 
 .. autosummary::
     :toctree: generated
@@ -99,7 +107,8 @@ API Reference
     ~liesel_gam.StructuredPenaltyOperator
 
 
-.. rubric:: Other
+Other
+***************
 
 .. autosummary::
     :toctree: generated
@@ -111,7 +120,6 @@ API Reference
     ~liesel_gam.MRFSpec
     ~liesel_gam.NameManager
     ~liesel_gam.VarIGPrior
-    ~liesel_gam.ScaleIG
     ~liesel_gam.demo_data
     ~liesel_gam.demo_data_ta
 
