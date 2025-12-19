@@ -184,3 +184,4 @@ covtest.sh
 notebooks/multivariate/test_tx_optim.ipynb
 /doctests
 notebooks/univariate/test_ps_nosmooth.ipynb
+notebooks/univariate/test_ps_smooth_constant_prior.ipynb
