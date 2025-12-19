@@ -44,6 +44,7 @@ from .term import StrctTensorProdTerm as StrctTensorProdTerm
 from .term import StrctTerm as StrctTerm
 from .term_builder import TermBuilder as TermBuilder
 from .var import ScaleIG as ScaleIG
+from .var import UserVar as UserVar
 from .var import VarIGPrior as VarIGPrior
 
 on_rtd = os.environ.get("READTHEDOCS", "False") == "True"

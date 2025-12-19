@@ -68,26 +68,45 @@ def _ensure_value(
 
 
 class UserVar(lsl.Var):
+    """
+    A :class:`liesel.model.Var`, adapted for subclassing.
+
+    What differentiates this from the basic :class:`liesel.model.Var` is just that
+    the alternative constructors
+
+    - :meth:`liesel.model.Var.new_obs`
+    - :meth:`liesel.model.Var.new_param`
+    - :meth:`liesel.model.Var.new_calc`
+    - :meth:`liesel.model.Var.new_value`
+
+    are disabled to avoid potential errors when variables are subclassed and intended
+    to be initialized directly.
+    """
+
     @classmethod
     def new_calc(cls, *args, **kwargs) -> None:  # type: ignore
+        """Disabled method."""
         raise NotImplementedError(
             f"This constructor is not implemented on {cls.__name__}."
         )
 
     @classmethod
     def new_obs(cls, *args, **kwargs) -> None:  # type: ignore
+        """Disabled method."""
         raise NotImplementedError(
             f"This constructor is not implemented on {cls.__name__}."
         )
 
     @classmethod
     def new_param(cls, *args, **kwargs) -> None:  # type: ignore
+        """Disabled method."""
         raise NotImplementedError(
             f"This constructor is not implemented on {cls.__name__}."
         )
 
     @classmethod
     def new_value(cls, *args, **kwargs) -> None:  # type: ignore
+        """Disabled method."""
         raise NotImplementedError(
             f"This constructor is not implemented on {cls.__name__}."
         )
@@ -159,6 +178,15 @@ class ScaleIG(UserVar):
         \tilde{b}  & = b + 0.5 \boldsymbol{\beta}^\top \mathbf{K} \boldsymbol{\beta}.
 
     The Gibbs sampler for :math:`\tau^2` repeatedly draws from this full conditional.
+
+    References
+    -----------
+
+    Section 9.6.3 in 
+    
+    Fahrmeir, L., Kneib, T., Lang, S., & Marx, B. (2013). Regression—Models, methods 
+    and applications. Springer. https://doi.org/10.1007/978-3-642-34333-9
+
     """
 
     def __init__(
