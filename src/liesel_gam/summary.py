@@ -29,16 +29,39 @@ def _summarise_which(which: str | Sequence[str] | None) -> Sequence[SummaryQuant
 
 
 def summarise_by_samples(
-    key: KeyArray, a: Any, name: str, n: int = 100
+    key: Array, a: ArrayLike, name: str = "value", n: int = 100
 ) -> pd.DataFrame:
     """
-    - index: index of the flattened array
-    - sample: sample number
-    - obs: observation number (enumerates response values)
-    - chain: chain number
+    Summarizes an array of posterior samples via subsamples.
+
+    Parameters
+    ----------
+    key
+        Jax key-array (created by ``jax.random.key``) for drawing subsamples.
+    a
+        The array to be summarized, assumed to have shape ``(C, S, N)``, where
+        ``C`` is the number of MCMC chains, ``S`` is the number of samples, and
+        ``N`` is the dimension of the quantity to summarize.
+        Arrays of shape ``(C, S)`` are currently not supported by this function.
+    name
+        Column name for the value column in the returned dataframe.
+    n
+        Number of subsamples to draw from ``a``.
+
+    Returns
+    -------
+        A dataframe with the following columns:
+
+        - value: sample value
+        - index: index of the flattened array
+        - sample: sample number
+        - obs: observation number (enumerates quantity dimension, ``N``)
+        - chain: chain number
     """
 
-    _, iterations, _ = a.shape
+    a = jnp.asarray(a)
+
+    iterations = a.shape[1]
 
     a = np.concatenate(a, axis=0)
     idx = jax.random.choice(key, a.shape[0], shape=(n,), replace=True)
@@ -65,7 +88,28 @@ def summarise_1d_smooth(
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     ngrid: int = 150,
-):
+) -> pd.DataFrame:
+    """
+    Creates a summary dataframe for a one-dimensional :class:`.StrctTerm`.
+
+    Parameters
+    ----------
+    term
+        The term to summarise.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Optional dictionary of covariate data at which to summarise the term.
+        If ``None``, a grid of length ``ngrid`` will be created internally, using the
+        minimum and maximum observed values of this term's input covariate.
+    quantiles
+        Probability levels of quantiles to include.
+    hdi_prob
+        Probability level for highest posterior density interval.
+    ngrid
+        Number of covariate values in the grid used for summary, if ``newdata=None``.
+    """
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that term.basis.x is
         # a strong node.
@@ -96,6 +140,9 @@ def summarise_1d_smooth(
 
 
 def grid_nd(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, Any]:
+    """
+    Creates a meshgrid of the values in ``inputs``.
+    """
     mins = {k: jnp.min(v) for k, v in inputs.items()}
     maxs = {k: jnp.max(v) for k, v in inputs.items()}
     grids = {k: np.linspace(mins[k], maxs[k], ngrid) for k in inputs}
@@ -107,6 +154,10 @@ def grid_nd(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, An
 def input_grid_nd_smooth(
     term: StrctTensorProdTerm | StrctTerm | LinTerm, ngrid: int
 ) -> dict[str, jax.typing.ArrayLike]:
+    """
+    Creates a dictionary of meshgrids of the covariate input variables to the ``term``
+    argument.
+    """
     if isinstance(term, StrctTensorProdTerm):
         inputs = {k: v.value for k, v in term.input_obs.items()}
         return grid_nd(inputs, ngrid)
@@ -123,6 +174,9 @@ def input_grid_nd_smooth(
 def grid_nd_nomesh(
     inputs: dict[str, jax.typing.ArrayLike], ngrid: int
 ) -> dict[str, Any]:
+    """
+    Creates a dictionary of grids based on the ``inputs``.
+    """
     mins = {k: jnp.min(v) for k, v in inputs.items()}
     maxs = {k: jnp.max(v) for k, v in inputs.items()}
     grids = {k: np.linspace(mins[k], maxs[k], ngrid) for k in inputs}
@@ -132,6 +186,10 @@ def grid_nd_nomesh(
 def input_grid_nd_smooth_nomesh(
     term: StrctTerm | LinTerm, ngrid: int
 ) -> dict[str, jax.typing.ArrayLike]:
+    """
+    Creates a dictionary of grids for the covariate input variables to the ``term``
+    argument.
+    """
     if not isinstance(term.basis.x, lsl.TransientCalc | lsl.Calc):
         raise NotImplementedError(
             "Function not implemented for bases with inputs of "
@@ -158,7 +216,31 @@ def summarise_nd_smooth(
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
-):
+) -> pd.DataFrame:
+    """
+    Summarises an n-dimensional smooth.
+
+    Parameters
+    ----------
+    term
+        The term to summarise,  a :class:`.StrctTerm` or :class:`.StrctTensorProdTerm`.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Optional dictionary of covariate data at which to summarise the term. If
+        ``None``, a grid  will be created internally, using the minimum and maximum
+        observed values of this term's input covariates. The ``ngrid`` argument refers
+        to the number of grid elements used in the marginal grids, so the total grid
+        length will be ``ngrid**k``, where ``k`` is the number of terms.
+    quantiles
+        Probability levels of quantiles to include.
+    hdi_prob
+        Probability level for highest posterior density interval.
+    newdata_meshgrid
+        If *True*, then the function will create a large grid of all combinations of
+        covariate values in ``newdata`` that correspond to this term.
+    """
     if isinstance(which, str):
         which = [which]
 
@@ -206,7 +288,17 @@ def summarise_nd_smooth(
     return term_summary
 
 
-def polys_to_df(polys: Mapping[str, ArrayLike]):
+def polys_to_df(polys: Mapping[str, ArrayLike]) -> pd.DataFrame:
+    """
+    Turns a ``polys`` dictionary into a dataframe appropriate for plotting.
+
+    Parameters
+    ----------
+    polys
+        Dictionary of arrays. The keys of the dict are the region labels. The
+        corresponding values define the region by defining polygons. The
+        neighborhood structure can be inferred from this polygon information.
+    """
     poly_labels = list(polys)
     poly_coords = list(polys.values())
     poly_coord_dim = np.shape(poly_coords[0])[-1]
@@ -253,6 +345,26 @@ def summarise_cluster(
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> pd.DataFrame:
+    """
+    Summarises a discrete term represented by :class:`.RITerm` or :class:`.MRFTerm`.
+
+    Parameters
+    ----------
+    term
+        The term to summarise.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Dictionary of covariate data at which to summarise the term. If ``None``, uses
+        the unique clusters known to the term.
+    labels
+        Custom mapping to use for mapping between string labels and integer codes.
+    quantiles
+        Probability levels of quantiles to include.
+    hdi_prob
+        Probability level for highest posterior density interval.
+    """
     if labels is None:
         try:
             labels = term.mapping  # type: ignore
@@ -322,6 +434,32 @@ def summarise_regions(
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
 ) -> pd.DataFrame:
+    """
+    Summarises a discrete spatial term.
+
+    Parameters
+    ----------
+    term
+        The term to summarise, a :class:`.RITerm` or :class:`.MRFTerm`.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Dictionary of covariate data at which to summarise the term. If ``None``, uses
+        the unique clusters known to the term.
+    which
+        Sequence of strings, indicating the summary quantities to include.
+    polys
+        Dictionary of arrays. The keys of the dict are the region labels. The
+        corresponding values define the region by defining polygons. The
+        neighborhood structure can be inferred from this polygon information.
+    labels
+        Custom mapping to use for mapping between string labels and integer codes.
+    quantiles
+        Probability levels of quantiles to include.
+    hdi_prob
+        Probability level for highest posterior density interval.
+    """
     polygons = None
     if polys is not None:
         polygons = polys
@@ -385,6 +523,24 @@ def summarise_lin(
     hdi_prob: float = 0.9,
     indices: Sequence[int] | None = None,
 ) -> pd.DataFrame:
+    """
+    Summarises a linear term.
+
+    Parameters
+    ----------
+    term
+        The term to summarise.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    quantiles
+        Probability levels of quantiles to include.
+    hdi_prob
+        Probability level for highest posterior density interval.
+    indices
+        Sequence of integers, selects coefficients or clusters to be included in the
+        plot. If ``None``, all coefficients/clusters are plotted.
+    """
     if indices is not None:
         coef_samples = samples[term.coef.name][..., indices]
         colnames = [term.column_names[i] for i in indices]
@@ -412,16 +568,48 @@ def summarise_lin(
 def summarise_1d_smooth_clustered(
     clustered_term: lsl.Var,
     samples: Mapping[str, jax.Array],
-    ngrid: int = 20,
     newdata: gs.Position
     | None
     | Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
-    ci_quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     labels: CategoryMapping | None | Sequence[str] = None,
+    ngrid: int = 20,
     newdata_meshgrid: bool = False,
 ):
+    """
+    Summarises a clustered smooth or linear function.
+
+    Intended for terms, as returned by :meth:`.TermBuilder.rs`.
+
+    Parameters
+    ----------
+    clustered_term
+        The term to plot. Must be a weak :class:`liesel.model.Var` with named inputs
+        ``"x"`` (the function) and ``"cluster"`` (the cluster).
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Dictionary of covariate data at which to plot the term. If ``None``, plots the
+        term for the unique clusters known to the term, and uses a grid of length
+        ``ngrid`` between the minimum and maximum observed value in the clustered
+        function's covariate.
+    which
+        Sequence of strings, indicating the summary quantities to include.
+    quantiles
+        Probability levels of quantiles to include.
+    hdi_prob
+        Probability level for highest posterior density interval.
+    labels
+        Custom mapping to use for mapping between string labels and integer codes.
+    ngrid
+        Number of covariate values in the grid used for plotting, if ``newdata=None``.
+    newdata_meshgrid
+        If *True*, then the function will create a large grid of all combinations of
+        covariate values in ``newdata`` that correspond to this term.
+    """
     if isinstance(which, str):
         which = [which]
 
@@ -529,7 +717,7 @@ def summarise_1d_smooth_clustered(
         gs.SamplesSummary.from_array(
             term_samples,
             name=clustered_term.name,
-            quantiles=ci_quantiles,
+            quantiles=quantiles,
             hdi_prob=hdi_prob,
         )
         .to_dataframe()

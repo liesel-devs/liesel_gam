@@ -290,7 +290,7 @@ class Test1dSmoothClusteredSummary:
         assert "q_0.95" in su1.columns
         assert "q_0.5" in su1.columns
         su2 = gam.summarise_1d_smooth_clustered(
-            term, samples=samples, ci_quantiles=(0.1, 0.9)
+            term, samples=samples, quantiles=(0.1, 0.9)
         )
         assert "q_0.1" in su2.columns
         assert "q_0.9" in su2.columns

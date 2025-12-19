@@ -27,6 +27,7 @@ from .registry import PandasRegistry as PandasRegistry
 from .summary import polys_to_df as polys_to_df
 from .summary import summarise_1d_smooth as summarise_1d_smooth
 from .summary import summarise_1d_smooth_clustered as summarise_1d_smooth_clustered
+from .summary import summarise_by_samples as summarise_by_samples
 from .summary import summarise_cluster as summarise_cluster
 from .summary import summarise_lin as summarise_lin
 from .summary import summarise_nd_smooth as summarise_nd_smooth

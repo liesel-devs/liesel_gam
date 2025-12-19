@@ -37,6 +37,33 @@ def plot_1d_smooth(
     seed: int | KeyArray = 1,
     ngrid: int = 150,
 ):
+    """
+    Plots a posterior summary for a one-dimensional smooth.
+
+    Parameters
+    ----------
+    term
+        The term to plot.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Optional dictionary of covariate data at which to plot the term.
+        If ``None``, a grid of length ``ngrid`` will be created internally, using the
+        minimum and maximum observed values of this term's input covariate.
+    ci_quantiles
+        Which quantiles to use for plotting a credible band.
+    hdi_prob
+        If not ``None``, the probability level at which to include a highest posterior
+        density interval band in the plot.
+    show_n_samples
+        If not ``None``, the number of individual posterior function samples to show.
+    seed
+        Random number seed for random selection of the function samples.
+    ngrid
+        Number of covariate values in the grid used for plotting, if ``newdata=None``.
+
+    """
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that term.basis.x is
         # a strong node.
@@ -134,6 +161,35 @@ def plot_2d_smooth(
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
 ):
+    """
+    Plots a posterior summary for a two-dimensional smooth function.
+
+    Parameters
+    ----------
+    term
+        The term to plot.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Optional dictionary of covariate data at which to plot the term.
+        If ``None``, a grid  will be created internally, using the
+        minimum and maximum observed values of this term's input covariates. The
+        ``ngrid`` argument refers to the number of grid elements used in the marginal
+        grids, so the total grid length will be ``ngrid**k``, where ``k`` is the number
+        of terms.
+    which
+        Which quantities to plot. Can be a list of multiple values.
+    quantiles
+        Probability levels that should be available for selection in ``which``.
+        For example, if ``quantiles=0.5``, you can select ``which="q_0.5``.
+    hdi_prob
+        The probability level at which to include a highest posterior
+        density interval if ``which`` contains ``"hdi"``.
+    newdata_meshgrid
+        If *True*, then the function will create a large grid of all combinations of
+        covariate values in ``newdata`` that correspond to this term.
+    """
     if isinstance(term, StrctTensorProdTerm):
         names = list(term.input_obs)
         if len(names) != 2:
@@ -183,6 +239,31 @@ def plot_polys(
     observed_color: str = "none",
     unobserved_color: str = "red",
 ) -> p9.ggplot:
+    """
+    Plot data on a map of regions defined by a dictionary of polygons.
+
+    Parameters
+    ----------
+    region
+        Name of the region column in the dataframe passed to ``df``.
+    which
+        Name of the column in the dataframe passed to ``df`` that should be used as the
+        fill color for the plotted regions.
+    polys
+        Dictionary of arrays. The keys of the dict are the region labels. The
+        corresponding values define the region by defining polygons. The
+        neighborhood structure can be inferred from this polygon information.
+    show_unobserved
+        Only has an effect if ``df`` contains a column named ``"observed"``.
+        If ``show_unobserved=True``, or the column ``"observed"`` does not exist, then
+        all regions will be plotted with color based on the column named in ``which``.
+        If ``show_unobserved=False``, color filling will be applied only to the rows
+        in ``df`` with ``observed=true``.
+    observed_color
+        Border color for observed regions.
+    unobserved_color
+        Border color for unobserved regions.
+    """
     if isinstance(which, str):
         which = [which]
 
@@ -238,6 +319,46 @@ def plot_regions(
     observed_color: str = "none",
     unobserved_color: str = "red",
 ) -> p9.ggplot:
+    """
+    Plot a summary map of a discrete spatial effect.
+
+    Supports effects represented by :class:`.RITerm` or :class:`.MRFTerm`.
+
+    Parameters
+    ----------
+    term
+        The term to plot.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Dictionary of covariate data at which to plot the term. If ``None``, plots the
+        term for the unique regions known to the term.
+    which
+        Which quantities to plot. Can be a list of multiple values.
+    polys
+        If ``None``, tries to use :attr:`.MRFTerm.polygons`. Dictionary of arrays. The
+        keys of the dict are the region labels. The corresponding values define the
+        region by defining polygons. The neighborhood structure can be inferred from
+        this polygon information.
+    labels
+        Custom mapping to use for mapping between string labels and integer codes.
+    quantiles
+        Probability levels that should be available for selection in ``which``. For
+        example, if ``quantiles=0.5``, you can select ``which="q_0.5``.
+    hdi_prob
+        The probability level at which to include a highest posterior density interval
+        if ``which`` contains ``"hdi"``.
+    show_unobserved
+        If ``show_unobserved=True``, then all
+        regions will be plotted with color based on the column named in ``which``. If
+        ``show_unobserved=False``, color filling will be applied only to observed
+        regions.
+    observed_color
+        Border color for observed regions.
+    unobserved_color
+        Border color for unobserved regions.
+    """
     plot_df = summarise_regions(
         term=term,
         samples=samples,
@@ -280,6 +401,44 @@ def plot_forest(
     unobserved_color: str = "red",
     indices: Sequence[int] | None = None,
 ) -> p9.ggplot:
+    """
+    Forest plot summary of a linear or discrete effect.
+
+    Parameters
+    ----------
+    term
+        The term to plot.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        If the plotted term is a linear term, this is ignored. Otherwise, dictionary of
+        covariate data at which to plot the term. If ``None``, plots the term for the
+        unique clusters known to the term.
+    labels
+        If the plotted term is a linear term, this is ignored. Otherwise,
+        custom mapping to use for mapping between string labels and integer codes.
+    ymin, ymax
+        Which quantities to use for the plotted interval.
+    ci_quantiles
+        Probability levels that should be available for selection in ``ymin, ymax``. For
+        example, if ``ci_quantiles=(0.05, 0.95)``, you can select ``ymin="q_0.05``.
+    hdi_prob
+        The probability level to use if ``ymin,max`` are ``"hdi_low", "hdi_high"``.
+    show_unobserved
+        If the plotted term is a linear term, this is ignored.
+        Otherwise, if *True*, clusters without observations are included, and if
+        *False*, they are not included.
+    highlight_unobserved
+        If the plotted term is a linear term, this is ignored.
+        Otherwise, if *True*, unobserved clusters are marked by a cross of color
+        ``unobserved_color``.
+    unobserved_color
+        Color for unobserved regions.
+    indices
+        Sequence of integers, selects coefficients or clusters to be included in the
+        plot. If ``None``, all coefficients/clusters are plotted.
+    """
     if isinstance(term, RITerm | MRFTerm):
         return plot_forest_clustered(
             term=term,
@@ -318,6 +477,27 @@ def plot_forest_lin(
     hdi_prob: float = 0.9,
     indices: Sequence[int] | None = None,
 ) -> p9.ggplot:
+    """
+    Forest plot summary of a linear effect.
+
+    Parameters
+    ----------
+    term
+        The term to plot.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    ymin, ymax
+        Which quantities to use for the plotted interval.
+    ci_quantiles
+        Probability levels that should be available for selection in ``ymin, ymax``. For
+        example, if ``ci_quantiles=(0.05, 0.95)``, you can select ``ymin="q_0.05``.
+    hdi_prob
+        The probability level to use if ``ymin,max`` are ``"hdi_low", "hdi_high"``.
+    indices
+        Sequence of integers, selects coefficients or clusters to be included in the
+        plot. If ``None``, all coefficients/clusters are plotted.
+    """
     df = summarise_lin(
         term=term,
         samples=samples,
@@ -358,6 +538,40 @@ def plot_forest_clustered(
     unobserved_color: str = "red",
     indices: Sequence[int] | None = None,
 ) -> p9.ggplot:
+    """
+    Forest plot summary of a discrete effect.
+
+    Parameters
+    ----------
+    term
+        The term to plot.
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Dictionary of covariate data at which to plot the term. If ``None``, plots the
+        term for the unique clusters known to the term.
+    labels
+        Custom mapping to use for mapping between string labels and integer codes.
+    ymin, ymax
+        Which quantities to use for the plotted interval.
+    ci_quantiles
+        Probability levels that should be available for selection in ``ymin, ymax``. For
+        example, if ``ci_quantiles=(0.05, 0.95)``, you can select ``ymin="q_0.05``.
+    hdi_prob
+        The probability level to use if ``ymin,max`` are ``"hdi_low", "hdi_high"``.
+    show_unobserved
+        If *True*, clusters without observations are included, and if *False*, they are
+        not included.
+    highlight_unobserved
+        If *True*, unobserved clusters are marked by a cross of color
+        ``unobserved_color``.
+    unobserved_color
+        Color for unobserved regions.
+    indices
+        Sequence of integers, selects coefficients or clusters to be included in the
+        plot. If ``None``, all coefficients/clusters are plotted.
+    """
     if labels is None:
         try:
             labels = term.mapping  # type: ignore
@@ -415,12 +629,38 @@ def plot_forest_clustered(
 def plot_1d_smooth_clustered(
     clustered_term: lsl.Var,
     samples: Mapping[str, jax.Array],
-    ngrid: int = 20,
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
     color_scale: str = "viridis",
+    ngrid: int = 20,
     newdata_meshgrid: bool = False,
 ):
+    """
+    Plots a clustered smooth or linear function.
+
+    For effects as those returned by :meth:`.TermBuilder.rs`.
+
+    Parameters
+    ----------
+    clustered_term
+        The term to plot. Must be a weak :class:`liesel.model.Var` with named inputs
+        ``"x"`` (the function) and ``"cluster"`` (the cluster).
+    samples
+        Dictionary of posterior samples. Must contain samples for the term's
+        coefficient.
+    newdata
+        Dictionary of covariate data at which to plot the term. If ``None``, plots the
+        term for the unique clusters known to the term, and uses a grid of length
+        ``ngrid`` between the minimum and maximum observed value in the clustered
+        function's covariate.
+    labels
+        Custom mapping to use for mapping between string labels and integer codes.
+    ngrid
+        Number of covariate values in the grid used for plotting, if ``newdata=None``.
+    newdata_meshgrid
+        If *True*, then the function will create a large grid of all combinations of
+        covariate values in ``newdata`` that correspond to this term.
+    """
     ci_quantiles = (0.05, 0.5, 0.95)
     hdi_prob = 0.9
 
@@ -440,7 +680,7 @@ def plot_1d_smooth_clustered(
         clustered_term=clustered_term,
         samples=samples,
         ngrid=ngrid,
-        ci_quantiles=ci_quantiles,
+        quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
         labels=labels,
         newdata=newdata,

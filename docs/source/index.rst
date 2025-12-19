@@ -34,11 +34,11 @@ API Reference
     :nosignatures:
 
     ~liesel_gam.plot_1d_smooth
-    ~liesel_gam.plot_1d_smooth_clustered
     ~liesel_gam.plot_2d_smooth
     ~liesel_gam.plot_forest
     ~liesel_gam.plot_polys
     ~liesel_gam.plot_regions
+    ~liesel_gam.plot_1d_smooth_clustered
 
 .. rubric:: Summary
 
@@ -47,12 +47,13 @@ API Reference
     :caption: Summary
     :nosignatures:
 
-    ~liesel_gam.summarise_regions
+    ~liesel_gam.summarise_1d_smooth
     ~liesel_gam.summarise_nd_smooth
     ~liesel_gam.summarise_lin
     ~liesel_gam.summarise_cluster
-    ~liesel_gam.summarise_1d_smooth
+    ~liesel_gam.summarise_regions
     ~liesel_gam.summarise_1d_smooth_clustered
+    ~liesel_gam.summarise_by_samples
     ~liesel_gam.polys_to_df
 
 
