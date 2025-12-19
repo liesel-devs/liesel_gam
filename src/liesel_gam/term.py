@@ -976,7 +976,7 @@ class StrctTensorProdTerm(UserVar):
 
     .. math::
 
-        \mathbf{b}_i(\mathbf{x}_i)^\top = \mathbf{b}_1(x_{i,1})^\top
+        \mathbf{b}(\mathbf{x}_i)^\top = \mathbf{b}_1(x_{i,1})^\top
         \otimes \mathbf{b}_2(x_{i,2})^\top
         \otimes \cdots \otimes
         \mathbf{b}_M(x_{i,M})^\top,
