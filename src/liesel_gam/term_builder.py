@@ -2829,6 +2829,31 @@ class TermBuilder:
         independent marginals, and another two govern the interaction term. This
         added flexibility when using :meth:`.tx` is a further difference to
         :meth:`.tf`.
+
+        .. rubric:: Three-dimensional interaction
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        >>> ps1 = tb.ps("x_nonlin", k=20)
+        >>> ps2 = tb.ps("x_lin", k=20)
+        >>> ps3 = tb.ps("x", k=20)
+
+        >>> pred += ps1, ps2, ps3
+
+        >>> pred += tb.tx(
+        ...     tb.ps("x_nonlin", k=7),
+        ...     tb.ps("x_lin", k=7),
+        ...     tb.ps("x", k=7),
+        ... )
+
+        >>> len(pred.terms)
+        4
+        >>> pred.terms["tx(x_nonlin,x_lin,x)"].coef.value.shape
+        (216,)
         """
         return self._ta(
             *marginals,
@@ -2919,6 +2944,25 @@ class TermBuilder:
         >>> pred += ps1, ps2, tb.tx(ps1, ps2)
         >>> len(pred.terms)
         3
+
+        .. rubric:: Three-dimensional tensor product
+
+        >>> import liesel_gam as gam
+        >>> df = gam.demo_data(100)
+
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> pred = gam.AdditivePredictor(name="loc")
+
+        >>> pred += tb.tf(
+        ...     tb.ps("x_nonlin", k=7),
+        ...     tb.ps("x_lin", k=7),
+        ...     tb.ps("x", k=7),
+        ... )
+
+        >>> len(pred.terms)
+        1
+        >>> pred.terms["tf(x_nonlin,x_lin,x)"].coef.value.shape
+        (216,)
         """
         return self._ta(
             *marginals,

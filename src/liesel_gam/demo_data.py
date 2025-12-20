@@ -22,7 +22,8 @@ def demo_data(n: int, seed: int = 1) -> pd.DataFrame:
         - x_nonlin (continuous covariate with nonlinear effect on both location and
           scale)
         - x_lin (continuous covariate with linear effect on both location and scale)
-        - x_cat (categorical covariate with effect on both location)
+        - x_cat (categorical covariate with effect on location)
+        - x (continuous covariate with no effect)
 
     Examples
     --------
@@ -35,6 +36,7 @@ def demo_data(n: int, seed: int = 1) -> pd.DataFrame:
     x1 = rng.uniform(-2, 2, n)
     x2 = rng.uniform(-2, 2, n)
     x3 = rng.choice(["a", "b", "c"], size=n, replace=True)
+    x4 = rng.uniform(-2, 2, n)
 
     log_sigma = (
         -1.0
@@ -46,7 +48,7 @@ def demo_data(n: int, seed: int = 1) -> pd.DataFrame:
 
     y = mu + np.exp(log_sigma) * rng.normal(0.0, 1.0, n)
 
-    df = pd.DataFrame({"y": y, "x_nonlin": x1, "x_lin": x2, "x_cat": x3})
+    df = pd.DataFrame({"y": y, "x_nonlin": x1, "x_lin": x2, "x_cat": x3, "x": x4})
     return df
 
 
