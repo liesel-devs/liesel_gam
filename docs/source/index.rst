@@ -18,8 +18,9 @@ Demo Notebooks
 - :ref:`nb_uni`
 - :ref:`nb_multi`
 - :ref:`nb_composite`
-- Check out the demos on polynomial regression and on P-splines for additional
-  example code, for example on on posterior predictive sampling
+
+Check out the demos on polynomial regression and on P-splines for additional
+example code, for example on on posterior predictive sampling.
 
 
 .. toctree::
