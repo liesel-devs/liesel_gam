@@ -792,7 +792,7 @@ class RITerm(IndexingTerm):
 
 class BasisDot(UserVar):
     """
-    Basic term variable for a dot-product ``basisl coef``.
+    Basic term variable for a dot-product ``basis @ coef``.
 
     In comparison to :class:`.StrctTerm`, this class makes fewer assumptions, since it
     does not assume any prior distribution, or structure of the prior distribution, for
