@@ -30,7 +30,7 @@ def demo_data(n: int, seed: int = 1) -> pd.DataFrame:
 
     >>> import liesel_gam as gam
     >>> gam.demo_data(n=100).columns
-    Index(['y', 'x_nonlin', 'x_lin', 'x_cat'], dtype='object')
+    Index(['y', 'x_nonlin', 'x_lin', 'x_cat', 'x'], dtype='object')
     """
     rng = np.random.default_rng(seed)
     x1 = rng.uniform(-2, 2, n)
