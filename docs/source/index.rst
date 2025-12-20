@@ -43,29 +43,29 @@ example code, for example on on posterior predictive sampling.
 Relevant Literature
 --------------------
 
-Fahrmeier et al. (2013) is a textbook that introduces structured additive 
+Fahrmeier et al. (2013) is a textbook that introduces structured additive
 regression concepts form the ground up. Wood (2017) is another seminal textbook on
 generalized additive models. The R package mgcv provides many basis functions and
 penalty matrices that we use in ``liesel_gam``.
 
 
-- Fahrmeir, L., Kneib, T., Lang, S., & Marx, B. (2013). Regression—Models, methods and 
+- Fahrmeir, L., Kneib, T., Lang, S., & Marx, B. (2013). Regression—Models, methods and
   applications. Springer. https://doi.org/10.1007/978-3-642-34333-9
 - Wood, S. N. (2017). Generalized additive models (2nd ed.). Chapman & Hall/CRC.
 - R package mgcv: https://cran.r-project.org/web/packages/mgcv/index.html
 
-The other references are seminal papers on structured additive distributional 
+The other references are seminal papers on structured additive distributional
 regression.
 
-- Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego system 
-  for building structured additive distributional regression models with tensor product 
+- Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego system
+  for building structured additive distributional regression models with tensor product
   interactions. TEST, 28(1), 1–39. https://doi.org/10.1007/s11749-019-00631-z
-- Umlauf, N., Klein, N., & Zeileis, A. (2018). Bamlss: Bayesian additive models for 
-  location, scale, and shape (and beyond). Journal of Computational and Graphical 
+- Umlauf, N., Klein, N., & Zeileis, A. (2018). Bamlss: Bayesian additive models for
+  location, scale, and shape (and beyond). Journal of Computational and Graphical
   Statistics, 27(3), 612–627. https://doi.org/10.1080/10618600.2017.1407325
-- Klein, N., Kneib, T., Lang, S., & Sohn, A. (2015). Bayesian structured additive 
-  distributional regression with an application to regional income inequality in 
-  Germany. The Annals of Applied Statistics, 9(2), 1024–1052. 
+- Klein, N., Kneib, T., Lang, S., & Sohn, A. (2015). Bayesian structured additive
+  distributional regression with an application to regional income inequality in
+  Germany. The Annals of Applied Statistics, 9(2), 1024–1052.
   https://doi.org/10.1214/15-AOAS823
 
 
