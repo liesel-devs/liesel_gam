@@ -11,6 +11,25 @@ The library can be installed from PYPI:
 
     $ pip install liesel_gam
 
+Demo Notebooks
+---------------
+
+- :ref:`nb_lin`
+- :ref:`nb_uni`
+- :ref:`nb_multi`
+- :ref:`nb_composite`
+
+
+.. toctree::
+   :hidden:
+   :caption: Demo Notebooks
+   :maxdepth: 1
+
+   notebooks_lin
+   notebooks_univariate
+   notebooks_composite
+   notebooks_multivariate
+
 
 API Reference
 -------------
