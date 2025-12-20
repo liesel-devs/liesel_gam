@@ -16,7 +16,7 @@ formulas, known to many from the formula syntax in R.
 Some technical highlights:
 
 - Express Bayesian models as probabilistic graphical models via [liesel.model](https://github.com/liesel-devs/liesel)
-- Build custom MCMC algorithms using Gibbs smaplers, Hamiltonian Monte Carlo (HMC),
+- Build custom MCMC algorithms using Gibbs samplers, Hamiltonian Monte Carlo (HMC),
   the iteratively reweighted least squares sampler (IWLS), and more via
    [liesel.goose](https://github.com/liesel-devs/liesel)
 - Speed up models using just-in-time compilation and automatic differentiation via [JAX](https://docs.jax.dev/en/latest/), since Liesel builds on JAX.
