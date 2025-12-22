@@ -3,6 +3,10 @@ from dataclasses import dataclass, field
 
 @dataclass
 class NameManager:
+    """
+    Creates unique names.
+    """
+
     prefix: str = ""
     created_names: dict[str, int] = field(default_factory=dict)
 
@@ -29,6 +33,7 @@ class NameManager:
         return name_indexed
 
     def fname(self, f: str, of: str) -> str:
+        """Creates a function name ``{f}({of})``."""
         return self.create(f"{f}({of})")
 
     def param(
@@ -36,6 +41,7 @@ class NameManager:
         param_name: str,
         term_name: str = "",
     ) -> str:
+        """Creates a parameter name ``${param_name}_{term_name}$``."""
         param_name = param_name.replace("$", "")
         if term_name:
             term_name = term_name.replace("$", "")
@@ -48,10 +54,13 @@ class NameManager:
             return self.create(param_name, apply_prefix=True)
 
     def beta(self, term_name: str = "") -> str:
+        """Creates a beta parameter name ``$\\beta_{term_name}$``."""
         return self.param(term_name=term_name, param_name="\\beta")
 
     def tau(self, term_name: str = "") -> str:
+        """Creates a tau parameter name ``$\\tau_{term_name}$``."""
         return self.param(term_name=term_name, param_name="\\tau")
 
     def tau2(self, term_name: str = "") -> str:
+        """Creates a tau2 parameter name ``$\\tau^2_{term_name}$``."""
         return self.param(term_name=term_name, param_name="\\tau^2")
