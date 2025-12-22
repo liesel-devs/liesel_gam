@@ -43,8 +43,39 @@ def penalty_to_unit_design(penalty: Array, rank: Array | int | None = None) -> A
 
 
 class LinearConstraintEVD:
+    """
+    Computes reparameterization matrices for linear constraints.
+
+    Reparameterization matrices are computed via eigenvalue decomposition.
+
+    If you have a linear constraint ``A @ coef`` to be applied to a basis-coef product
+    ``B @ coef``, were ``B`` is the basis matrix, then this constraint can be enforced
+    by computing ``B @ Z @ latent_coef`` instead, where ``latent_coef`` is an
+    unconstrained version of ``coef``, with penalty matrix ``Z.T @ K @ Z``, where ``K``
+    is the penalty matrix in the prior for ``coef``.
+
+    See :meth:`.Basis.constrain` for more detailed documentation and
+    Kneib et al. (2019) for an in-depth reference.
+
+    See Also
+    ---------
+    .Basis.constrain : Uses this class to apply constraints.
+    .StrctTerm.constrain : Uses this class to apply constraints.
+
+    References
+    ----------
+    Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+    system for building structured additive distributional regression models with tensor
+    product interactions. TEST, 28(1), 1–39. https://doi.org/10.1007/s11749-019-00631-z
+
+
+    """
+
     @staticmethod
     def general(constraint: Array) -> Array:
+        """
+        Reparameterization matrix for a general linear constraint ``constraint @ coef``.
+        """
         A = constraint
         nconstraints, _ = A.shape
 
@@ -83,6 +114,10 @@ class LinearConstraintEVD:
 
     @classmethod
     def constant_and_linear(cls, x: Array, basis: Array) -> Array:
+        """
+        Reparameterization matrix for removing a constant and a linear trend
+        from a smooth like ``B(x) @ coef``.
+        """
         nobs = jnp.shape(x)[0]
         j = jnp.ones(shape=nobs)
         X = jnp.c_[j, x]
@@ -91,17 +126,23 @@ class LinearConstraintEVD:
 
     @classmethod
     def sumzero_coef(cls, ncoef: int) -> Array:
+        """
+        Reparameterization matrix for enforcing a constraint ``jnp.ones(...).T @ coef``.
+
+        In other words, this applies a sum-to-zero constraint to the coefficient.
+        """
         j = jnp.ones(shape=(1, ncoef))
         return cls.general(constraint=j)
 
     @classmethod
     def sumzero_term(cls, basis: Array) -> Array:
+        """
+        Reparameterization matrix for enforcing a constraint
+        ``jnp.ones(...).T @ B(x) @ coef``.
+
+        In other words, this applies a sum-to-zero-constraint to the full term.
+        """
         nobs = jnp.shape(basis)[0]
         j = jnp.ones(shape=nobs)
         A = jnp.expand_dims(j @ basis, 0)
-        return cls.general(constraint=A)
-
-    @classmethod
-    def sumzero_term2(cls, basis: Array) -> Array:
-        A = jnp.mean(basis, axis=0, keepdims=True)
         return cls.general(constraint=A)

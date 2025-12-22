@@ -180,6 +180,8 @@ Other
     ~liesel_gam.VarIGPrior
     ~liesel_gam.demo_data
     ~liesel_gam.demo_data_ta
+    ~liesel_gam.LinearConstraintEVD
+
 
 
 Acknowledgements and Funding

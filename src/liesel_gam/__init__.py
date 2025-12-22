@@ -8,6 +8,7 @@ from .basis import MRFSpec as MRFSpec
 from .basis_builder import BasisBuilder as BasisBuilder
 from .category_mapping import CategoryMapping as CategoryMapping
 from .category_mapping import series_is_categorical as series_is_categorical
+from .constraint import LinearConstraintEVD as LinearConstraintEVD
 from .demo_data import demo_data as demo_data
 from .demo_data import demo_data_ta as demo_data_ta
 from .dist import MultivariateNormalSingular as MultivariateNormalSingular
