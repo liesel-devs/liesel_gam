@@ -8,7 +8,10 @@ class NameManager:
     """
 
     prefix: str = ""
+    """Added to names."""
+
     created_names: dict[str, int] = field(default_factory=dict)
+    """Dictionary created names."""
 
     def create(self, name: str, apply_prefix: bool = True, lazy: bool = True) -> str:
         """
