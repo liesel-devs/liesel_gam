@@ -182,6 +182,19 @@ Other
     ~liesel_gam.demo_data_ta
     ~liesel_gam.LinearConstraintEVD
 
+Experimental
+***************
+
+The API of modules, classes and functions in the experimental module is less stable
+than in other modules of ``liesel_gam``. If you depend on this, expect changes in the
+future.
+
+.. autosummary::
+    :toctree: generated
+    :caption: Experimental
+    :nosignatures:
+
+    ~liesel_gam.experimental.BSplineApprox
 
 
 Acknowledgements and Funding
