@@ -182,6 +182,16 @@ Other
     ~liesel_gam.demo_data_ta
     ~liesel_gam.LinearConstraintEVD
 
+.. rubric:: In/Out
+
+.. autosummary::
+    :toctree: generated
+    :caption: In/Out
+    :nosignatures:
+
+    ~liesel_gam.io.read_bnd
+    ~liesel_gam.io.polygon_is_closed
+
 Experimental
 ***************
 
