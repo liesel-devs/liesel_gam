@@ -8,6 +8,7 @@ dependencies = [
     "formulaic>=1.2.1",
     "liesel>=0.4.2",
     "smoothcon>=0.0.9",
+    "plotnine>=0.14.5"
 ]
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]
