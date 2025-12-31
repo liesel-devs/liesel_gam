@@ -58,12 +58,12 @@ def read_bnd(
             label = label.strip().strip("\"'")
 
             try:
-                n_points = int(n_points)
-            except ValueError:
-                raise ValueError(f"Invalid number of points in header: {header}")
+                n_points_int = int(n_points)
+            except ValueError as e:
+                raise ValueError(f"Invalid number of points in header: {header}") from e
 
             coords = []
-            for _ in range(n_points):
+            for _ in range(n_points_int):
                 line = f.readline()
                 if not line:
                     raise ValueError("Unexpected end of file while reading coordinates")
