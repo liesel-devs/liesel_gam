@@ -1,5 +1,5 @@
 This title is short and catchy, but does not convey the full range of models covered
-by this library. We could also say:
+by this Python library. We could also say:
 
 - Bayesian Generalized Additive Models for **Location, Scale, and Shape** (and beyond)
 - Bayesian **Structured Additive Distributional Regression**
@@ -15,8 +15,8 @@ formulas, known to many from the formula syntax in R.
 
 Some technical highlights:
 
-- Express Bayesian models as probabilistic graphical models via [liesel.model](https://github.com/liesel-devs/liesel)
-- Build custom MCMC algorithms using Gibbs samplers, Hamiltonian Monte Carlo (HMC),
+- Express Bayesian models as probabilistic graphical models in Python via [liesel.model](https://github.com/liesel-devs/liesel)
+- Build custom MCMC algorithms in Python, including Gibbs samplers, Hamiltonian Monte Carlo (HMC),
   the iteratively reweighted least squares sampler (IWLS), and more via
    [liesel.goose](https://github.com/liesel-devs/liesel)
 - Speed up models using just-in-time compilation and automatic differentiation via [JAX](https://docs.jax.dev/en/latest/), since Liesel builds on JAX.
