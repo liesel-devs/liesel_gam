@@ -13,6 +13,14 @@ The library can be installed from PYPI:
 
     $ pip install liesel_gam
 
+Since liesel-GAM interfaces with R via ``ryp`` under the hood,
+you also need the R packages ``{arrow}`` and ``{svglite}`` to be available on your system:
+
+.. code:: bash
+
+    $ Rscript -e "install.packages(c('arrow', 'svglite'))"
+
+
 Demo Notebooks
 ---------------
 

@@ -80,6 +80,13 @@ You can also install the development version from GitHub via pip:
 pip install git+https://github.com/liesel-devs/liesel_gam.git
 ```
 
+Since liesel-GAM interfaces with R via `ryp` under the hood,
+you also need the R packages `{arrow}` and `{svglite}` to be available on your system:
+
+```bash
+Rscript -e "install.packages(c('arrow', 'svglite'))"
+```
+
 ## Contents
 
 - [Short usage illustration](https://github.com/liesel-devs/liesel_gam?tab=readme-ov-file#illustrations)
