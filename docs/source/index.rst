@@ -44,7 +44,7 @@ Relevant Literature
 --------------------
 
 Fahrmeier et al. (2013) is a textbook that introduces structured additive
-regression concepts form the ground up. Wood (2017) is another seminal textbook on
+regression concepts from the ground up. Wood (2017) is another seminal textbook on
 generalized additive models. The R package mgcv provides many basis functions and
 penalty matrices that we use in ``liesel_gam``.
 
