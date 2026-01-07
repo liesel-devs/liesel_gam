@@ -55,12 +55,13 @@ class Basis(UserVar):
     """
     General basis for a structured additive term.
 
-    The ``Basis`` class wraps either a provided observation variable or a raw array and
-    a basis-generation function. It constructs an internal calculation node that
-    produces the basis (design) matrix used by smooth terms. The basis function may be
-    executed via a callback that does not need to be jax-compatible (the default,
-    potentially slow) with a jax-compatible function that is included in
-    just-in-time-compilation (when ``use_callback=False``).
+    The ``Basis`` class wraps an observation variable (or an array) and a
+    basis-generation function. It constructs an internal calculation node that produces
+    the basis (design) matrix by computing ``basis_fn(value)``. The basis function may
+    be executed via a callback, in which case it does not need to be jax-compatible.
+    This is the default, but it is potentially very slow, if the value of the basis
+    needs to be recomputed during estimation. We recommend it only for bases that remain
+    static during estimation.
 
     Parameters
     ----------
@@ -139,10 +140,9 @@ class Basis(UserVar):
     ... )
     Basis(name="B(x)")
 
-    Implementing a fixed basis matrix (without using the basis function). This is
-    not recommended, because it means you cannot simply supply new covariate values
-    to :meth:`liesel.model.Model.predict` for evaluating the basis matrix for
-    predictions.
+    Implementing a fixed basis matrix (without using the basis function). This is not
+    recommended, because it means you cannot simply supply new covariate values to
+    :meth:`liesel.model.Model.predict` for evaluating the basis matrix for predictions.
 
     >>> from liesel.contrib.splines import equidistant_knots, basis_matrix
     >>> import liesel_gam as gam
