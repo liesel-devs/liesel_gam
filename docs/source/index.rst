@@ -78,6 +78,7 @@ regression.
 
 
 
+
 API Reference
 -------------
 
@@ -213,6 +214,14 @@ future.
     :nosignatures:
 
     ~liesel_gam.experimental.BSplineApprox
+
+
+.. toctree::
+   :hidden:
+   :caption: Help
+   :maxdepth: 1
+
+   troubleshooting
 
 
 Acknowledgements and Funding
