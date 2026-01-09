@@ -82,11 +82,12 @@ class LinearConstraintEVD:
         AtA = A.T @ A
         evals, evecs = jnp.linalg.eigh(AtA)
 
-        if evecs[0, 0] < 0:
-            evecs = -evecs
+        signs = jnp.sign(evecs[0, :])
+        signs = jnp.where(signs == 0, 1.0, signs)
+        evecs = evecs * signs
 
         rank = jnp.linalg.matrix_rank(AtA)
-        Abar = evecs[:-rank]
+        Abar = evecs[:, :-rank].T
 
         A_stacked = jnp.r_[A, Abar]
         C_stacked = jnp.linalg.inv(A_stacked)
