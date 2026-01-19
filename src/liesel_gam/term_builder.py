@@ -62,7 +62,10 @@ class TermBuilder:
         Defines the default inference specification for terms created by this builder.
         Note that this inference is only used for the coefficient variables
         of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for the
-        scale variables (:attr:`.StrctTerm.scale`).
+        scale variables (:attr:`.StrctTerm.scale`). The default
+        ``gs.MCMCSpec(gs.IWLSKernel.untuned)`` is an iteratively-reweighted least
+        squares kernel without step size tuning, see
+        :meth:`liesel.goose.IWLSKernel.untuned`.
     default_scale_fn
         A function or :class:`.VarIGPrior` object that defines the default scale
         for structured additive terms initialized by this builder. If this is a
@@ -72,11 +75,13 @@ class TermBuilder:
         ``var ~ InverseGamma(concentration, scale)``, with concentration and scale
         given by the :class:`.VarIGPrior` object. For most terms, this
         will mean that a fitting Gibbs sampler can be automatically set up for
-        ``var``. The exceptions to this rule are :meth:`.ta`, :meth:`.tf`, and
+        ``var``. The exceptions to this rule are :meth:`.tf` and
         :meth:`.tx`. Note that, if you supply a custom default scale function, you
         should make sure that the ``inference`` attribute of your custom scale
         is defined, otherwise your custom scale may not be included in MCMC
-        sampling.
+        sampling. The default is ``VarIGPrior(1.0, 0.005)``, which leads to an
+        inverse Gamma prior on the level of the variance parameter, i.e.
+        :math:`\tau^2 \sim \operatorname{InverseGamma}(1.0, 0.005)`.
 
     See Also
     --------
@@ -441,8 +446,10 @@ class TermBuilder:
             prior.
         inference
             An optional :class:`liesel.goose.MCMCSpec` instance (or other valid
-            inference object). If omitted, the term's default inference specification
-            is used.
+            inference object).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         context
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
@@ -571,13 +578,31 @@ class TermBuilder:
         formula
             Right-hand side of a model formula, as understood by formulaic_. Most of
             formulaic's grammar_ is supported. See notes for details.
-        prior
-            An optional prior for this term's coefficient. The default is a constant
-            prior.
+        scale
+            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
+            - If you pass a ``float``, this will be taken as the constant value of
+              the scale, and the scale will not be estimated as part of the model
+              without further action.
+            - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
+              Make sure to define the ``inference`` attribute of your custom
+              scale variable (or a latent, transformed version of it).
+            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
+              you using :class:`.ScaleIG`. This means, the scale will be
+              :math:`\tau`, with an iverse Gamma prior on its square, i.e.
+              :math:`\tau^2 \\sim \\operatorname{InverseGamma}(a, b)`, where a and b
+              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              will be set up automatically to sample :math:`\tau^2` in this case,
+              see :class:`.ScaleIG` for details.
         inference
             An optional :class:`liesel.goose.MCMCSpec` instance (or other valid
-            inference object). If omitted, the term's default inference specification
-            is used.
+            inference object).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         context
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
@@ -692,6 +717,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -710,6 +738,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty_order
             Order of the penalty.
         knots
@@ -816,6 +847,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -834,6 +868,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty_order
             Order of the penalty.
         knots
@@ -940,6 +977,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -958,6 +998,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty_order
             Order of the penalty.
         knots
@@ -1066,6 +1109,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1084,6 +1130,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         basis_degree
             Degree of the polynomials used in the B-spline basis function. Default is 3
             for cubic B-splines.
@@ -1196,6 +1245,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1214,6 +1266,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         basis_degree
             Degree of the polynomials used in the B-spline basis function. Default is 3
             for cubic B-splines.
@@ -1338,6 +1393,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1356,6 +1414,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         basis_degree
             Degree of the polynomials used in the B-spline basis function. Default is 3
             for cubic B-splines.
@@ -1477,6 +1538,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1495,6 +1559,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         basis_degree
             Degree of the polynomials used in the B-spline basis function. Default is 3
             for cubic B-splines.
@@ -1602,6 +1669,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1620,6 +1690,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty
             Custom penalty matrix to use. Default is an iid penalty.
         factor_scale
@@ -1717,6 +1790,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1735,6 +1811,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty
             Custom penalty matrix to use. Default is an iid penalty.
         factor_scale
@@ -1920,6 +1999,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -1938,6 +2020,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         polys
             Dictionary of arrays. The keys of the dict are the region labels. The
             corresponding values define the region by defining polygons. The
@@ -2095,6 +2180,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -2113,6 +2201,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         use_callback
             If *True*, the basis function is evaluated using a Python callback,
             which means that it does not have to be jit-compatible via JAX. This also
@@ -2239,6 +2330,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -2257,6 +2351,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         kernel_name
             Selects the kernel / covariance function to use.
         linear_trend
@@ -2367,6 +2464,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -2385,6 +2485,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty_order
             Order of the penalty. Quote from mgcv: "The default is to set this to the
             smallest value satisfying ``2*penalty_order > d+1`` where ``d`` is the
@@ -2494,6 +2597,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
+            - If ``"default"``, the scale will be initialized according to the default
+              scale function defined for this :class:`.TermBuilder` instance.
+              Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
               without further action.
@@ -2512,6 +2618,9 @@ class TermBuilder:
             Note that this inference is only used for the coefficient variables
             of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
             the scale variables (:attr:`.StrctTerm.scale`).
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         penalty_order
             Order of the penalty. Quote from mgcv: "The default is to set this to the
             smallest value satisfying ``2*penalty_order > d+1`` where ``d`` is the
@@ -2711,6 +2820,9 @@ class TermBuilder:
             in the notation used in :class:`.StrctTensorProdTerm`.
         inference
             Inference specification for this term's coefficient.
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         scales_inference
             If ``"default"``, uses the default inference passed to the TermBuilder
             upon initialization.
@@ -2901,6 +3013,9 @@ class TermBuilder:
             in the notation used in :class:`.StrctTensorProdTerm`.
         inference
             Inference specification for this term's coefficient.
+            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            inference specification defined during initialization. Please refer to
+            the TermBuilder documentation for more information.
         scales_inference
             If ``"default"``, uses the default inference passed to the TermBuilder
             upon initialization.
