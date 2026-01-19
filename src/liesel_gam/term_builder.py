@@ -2804,7 +2804,7 @@ class TermBuilder:
         Includes only the tensor product interaction. Corresponds to ``mgcv::ti``.
 
         .. warning::
-            This method removes any default gibbs samplers and replace them with
+            This method removes any default gibbs samplers and replaces them with
             ``scales_inference`` on log level, since the full conditional for the
             variance parameters is not known in closed form for an anisotropic
             tensor product.
@@ -2997,7 +2997,7 @@ class TermBuilder:
         Corresponds to ``mgcv::te``.
 
         .. warning::
-            This method removes any default gibbs samplers and replace them with
+            This method removes any default gibbs samplers and replaces them with
             ``scales_inference`` on log level, since the full conditional for the
             variance parameters is not known in closed form for an anisotropic
             tensor product.
