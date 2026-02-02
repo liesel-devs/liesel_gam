@@ -19,11 +19,11 @@ ArrayLike = jax.typing.ArrayLike
 
 
 def make_callback(function, output_shape, dtype, m: int = 0):
-    if len(output_shape):
-        k = output_shape[-1]
+    k = output_shape[-1] if len(output_shape) else None
 
     def fn(x, **basis_kwargs):
         n = jnp.shape(jnp.atleast_1d(x))[0]
+
         if len(output_shape) == 2:
             shape = (n - m, k)
         elif len(output_shape) == 1:
@@ -35,11 +35,17 @@ def make_callback(function, output_shape, dtype, m: int = 0):
                 "Return shape of 'basis_fn(value)' must"
                 f" have <= 2 dimensions, got {output_shape}"
             )
-        result_shape = jax.ShapeDtypeStruct(shape, dtype)
-        result = jax.pure_callback(
-            function, result_shape, x, vmap_method="sequential", **basis_kwargs
+
+        sig = jax.ShapeDtypeStruct(shape, dtype)
+
+        # ordered=True enforces sequencing of callback executions
+        return jax.experimental.io_callback(
+            function,
+            sig,
+            x,
+            ordered=True,
+            **basis_kwargs,
         )
-        return result
 
     return fn
 
