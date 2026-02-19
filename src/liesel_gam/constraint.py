@@ -38,6 +38,7 @@ def penalty_to_unit_design(penalty: Array, rank: Array | int | None = None) -> A
 
     U = evectors
     D = 1 / jnp.sqrt(jnp.ones_like(evalues).at[:rank].set(evalues[:rank]))
+    D = D.at[rank:].set(0.0)
     Z = (U.T * jnp.expand_dims(D, 1)).T
     return Z
 

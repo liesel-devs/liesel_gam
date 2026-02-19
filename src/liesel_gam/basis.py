@@ -409,7 +409,7 @@ class Basis(UserVar):
             \\mathbf{K} = \\mathbf{U} \\boldsymbol{\\Lambda} \\mathbf{U}^\\top,
 
         where :math:`\\boldsymbol{\\Lambda} = \\operatorname{diag}(\\lambda_1, \\dots,
-        \\lambda_r)` contains the eigenvalues of :math:`\\mathbf{K}` in decreasing order
+        \\lambda_d)` contains the eigenvalues of :math:`\\mathbf{K}` in decreasing order
         and :math:`\\mathbf{U}` the corresponding eigenvectors. Let :math:`r` denote the
         rank of :math:`\\mathbf{K}`.
 
@@ -426,8 +426,9 @@ class Basis(UserVar):
         penalty matrix.
 
         The basis matrix :math:`\\mathbf{B}` is then updated as :math:`\\mathbf{B}_Z =
-        \\mathbf{B} \\mathbf{Z}`, and the penalty matrix is updated to the :math:`d
-        \\times d` identity matrix.
+        \\mathbf{B} \\mathbf{Z}`, and the penalty matrix is updated to
+        :math:`\\operatorname{diag}(\\mathbf{1}_{r}^\\top, \\mathbf{0}_{d-r}^\\top)`.
+
 
         The basis function is likewise updated to evaluate to the reparamterized basis
         matrix during prediction.
@@ -450,7 +451,8 @@ class Basis(UserVar):
         if is_diagonal(K, atol=atol):
             return self
 
-        Z = penalty_to_unit_design(K)
+        rank = jnp.linalg.matrix_rank(K)
+        Z = penalty_to_unit_design(K, rank=rank)
 
         def reparam_basis(*args, **kwargs):
             return basis_fn(*args, **kwargs) @ Z
@@ -458,6 +460,7 @@ class Basis(UserVar):
         self.value_node.function = reparam_basis
         self.update()
         penalty = jnp.eye(Z.shape[-1])  # practically equal to: penalty = Z.T @ K @ Z
+        penalty = penalty.at[rank:, rank:].set(0.0)
         self.update_penalty(penalty)
 
         return self
