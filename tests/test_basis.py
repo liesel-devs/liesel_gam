@@ -13,10 +13,13 @@ import liesel_gam as gam
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    def _fn():
+        r("library(mgcv)")
+        r("data(columb)")
+        columb = to_py("columb", format="pandas")
+        return columb
+
+    return gam.call_in_r_thread(_fn)
 
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:

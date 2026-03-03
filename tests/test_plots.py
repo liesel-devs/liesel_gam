@@ -11,6 +11,7 @@ from jax.random import key as jkey
 from ryp import r, to_py
 
 import liesel_gam as gam
+from liesel_gam.rthread import call_in_r_thread
 
 
 @pytest.fixture(scope="module")
@@ -19,16 +20,23 @@ def columb() -> pd.DataFrame:
     'area', 'home.value', 'income', 'crime', 'open.space', 'district',
     'x', 'y', 'home_value'
     """
-    r("library(mgcv)")
-    r("data(columb)")
-    return to_py("columb", format="pandas").reset_index()
+
+    def _fn():
+        r("library(mgcv)")
+        r("data(columb)")
+        return to_py("columb", format="pandas").reset_index()
+
+    return call_in_r_thread(_fn)
 
 
 @pytest.fixture(scope="module")
 def polys() -> np.typing.NDArray:
-    r("library(mgcv)")
-    r("data(columb.polys)")
-    return to_py("columb.polys", format="numpy")
+    def _fn():
+        r("library(mgcv)")
+        r("data(columb.polys)")
+        return to_py("columb.polys", format="numpy")
+
+    return call_in_r_thread(_fn)
 
 
 @pytest.fixture

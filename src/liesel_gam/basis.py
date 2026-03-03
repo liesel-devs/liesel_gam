@@ -11,7 +11,10 @@ from formulaic import ModelSpec
 from liesel_gam.category_mapping import CategoryMapping
 
 from .constraint import LinearConstraintEVD, penalty_to_unit_design
+from .rthread import call_in_r_thread, init_r
 from .var import UserVar, _append_name, _ensure_var_or_node
+
+init_r()
 
 InferenceTypes = Any
 Array = jax.Array
@@ -22,6 +25,7 @@ def make_callback(function, output_shape, dtype, m: int = 0):
     k = output_shape[-1] if len(output_shape) else None
 
     def fn(x, **basis_kwargs):
+        jax.block_until_ready(x)
         n = jnp.shape(jnp.atleast_1d(x))[0]
 
         if len(output_shape) == 2:
@@ -38,9 +42,12 @@ def make_callback(function, output_shape, dtype, m: int = 0):
 
         sig = jax.ShapeDtypeStruct(shape, dtype)
 
+        def function_in_r(*args, **kwargs):
+            return call_in_r_thread(function, *args, **kwargs)
+
         # ordered=True enforces sequencing of callback executions
         return jax.experimental.io_callback(
-            function,
+            function_in_r,
             sig,
             x,
             ordered=True,
@@ -185,7 +192,7 @@ class Basis(UserVar):
                     basis_kwargs_arr[key] = val.value
                 else:
                     basis_kwargs_arr[key] = val
-            basis_ar = basis_fn(value_ar, **basis_kwargs_arr)
+            basis_ar = call_in_r_thread(basis_fn, value_ar, **basis_kwargs_arr)
             dtype = basis_ar.dtype
             input_shape = jnp.shape(basis_ar)
 
