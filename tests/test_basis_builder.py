@@ -14,6 +14,7 @@ from ryp import r, to_py
 
 import liesel_gam.term_builder as gb
 from liesel_gam.registry import PandasRegistry
+from liesel_gam.rthread import call_in_r_thread
 from liesel_gam.term_builder import BasisBuilder
 
 from .make_df import make_test_df
@@ -585,20 +586,26 @@ class TestFoBasisLinearCategorical:
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    def _fn():
+        r("library(mgcv)")
+        r("data(columb)")
+        columb = to_py("columb", format="pandas")
+        return columb
+
+    return call_in_r_thread(_fn)
 
 
 @pytest.fixture(scope="module")
 def columb_polys():
-    r("library(mgcv)")
-    r("data(columb.polys)")
-    polys = to_py("columb.polys", format="numpy")
-    # turn to zero-based indecing
-    polys = {k: v - 1 for k, v in polys.items()}
-    return polys
+    def _fn():
+        r("library(mgcv)")
+        r("data(columb.polys)")
+        polys = to_py("columb.polys", format="numpy")
+        # turn to zero-based indecing
+        polys = {k: v - 1 for k, v in polys.items()}
+        return polys
+
+    return call_in_r_thread(_fn)
 
 
 class TestMRFBasis:

@@ -32,6 +32,7 @@ except RuntimeError as e:
 from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
+from .rthread import call_in_r_thread
 
 InferenceTypes = Any
 
@@ -334,21 +335,26 @@ class BasisBuilder:
 
         spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
-        smooth = scon.SmoothCon(
-            spec,
-            data={x: x_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data={x: x_array},
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -440,21 +446,26 @@ class BasisBuilder:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cr', k={k}, m=c({penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
-        smooth = scon.SmoothCon(
-            spec,
-            data={x: x_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data={x: x_array},
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -540,21 +551,26 @@ class BasisBuilder:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cs', k={k}, m=c({penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
-        smooth = scon.SmoothCon(
-            spec,
-            data={x: x_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data={x: x_array},
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -644,21 +660,26 @@ class BasisBuilder:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cc', k={k}, m=c({penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
-        smooth = scon.SmoothCon(
-            spec,
-            data={x: x_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data={x: x_array},
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -758,21 +779,26 @@ class BasisBuilder:
             f"m=c({basis_degree}, {', '.join(penalty_order_seq)}))"
         )
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
-        smooth = scon.SmoothCon(
-            spec,
-            data={x: x_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data={x: x_array},
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -866,21 +892,26 @@ class BasisBuilder:
             knots = np.asarray(knots)
         spec = f"s({x}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
         x_array = jnp.asarray(self.registry.data[x].to_numpy())
-        smooth = scon.SmoothCon(
-            spec,
-            data={x: x_array},
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data={x: x_array},
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
             basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -912,14 +943,18 @@ class BasisBuilder:
             obs_vars[xname] = self.registry.get_numeric_obs(xname)
         obs_values = {k: np.asarray(v.value) for k, v in obs_vars.items()}
 
-        smooth = scon.SmoothCon(
-            spec,
-            data=pd.DataFrame.from_dict(obs_values),
-            knots=knots,
-            absorb_cons=absorb_cons,
-            diagonal_penalty=diagonal_penalty,
-            scale_penalty=scale_penalty,
-        )
+        def _fn():
+            smooth = scon.SmoothCon(
+                spec,
+                data=pd.DataFrame.from_dict(obs_values),
+                knots=knots,
+                absorb_cons=absorb_cons,
+                diagonal_penalty=diagonal_penalty,
+                scale_penalty=scale_penalty,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn)
 
         xname = ",".join([v.name for v in obs_vars.values()])
 
@@ -942,7 +977,7 @@ class BasisBuilder:
             xvar,
             name=self.names.create(basis_name + "(" + xname + ")"),
             basis_fn=basis_fn,
-            penalty=smooth.penalty,
+            penalty=smooth_penalty,
             use_callback=True,
             cache_basis=True,
         )
@@ -1776,11 +1811,14 @@ class BasisBuilder:
             # special treatment here.
             # specifically, we have to equip it with row and column names to make
             # sure that penalty entries get correctly matched to clusters by mgcv
-            penalty_prelim_arr = np.asarray(pass_to_r.pop("penalty"))
-            to_r(penalty_prelim_arr, "penalty")
-            to_r(np.array(penalty_labels), "penalty_labels")
-            r("colnames(penalty) <- penalty_labels")
-            r("rownames(penalty) <- penalty_labels")
+            def _fn1():
+                penalty_prelim_arr = np.asarray(pass_to_r.pop("penalty"))
+                to_r(penalty_prelim_arr, "penalty")
+                to_r(np.array(penalty_labels), "penalty_labels")
+                r("colnames(penalty) <- penalty_labels")
+                r("rownames(penalty) <- penalty_labels")
+
+            call_in_r_thread(_fn1)
 
         spec = f"s({x}, k={k}, bs='mrf', xt={xt})"
 
@@ -1788,14 +1826,18 @@ class BasisBuilder:
         regions = list(mapping.labels_to_integers_map)
         df = pd.DataFrame({x: pd.Categorical(observed, categories=regions)})
 
-        smooth = scon.SmoothCon(
-            spec,
-            data=df,
-            diagonal_penalty=diagonal_penalty,
-            absorb_cons=absorb_cons,
-            scale_penalty=scale_penalty,
-            pass_to_r=pass_to_r,
-        )
+        def _fn2():
+            smooth = scon.SmoothCon(
+                spec,
+                data=df,
+                diagonal_penalty=diagonal_penalty,
+                absorb_cons=absorb_cons,
+                scale_penalty=scale_penalty,
+                pass_to_r=pass_to_r,
+            )
+            return smooth, smooth.penalty
+
+        smooth, smooth_penalty = call_in_r_thread(_fn2)
 
         x_name = x
 
@@ -1813,7 +1855,6 @@ class BasisBuilder:
             r("options(warn = old_warn)")
             return basis
 
-        smooth_penalty = smooth.penalty
         if np.shape(smooth_penalty)[1] > len(labels):
             smooth_penalty = smooth_penalty[:, 1:]
         elif np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]:
@@ -1836,7 +1877,11 @@ class BasisBuilder:
             basis._constraint = "absorbed_via_mgcv"
 
         try:
-            nb_out = to_py(f"{smooth._smooth_r_name}[[1]]$xt$nb", format="numpy")
+
+            def _fn():
+                return to_py(f"{smooth._smooth_r_name}[[1]]$xt$nb", format="numpy")
+
+            nb_out = call_in_r_thread(_fn)
         except TypeError:
             nb_out = None
         # nb_out = {key: np.astype(val, "int") for key, val in nb_out.items()}
@@ -1844,9 +1889,15 @@ class BasisBuilder:
         if absorb_cons:
             label_order = None
         else:
-            label_order = list(
-                to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
-            )
+
+            def _fn():
+                label_order = list(
+                    to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
+                )
+                return label_order
+
+            label_order = call_in_r_thread(_fn)
+
             label_order = [lab[1:] for lab in label_order]  # removes leading x from R
 
         if nb_out is not None:

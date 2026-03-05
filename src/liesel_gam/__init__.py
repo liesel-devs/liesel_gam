@@ -1,5 +1,3 @@
-import os
-
 from . import experimental as experimental
 from . import io as io
 from .__about__ import __version__ as __version__
@@ -27,6 +25,9 @@ from .plots import plot_polys as plot_polys
 from .plots import plot_regions as plot_regions
 from .predictor import AdditivePredictor as AdditivePredictor
 from .registry import PandasRegistry as PandasRegistry
+from .rthread import r as r
+from .rthread import to_py as to_py
+from .rthread import to_r as to_r
 from .summary import polys_to_df as polys_to_df
 from .summary import summarise_1d_smooth as summarise_1d_smooth
 from .summary import summarise_1d_smooth_clustered as summarise_1d_smooth_clustered
@@ -49,20 +50,3 @@ from .term_builder import TermBuilder as TermBuilder
 from .var import ScaleIG as ScaleIG
 from .var import UserVar as UserVar
 from .var import VarIGPrior as VarIGPrior
-
-on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
-# safeguard because R is not installed in the readthedocs build environment
-if not on_rtd:
-    import pandas as pd
-    from ryp import r, to_r
-
-    try:
-        to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
-        r("rm('___test___')")
-    except ImportError as e:
-        raise ImportError(
-            "Testing communication between R and Python failed. "
-            "Probably, you need to install the R package 'arrow' using "
-            "install.packages('arrow')."
-            "Also, please consider the original traceback from ryp above."
-        ) from e

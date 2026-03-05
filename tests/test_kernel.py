@@ -8,14 +8,18 @@ from ryp import r, to_py
 import liesel_gam as gam
 import liesel_gam.term_builder as gb
 from liesel_gam.kernel import init_star_ig_gibbs_factored
+from liesel_gam.rthread import call_in_r_thread
 
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    def _fn():
+        r("library(mgcv)")
+        r("data(columb)")
+        columb = to_py("columb", format="pandas")
+        return columb
+
+    return call_in_r_thread(_fn)
 
 
 class TestGibbsKernel:
