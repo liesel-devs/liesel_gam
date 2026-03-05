@@ -3,33 +3,56 @@ import os
 import queue
 import threading
 from collections.abc import Callable
+from typing import Any, Literal
+
+
+class ProtectedValue:
+    def __init__(self, initial_value):
+        self._value = initial_value
+        self._lock = threading.Lock()
+
+    def set(self, new_value):
+        with self._lock:
+            self._value = new_value
+
+    def get(self):
+        with self._lock:
+            return self._value
+
+    def update(self, func):
+        """Thread-safe read-modify-write."""
+        with self._lock:
+            self._value = func(self._value)
+
 
 _tasks: queue.Queue[tuple[Callable, tuple, dict, cf.Future]] = queue.Queue()
-_started = False
+_started = ProtectedValue(initial_value=False)
 _start_lock = threading.Lock()
 
 
 def _worker():
-    import ryp  # noqa: F401
-
-    while True:
-        fn, args, kwargs, fut = _tasks.get()
-        if fn is None:  # shutdown sentinel
-            fut.set_result(None)
-            return
-        try:
-            fut.set_result(fn(*args, **kwargs))
-        except BaseException as e:
-            fut.set_exception(e)
+    global _started
+    try:
+        while True:
+            fn, args, kwargs, fut = _tasks.get()
+            if fn is None:  # shutdown sentinel
+                fut.set_result(None)
+                return
+            try:
+                fut.set_result(fn(*args, **kwargs))
+            except BaseException as e:
+                fut.set_exception(e)
+    finally:
+        _started.set(False)
 
 
 def ensure_r_thread():
     global _started
     with _start_lock:
-        if not _started:
+        if not _started.get():
             t = threading.Thread(target=_worker, name="ryp-thread", daemon=True)
             t.start()
-            _started = True
+            _started.set(True)
 
 
 def call_in_r_thread(fn, *args, **kwargs):
@@ -45,7 +68,7 @@ def init_r():
     dedicated R thread. Should not be exported or be used outside the library.
     """
     global _started
-    if _started:
+    if _started.get():
         return None
     on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
     # safeguard because R is not installed in the readthedocs build environment
