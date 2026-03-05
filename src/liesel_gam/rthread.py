@@ -90,3 +90,62 @@ def init_r():
                 ) from e
 
         call_in_r_thread(_call_ryp)
+
+
+def r(R_code: str = ...) -> None:  # type: ignore
+    """Wraps ryp.r to run R code in dedicated R thread."""
+    import ryp
+
+    def _fn():
+        return ryp.r(R_code)
+
+    return call_in_r_thread(_fn)
+
+
+def to_r(
+    python_object: Any,
+    R_variable_name: str,
+    *,
+    format: Literal["keep", "matrix", "data.frame"] | None = None,
+    rownames: Any = None,
+    colnames: Any = None,
+) -> None:
+    """Wraps ryp.to_r to run R code in dedicated R thread."""
+    import ryp
+
+    def _fn():
+        return ryp.to_r(
+            python_object,
+            R_variable_name,
+            format=format,
+            rownames=rownames,
+            colnames=colnames,
+        )
+
+    return call_in_r_thread(_fn)
+
+
+def to_py(
+    R_statement: str,
+    *,
+    format: Literal["polars", "pandas", "pandas-pyarrow", "numpy"]
+    | dict[
+        Literal["vector", "matrix", "data.frame"],
+        Literal["polars", "pandas", "pandas-pyarrow", "numpy"],
+    ]
+    | None = None,
+    index: str | Literal[False] | None = None,
+    squeeze: bool | None = None,
+) -> Any:
+    """Wraps ryp.to_py to run R code in dedicated R thread."""
+    import ryp
+
+    def _fn():
+        return ryp.to_py(
+            R_statement,
+            format=format,
+            index=index,
+            squeeze=squeeze,
+        )
+
+    return call_in_r_thread(_fn)
