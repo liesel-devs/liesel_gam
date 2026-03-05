@@ -75,14 +75,12 @@ def init_r():
     if not on_rtd:
         import pandas as pd
 
-        from .rthread import call_in_r_thread
-
         def _call_ryp():
-            from ryp import r, to_r
+            import ryp
 
             try:
-                to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
-                r("rm('___test___')")
+                ryp.to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
+                ryp.r("rm('___test___')")
             except ImportError as e:
                 raise ImportError(
                     "Testing communication between R and Python failed. "
