@@ -25,6 +25,9 @@ from .plots import plot_polys as plot_polys
 from .plots import plot_regions as plot_regions
 from .predictor import AdditivePredictor as AdditivePredictor
 from .registry import PandasRegistry as PandasRegistry
+from .rthread import r as r
+from .rthread import to_py as to_py
+from .rthread import to_r as to_r
 from .summary import polys_to_df as polys_to_df
 from .summary import summarise_1d_smooth as summarise_1d_smooth
 from .summary import summarise_1d_smooth_clustered as summarise_1d_smooth_clustered
