@@ -1623,8 +1623,8 @@ class BasisBuilder:
         --------
         >>> import liesel_gam as gam
         >>> df = gam.demo_data(n=100)
-        >>> print(df.x_cat.unique())
-        ['a' 'b' 'c']
+        >>> print(df.x_cat.unique().tolist())
+        ['a', 'b', 'c']
         >>> registry = gam.PandasRegistry(df)
         >>> bb = gam.BasisBuilder(registry)
         >>> nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}

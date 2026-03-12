@@ -67,6 +67,13 @@ class TestTermBuilder:
         tb = gb.TermBuilder(registry)
         sx = tb.ps("x", k=10, prefix="test.")
         assert sx.name == "test.ps(x)"
+    def test_init_scale(self, columb) -> None:
+        tb = gb.TermBuilder.from_df(columb, prefix_names_by="test.")
+        sx = tb.ps("x", k=10, scale=lsl.Var(1.0))
+
+        sy = tb.ps("y", k=10, scale=lsl.Var(1.0))
+
+        lsl.Model([sx, sy])
 
     def test_from_dict(self, data):
         gb.TermBuilder.from_dict(data.to_dict())
