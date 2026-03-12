@@ -81,9 +81,9 @@ def demo_data_ta(
         m = int(np.ceil(np.sqrt(n)))
         xs = np.linspace(0, 1, m)
         ys = np.linspace(0, 1, m)
-        x, y = np.meshgrid(xs, ys, indexing="xy")
-        x = x.ravel()
-        y = y.ravel()
+        x_, y_ = np.meshgrid(xs, ys, indexing="xy")
+        x = x_.ravel()
+        y = y_.ravel()
     else:
         x = rng.uniform(0, 1, n)
         y = rng.uniform(0, 1, n)
