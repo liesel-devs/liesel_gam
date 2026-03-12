@@ -358,14 +358,15 @@ class TermBuilder:
                 variance_name="{x}^2",
             )
         elif isinstance(scale, float):
-            scale_var = lsl.Var.new_value(scale)
+            scale_var = lsl.Var.new_value(scale, name="{x}")
         elif isinstance(scale, lsl.Var | ScaleIG):
             scale_var = scale
         else:
             raise TypeError(f"Unexpected scale type: {type(scale)}")
 
-        scale_name = self.names.tau(term_name)
-        scale_var = _format_name(scale_var, fill=scale_name)
+        if scale_var.name:
+            scale_name = self.names.tau(term_name)
+            scale_var = _format_name(scale_var, fill=scale_name)
         return scale_var
 
     @classmethod
