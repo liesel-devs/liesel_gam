@@ -151,13 +151,12 @@ class TestStructuredPenaltyOperator:
     def test_compute_masks(self):
         K1 = pspline_penalty(6)
         K2 = pspline_penalty(8)
-        K3 = pspline_penalty(5)
 
-        scales = jnp.array([1.0, 2.0, 0.5])
+        scales = jnp.array([1.0, 2.0])
 
         with pytest.raises(ValueError):
             gd.StructuredPenaltyOperator.from_penalties(
-                scales=scales, penalties=[K1, K2, K3], eps=1.0
+                scales=scales, penalties=[K1, K2], eps=1.0
             )
 
     def test_validate_penalties(self):
@@ -592,8 +591,10 @@ class TestMultivariateNormalStructuredSingular:
         eigenvalues2 = jax.vmap(jnp.linalg.eigvalsh)(K2)
 
         K_tau2 = jax.vmap(
-            lambda tau21, tau22, K1, K2: tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
-            + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2),
+            lambda tau21, tau22, K1, K2: (
+                tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
+                + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2)
+            ),
             (0, 0, 0, 0),
         )(tau21, tau22, K1, K2)
 
