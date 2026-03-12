@@ -2056,7 +2056,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname(bs, basis.x.name)
+        fname = self.names.fname(prefix + bs, basis.x.name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 

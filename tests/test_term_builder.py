@@ -433,6 +433,16 @@ def _test_term(
     assert "$\\tau_{" + fname + "(x)}^2$" in model.vars
     assert "$\\tau_{" + fname + "(x)}$" in model.vars
     assert "$\\beta_{" + fname + "(x)}$" in model.vars
+    model.pop_nodes_and_vars()
+
+    smooth = fn("x", k=k, prefix="pre.")
+    model = lsl.Model([smooth])
+    fname = "pre." + fn.__name__
+    assert f"{fname}(x)" in model.vars
+    assert "B(x)1" in model.vars
+    assert "$\\tau_{" + fname + "(x)}^2$" in model.vars
+    assert "$\\tau_{" + fname + "(x)}$" in model.vars
+    assert "$\\beta_{" + fname + "(x)}$" in model.vars
 
     assert not any(jnp.isnan(smooth.value))
     assert smooth.value.shape == columb.shape[0:1]
