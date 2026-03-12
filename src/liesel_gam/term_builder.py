@@ -713,7 +713,7 @@ class TermBuilder:
 
     def cr(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -852,7 +852,7 @@ class TermBuilder:
 
     def cs(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -991,7 +991,7 @@ class TermBuilder:
 
     def cc(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -1131,7 +1131,7 @@ class TermBuilder:
 
     def bs(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -1276,7 +1276,7 @@ class TermBuilder:
     # P-spline
     def ps(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -1435,7 +1435,7 @@ class TermBuilder:
 
     def np(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -1589,7 +1589,7 @@ class TermBuilder:
 
     def cp(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -1974,7 +1974,7 @@ class TermBuilder:
     # varying coefficient
     def vc(
         self,
-        x: str,
+        x: str | lsl.Var,
         by: StrctTerm,
         prefix: str = "",
         name: str | None = None,
@@ -2017,8 +2017,8 @@ class TermBuilder:
         >>> tb.vc(x="x_lin", by=psx)
         Var(name="x_lin*ps(x_nonlin)")
         """
-        fname = self.names.create(x + "*" + by.name)
-        x_var = self.registry.get_obs(x)
+        x_var = self.bases._get_var_and_value(x)[0]
+        fname = self.names.create(x_var.name + "*" + by.name)
 
         term = lsl.Var.new_calc(
             lambda x, by: x * by,
@@ -2033,7 +2033,7 @@ class TermBuilder:
     # general smooth with MGCV bases
     def _s(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         bs: BasisTypes,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
@@ -2273,7 +2273,7 @@ class TermBuilder:
     # general basis function + penalty smooth
     def f(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         basis_fn: Callable[[Array], Array],
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
@@ -2425,7 +2425,7 @@ class TermBuilder:
 
     def kriging(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
@@ -2577,7 +2577,7 @@ class TermBuilder:
 
     def tp(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
@@ -2720,7 +2720,7 @@ class TermBuilder:
 
     def ts(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",

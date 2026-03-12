@@ -127,7 +127,7 @@ class BasisBuilder:
 
     def basis(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         basis_fn: Callable[[Array], Array],
         use_callback: bool = True,
         cache_basis: bool = True,
@@ -215,11 +215,13 @@ class BasisBuilder:
             penalty = jnp.asarray(penalty)
 
         x_vars = []
+        x_names = []
         for x_name in x:
-            x_var = self.registry.get_numeric_obs(x_name)
+            x_var = self._get_var_and_value(x_name)[0]
+            x_names.append(x_var.name)
             x_vars.append(x_var)
 
-        Xname = self.registry.prefix + ",".join(x)
+        Xname = self.registry.prefix + ",".join(x_names)
 
         Xvar = lsl.TransientCalc(
             lambda *x: jnp.column_stack(x),
@@ -238,9 +240,24 @@ class BasisBuilder:
 
         return basis
 
+    def _get_var_and_value(self, x: str | lsl.Var) -> tuple[lsl.Var, jax.Array]:
+        if isinstance(x, str):
+            x_array = jnp.asarray(self.registry.data[x].to_numpy())
+            x_var = self.registry.get_numeric_obs(x)
+
+        elif isinstance(x, lsl.Var):
+            if not x.name:
+                raise ValueError("If you supply a variable for 'x', it must be named.")
+            x_array = jnp.asarray(x.value)
+            x_var = x
+        else:
+            raise TypeError(f"Type {type(x)} not supported for 'x'.")
+
+        return x_var, x_array
+
     def ps(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         basis_degree: int = 3,
@@ -332,22 +349,24 @@ class BasisBuilder:
         if knots is not None:
             knots = np.asarray(knots)
 
-        spec = f"s({x}, bs='ps', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        x_var, x_array = self._get_var_and_value(x)
+        spec = (
+            f"s({x_var.name}, bs='ps', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
+        )
+
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data={x_var.name: x_array},
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
@@ -359,7 +378,7 @@ class BasisBuilder:
 
     def cr(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         penalty_order: int = 2,
@@ -438,22 +457,21 @@ class BasisBuilder:
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
-        spec = f"s({x}, bs='cr', k={k}, m=c({penalty_order}))"
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        x_var, x_array = self._get_var_and_value(x)
+        spec = f"s({x_var.name}, bs='cr', k={k}, m=c({penalty_order}))"
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data={x_var.name: x_array},
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
@@ -465,7 +483,7 @@ class BasisBuilder:
 
     def cs(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         penalty_order: int = 2,
@@ -538,22 +556,21 @@ class BasisBuilder:
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
-        spec = f"s({x}, bs='cs', k={k}, m=c({penalty_order}))"
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        x_var, x_array = self._get_var_and_value(x)
+        spec = f"s({x_var.name}, bs='cs', k={k}, m=c({penalty_order}))"
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data={x_var.name: x_array},
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
@@ -565,7 +582,7 @@ class BasisBuilder:
 
     def cc(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         penalty_order: int = 2,
@@ -642,22 +659,21 @@ class BasisBuilder:
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
-        spec = f"s({x}, bs='cc', k={k}, m=c({penalty_order}))"
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        x_var, x_array = self._get_var_and_value(x)
+        spec = f"s({x_var.name}, bs='cc', k={k}, m=c({penalty_order}))"
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data={x_var.name: x_array},
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
@@ -669,7 +685,7 @@ class BasisBuilder:
 
     def bs(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         basis_degree: int = 3,
@@ -753,25 +769,24 @@ class BasisBuilder:
             [_validate_penalty_order(p) for p in penalty_order]
             penalty_order_seq = [str(p) for p in penalty_order]
 
+        x_var, x_array = self._get_var_and_value(x)
         spec = (
-            f"s({x}, bs='bs', k={k}, "
+            f"s({x_var.name}, bs='bs', k={k}, "
             f"m=c({basis_degree}, {', '.join(penalty_order_seq)}))"
         )
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data={x_var.name: x_array},
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
@@ -783,7 +798,7 @@ class BasisBuilder:
 
     def cp(
         self,
-        x: str,
+        x: str | lsl.Var,
         *,
         k: int,
         basis_degree: int = 3,
@@ -864,22 +879,23 @@ class BasisBuilder:
         _validate_penalty_order(penalty_order)
         if knots is not None:
             knots = np.asarray(knots)
-        spec = f"s({x}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
-        x_array = jnp.asarray(self.registry.data[x].to_numpy())
+        x_var, x_array = self._get_var_and_value(x)
+        spec = (
+            f"s({x_var.name}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
+        )
         smooth = scon.SmoothCon(
             spec,
-            data={x: x_array},
+            data={x_var.name: x_array},
             knots=knots,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
         )
 
-        x_var = self.registry.get_numeric_obs(x)
         basis = Basis(
             x_var,
             name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x: x_})),
+            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
             penalty=smooth.penalty,
             use_callback=True,
             cache_basis=True,
@@ -891,7 +907,7 @@ class BasisBuilder:
 
     def _s(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         bs: BasisTypes,
         m: str = "NA",
@@ -905,12 +921,16 @@ class BasisBuilder:
             knots = np.asarray(knots)
         _validate_bs(bs)
         bs_arg = f"'{bs}'"
-        spec = f"s({','.join(x)}, bs={bs_arg}, k={k}, m={m})"
 
         obs_vars = {}
         for xname in x:
-            obs_vars[xname] = self.registry.get_numeric_obs(xname)
+            xvar: lsl.Var | lsl.TransientCalc = self._get_var_and_value(xname)[0]
+            obs_vars[xvar.name] = xvar
+
         obs_values = {k: np.asarray(v.value) for k, v in obs_vars.items()}
+        obs_names = [v.name for v in obs_vars.values()]
+
+        spec = f"s({','.join(obs_names)}, bs={bs_arg}, k={k}, m={m})"
 
         smooth = scon.SmoothCon(
             spec,
@@ -924,12 +944,10 @@ class BasisBuilder:
         xname = ",".join([v.name for v in obs_vars.values()])
 
         if len(obs_vars) > 1:
-            xvar: lsl.Var | lsl.TransientCalc = (
-                lsl.TransientCalc(  # for memory-efficiency
-                    lambda *args: jnp.vstack(args).T,
-                    *list(obs_vars.values()),
-                    _name=self.names.create(xname),
-                )
+            xvar = lsl.TransientCalc(  # for memory-efficiency
+                lambda *args: jnp.vstack(args).T,
+                *list(obs_vars.values()),
+                _name=self.names.create(xname),
             )
         else:
             xvar = obs_vars[xname]
@@ -952,7 +970,7 @@ class BasisBuilder:
 
     def tp(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         penalty_order: int | None = None,
         knots: ArrayLike | None = None,
@@ -1060,7 +1078,7 @@ class BasisBuilder:
 
     def ts(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         penalty_order: int | None = None,
         knots: ArrayLike | None = None,
@@ -1156,7 +1174,7 @@ class BasisBuilder:
 
     def kriging(
         self,
-        *x: str,
+        *x: str | lsl.Var,
         k: int,
         kernel_name: Literal[
             "spherical",
