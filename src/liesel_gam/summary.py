@@ -634,7 +634,7 @@ def summarise_1d_smooth_clustered(
         if not jnp.issubdtype(x.value.dtype, jnp.floating):
             raise TypeError(
                 "Automatic grid creation is valid only for continuous x, got "
-                f"dtype {jnp.dtype(x.value)} for {x}."
+                f"dtype {jnp.asarray(x.value).dtype} for {x}."
             )
 
     if newdata is None and isinstance(labels, CategoryMapping):

@@ -199,7 +199,7 @@ def plot_2d_smooth(
             )
 
         for v in term.input_obs.values():
-            if jnp.issubdtype(v.value, jnp.integer):
+            if jnp.issubdtype(jnp.asarray(v.value).dtype, jnp.integer):
                 raise TypeError(
                     "'plot_2d_smooth' expects continuous marginals, got "
                     f"type {v.value.dtype} for {v}"

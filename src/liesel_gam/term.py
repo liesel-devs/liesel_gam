@@ -692,9 +692,9 @@ class IndexingTerm(StrctTerm):
         if not basis.value.ndim == 1:
             raise ValueError(f"IndexingTerm requires 1d basis, got {basis.value.ndim=}")
 
-        if not jnp.issubdtype(jnp.dtype(basis.value), jnp.integer):
+        if not jnp.issubdtype(jnp.asarray(basis.value).dtype, jnp.integer):
             raise TypeError(
-                f"IndexingTerm requires integer basis, got {jnp.dtype(basis.value)=}."
+                f"IndexingTerm requires integer basis, got {jnp.asarray(basis.value).dtype=}."
             )
 
         super().__init__(
