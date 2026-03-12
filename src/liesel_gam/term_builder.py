@@ -2102,8 +2102,8 @@ class TermBuilder:
 
         >>> df = gam.demo_data(n=100)
         >>> nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
-        >>> print(df.x_cat.unique())
-        ['a' 'b' 'c']
+        >>> print(df.x_cat.unique().tolist())
+        ['a', 'b', 'c']
 
         >>> tb = gam.TermBuilder.from_df(df)
         >>> tb.mrf("x_cat", nb=nb)
