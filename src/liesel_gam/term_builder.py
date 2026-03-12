@@ -432,6 +432,8 @@ class TermBuilder:
         prior: lsl.Dist | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         context: dict[str, Any] | None = None,
+        prefix: str = "",
+        name: str | None = None,
     ) -> LinTerm:
         """
         Linear term.
@@ -454,6 +456,11 @@ class TermBuilder:
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
             ``formulaic.ModelSpec.get_model_matrix()``.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -559,6 +566,8 @@ class TermBuilder:
         term.model_spec = basis.model_spec
         term.mappings = basis.mappings
         term.column_names = basis.column_names
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
 
         return term
 
@@ -569,6 +578,8 @@ class TermBuilder:
         inference: InferenceTypes | None | Literal["default"] = "default",
         context: dict[str, Any] | None = None,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctLinTerm:
         """
         Linear term with an identity penalty matrix, leading to a ridge prior.
@@ -607,6 +618,11 @@ class TermBuilder:
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
             ``formulaic.ModelSpec.get_model_matrix()``.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -689,6 +705,9 @@ class TermBuilder:
         term.mappings = basis.mappings
         term.column_names = basis.column_names
 
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
+
         return term
 
     def cr(
@@ -704,6 +723,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Cubic regression spline.
@@ -766,6 +787,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -819,6 +845,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def cs(
@@ -834,6 +862,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Cubic regression spline with additional null space shrinkage.
@@ -896,6 +926,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -949,6 +984,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def cc(
@@ -964,6 +1001,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Cyclic version of cubic regression spline.
@@ -1026,6 +1065,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -1080,6 +1124,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def bs(
@@ -1096,6 +1142,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         B-spline with integrated squared derivative penalties.
@@ -1162,6 +1210,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -1215,6 +1268,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # P-spline
@@ -1232,6 +1287,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         P-spline: A B-spline with a discrete penalty matrix.
@@ -1297,6 +1354,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -1365,6 +1427,9 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def np(
@@ -1380,6 +1445,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         P-spline without linear trend.
@@ -1445,6 +1512,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -1509,6 +1581,9 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def cp(
@@ -1525,6 +1600,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Cyclic P-spline.
@@ -1590,6 +1667,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -1648,6 +1730,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # random intercept
@@ -1658,6 +1742,8 @@ class TermBuilder:
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> RITerm:
         r"""
         Random intercept.
@@ -1699,6 +1785,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -1756,7 +1847,8 @@ class TermBuilder:
             # this takes care of increasing the parameter number in case this term
             # covers unobserved clusters
             term.coef.value = jnp.zeros(nparams)
-
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # random scaling
@@ -1768,6 +1860,8 @@ class TermBuilder:
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> lsl.Var:
         r"""
         Random slope.
@@ -1872,6 +1966,8 @@ class TermBuilder:
             cluster=ri,
             name=fname,
         )
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # varying coefficient
@@ -1879,6 +1975,8 @@ class TermBuilder:
         self,
         x: str,
         by: StrctTerm,
+        prefix: str = "",
+        name: str | None = None,
     ) -> lsl.Var:
         r"""
         Varying coefficient term.
@@ -1890,6 +1988,11 @@ class TermBuilder:
         by
             Smooth term, a :class:`.StrctTerm` that represents the smoothly varying
             coefficient of this term, for example a P-spline :meth:`.ps`.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         Notes
         -----
@@ -1922,6 +2025,8 @@ class TermBuilder:
             by=by,
             name=fname,
         )
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # general smooth with MGCV bases
@@ -1938,6 +2043,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         basis = self.bases._s(
             *x,
@@ -1964,6 +2071,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # markov random field
@@ -1980,6 +2089,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> MRFTerm:
         r"""
         Gaussian Markov random field.
@@ -2061,6 +2172,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -2149,6 +2265,8 @@ class TermBuilder:
         term.labels = list(basis.mrf_spec.mapping.labels_to_integers_map)
         term.mapping = basis.mrf_spec.mapping
 
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     # general basis function + penalty smooth
@@ -2162,6 +2280,8 @@ class TermBuilder:
         cache_basis: bool = True,
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         General :class:`.StrctTerm`, initialized by passing a custom basis function.
@@ -2217,6 +2337,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -2293,6 +2418,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def kriging(
@@ -2316,6 +2443,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Gaussian process models with a fixed range parameter in a
@@ -2381,6 +2510,11 @@ class TermBuilder:
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
             :meth:`.StrctTerm.factor_scale` for details.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -2436,6 +2570,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def tp(
@@ -2451,6 +2587,8 @@ class TermBuilder:
         scale_penalty: bool = True,
         factor_scale: bool = False,
         remove_null_space_completely: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Thin plate spline.
@@ -2517,6 +2655,11 @@ class TermBuilder:
         remove_null_space_completely
             If ``True``, the unpenalized part of the smooth, corresponding to the null
             space of the penalty matrix, is removed completely.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -2570,6 +2713,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def ts(
@@ -2584,6 +2729,8 @@ class TermBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         factor_scale: bool = False,
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTerm:
         r"""
         Thin plate spline with additional null space penalty.
@@ -2650,6 +2797,11 @@ class TermBuilder:
         remove_null_space_completely
             If ``True``, the unpenalized part of the smooth, corresponding to the null
             space of the penalty matrix, is removed completely.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -2702,6 +2854,8 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
         return term
 
     def _ta(
@@ -2797,6 +2951,8 @@ class TermBuilder:
         scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
             gs.HMCKernel
         ),
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTensorProdTerm:
         r"""
         General anisotropic tensor product interaction term without main effects.
@@ -2826,6 +2982,11 @@ class TermBuilder:
         scales_inference
             If ``"default"``, uses the default inference passed to the TermBuilder
             upon initialization.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -2967,7 +3128,7 @@ class TermBuilder:
         >>> pred.terms["tx(x_nonlin,x_lin,x)"].coef.value.shape
         (216,)
         """
-        return self._ta(
+        term = self._ta(
             *marginals,
             common_scale=common_scale,
             inference=self._get_inference(inference),
@@ -2975,6 +3136,9 @@ class TermBuilder:
             include_main_effects=False,
             _fname="tx",
         )
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
+        return term
 
     def tf(
         self,
@@ -2989,6 +3153,8 @@ class TermBuilder:
         scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
             gs.HMCKernel
         ),
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTensorProdTerm:
         r"""
         General full anisotropic tensor product term, including main effects and
@@ -3019,6 +3185,11 @@ class TermBuilder:
         scales_inference
             If ``"default"``, uses the default inference passed to the TermBuilder
             upon initialization.
+        prefix
+            A string prefix to be added to the returned term's name.
+        name
+            Manually defined name of the term. If a prefix is specified, the prefix
+            will be added to this name.
 
         See Also
         --------
@@ -3079,7 +3250,7 @@ class TermBuilder:
         >>> pred.terms["tf(x_nonlin,x_lin,x)"].coef.value.shape
         (216,)
         """
-        return self._ta(
+        term = self._ta(
             *marginals,
             common_scale=common_scale,
             inference=self._get_inference(inference),
@@ -3087,6 +3258,9 @@ class TermBuilder:
             include_main_effects=True,
             _fname="tf",
         )
+        term_name = name if name is not None else term.name
+        term.name = prefix + term_name
+        return term
 
 
 def _find_parameter(var: lsl.Var) -> lsl.Var:
