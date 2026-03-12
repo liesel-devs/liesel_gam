@@ -1257,3 +1257,141 @@ class StrctTensorProdTerm(UserVar):
         )
 
         return term
+
+
+class MultivariateStrctTerm(UserVar):
+    def __init__(
+        self,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        dimension_penalties: Sequence[Array],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        basis_name: str | None = None,
+        _update_on_init: bool = True,
+    ):
+        StrctTensorProdTerm._validate_marginals(marginals)
+
+        dimension_scale_vars = []
+        for s in dimension_scales:
+            if s is None:
+                raise TypeError("No entries of dimension_scales may be None.")
+            dimension_scale_vars.append(_init_scale_ig(s, validate_scalar=True))
+
+        if not len(dimension_penalties) == len(dimension_scale_vars):
+            raise ValueError(
+                "dimension_penalties and dimension_scales must have the same length."
+            )
+
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
+        bases_marginals = StrctTensorProdTerm._get_bases(marginals)
+
+        penalties_marginals = StrctTensorProdTerm._get_penalties(bases_marginals)
+
+        scales_marginals = [t.scale for t in marginals]
+
+        _rowwise_kron = jax.vmap(jnp.kron)
+
+        def rowwise_kron(*bases):
+            return reduce(_rowwise_kron, bases)
+
+        if basis_name is None:
+            basis_name = (
+                "B("
+                + ",".join(list(StrctTensorProdTerm._input_obs(bases_marginals)))
+                + ")"
+            )
+
+        assert basis_name is not None
+        basis = lsl.Var.new_calc(rowwise_kron, *bases_marginals, name=basis_name)
+        nbases = jnp.shape(basis.value)[-1]
+
+        ndim = prod([p.shape[-1] for p in dimension_penalties])
+
+        penalties = list(dimension_penalties) + list(penalties_marginals)
+        scales = list(dimension_scale_vars) + list(scales_marginals)
+
+        mvnds = MultivariateNormalStructured.get_locscale_constructor(
+            penalties=penalties
+        )
+
+        scales_var = lsl.Calc(lambda *x: jnp.stack(x, axis=-1), *scales)
+
+        prior = lsl.Dist(
+            distribution=mvnds, loc=jnp.zeros(nbases * ndim), scales=scales_var
+        )
+
+        coef = lsl.Var.new_param(
+            jnp.zeros(nbases * ndim),
+            distribution=prior,
+            inference=inference,
+            name=coef_name,
+        )
+
+        self.basis = basis
+
+        self.marginal_terms = marginals
+        self.marginal_bases = bases_marginals
+
+        self.marginal_penalties = penalties_marginals
+        self.dimension_penalties = dimension_penalties
+
+        self.marginal_scales = scales_marginals
+        self.dimension_scales = dimension_scales
+
+        self.scale = scales_var
+
+        self.nbases = nbases
+        self.ndim = ndim
+
+        self.coef = coef
+
+        calc = lsl.Calc(
+            lambda basis, coef: jnp.dot(basis, jnp.reshape(coef, (nbases, ndim))),
+            basis=basis,
+            coef=self.coef,
+            _update_on_init=_update_on_init,
+        )
+
+        super().__init__(calc, name=name)
+        if _update_on_init:
+            self.coef.update()
+
+    @property
+    def input_obs(self) -> dict[str, lsl.Var]:
+        """
+        A dictionary of strong input variables.
+        """
+        return StrctTensorProdTerm._input_obs(self.marginal_bases)
+
+    @classmethod
+    def f(
+        cls,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        dimension_penalties: Sequence[Array],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        fname: str = "F",
+        inference: InferenceTypes = None,
+        basis_name: str | None = None,
+        _update_on_init: bool = True,
+    ) -> Self:
+        xnames = list(
+            StrctTensorProdTerm._input_obs(StrctTensorProdTerm._get_bases(marginals))
+        )
+        name = fname + "(" + ",".join(xnames) + ")"
+
+        coef_name = "$\\gamma_{" + name + "}$"
+
+        term = cls(
+            *marginals,
+            dimension_penalties=dimension_penalties,
+            dimension_scales=dimension_scales,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+            basis_name=basis_name,
+            _update_on_init=_update_on_init,
+        )
+
+        return term
