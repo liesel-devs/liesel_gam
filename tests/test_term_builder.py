@@ -53,6 +53,14 @@ class TestTermBuilder:
     def test_init(self, data) -> None:
         gb.TermBuilder.from_df(data)
 
+    def test_init_scale(self, columb) -> None:
+        tb = gb.TermBuilder.from_df(columb, prefix_names_by="test.")
+        sx = tb.ps("x", k=10, scale=lsl.Var(1.0))
+
+        sy = tb.ps("y", k=10, scale=lsl.Var(1.0))
+
+        lsl.Model([sx, sy])
+
     def test_from_dict(self, data):
         gb.TermBuilder.from_dict(data.to_dict())
 

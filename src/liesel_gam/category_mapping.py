@@ -156,8 +156,9 @@ def series_is_categorical(series: pd.Series | pd.Categorical) -> bool:
     is_cat1 = series.dtype in ("str", "object")
     is_cat2 = isinstance(series.dtype, pd.CategoricalDtype)
     if series.dtype == "string":
-        raise TypeError(
-            f"Pandas dtype {series.dtype} cannot be safely interpreted as "
-            "categorical, please process to dtype str or object."
-        )
+        if series.dtype.name == "string":
+            raise TypeError(
+                f"Pandas dtype {series.dtype} cannot be safely interpreted as "
+                "categorical, please process to dtype str or object."
+            )
     return is_cat1 or is_cat2

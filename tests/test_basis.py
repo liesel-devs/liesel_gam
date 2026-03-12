@@ -351,6 +351,7 @@ class TestBasisReparameterization:
         basis.constrain("sumzero_coef")
         term = gam.StrctTerm.f(basis)
         coef = jax.random.normal(key(42), term.coef.value.shape)
+        assert basis.reparam_matrix is not None
         constrained_coef = basis.reparam_matrix @ coef
         assert constrained_coef.sum() == pytest.approx(0.0, abs=1e-5)
         assert basis.constraint == "sumzero_coef"

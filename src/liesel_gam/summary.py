@@ -83,8 +83,8 @@ def summarise_by_samples(
 
 def summarise_1d_smooth(
     term: StrctTerm,
-    samples: dict[str, Array],
-    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    samples: Mapping[str, ArrayLike],
+    newdata: None | Mapping[str, ArrayLike] = None,
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     ngrid: int = 150,
@@ -122,7 +122,7 @@ def summarise_1d_smooth(
 
     newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
 
-    term_samples = term.predict(samples, newdata=newdata_x)
+    term_samples = term.predict(dict(samples), newdata=newdata_x)
     term_summary = (
         gs.SamplesSummary.from_array(
             term_samples,
@@ -209,8 +209,8 @@ PlotVars = Literal[
 
 def summarise_nd_smooth(
     term: StrctTerm | StrctTensorProdTerm,
-    samples: Mapping[str, jax.Array],
-    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    samples: Mapping[str, ArrayLike],
+    newdata: None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
     which: PlotVars | Sequence[PlotVars] = "mean",
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -254,7 +254,7 @@ def summarise_nd_smooth(
 
     newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
 
-    term_samples = term.predict(samples, newdata=newdata_x)
+    term_samples = term.predict(dict(samples), newdata=newdata_x)
 
     ci_quantiles_ = (0.05, 0.95) if quantiles is None else quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
@@ -337,7 +337,7 @@ def _convert_to_integers(
 
 def summarise_cluster(
     term: RITerm | MRFTerm | StrctTerm,
-    samples: Mapping[str, jax.Array],
+    samples: Mapping[str, ArrayLike],
     newdata: gs.Position
     | None
     | Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = None,
@@ -389,7 +389,7 @@ def summarise_cluster(
         newdata_x = {term.basis.x.name: grid}
 
     newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
-    predictions = term.predict(samples=samples, newdata=newdata_x)
+    predictions = term.predict(samples=dict(samples), newdata=newdata_x)
     predictions_summary = (
         gs.SamplesSummary.from_array(
             predictions,
@@ -426,7 +426,7 @@ def summarise_cluster(
 
 def summarise_regions(
     term: RITerm | MRFTerm | StrctTerm,
-    samples: Mapping[str, jax.Array],
+    samples: Mapping[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
@@ -518,7 +518,7 @@ def summarise_regions(
 
 def summarise_lin(
     term: LinTerm | StrctLinTerm,
-    samples: Mapping[str, jax.Array],
+    samples: Mapping[str, ArrayLike],
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     indices: Sequence[int] | None = None,
@@ -542,10 +542,10 @@ def summarise_lin(
         plot. If ``None``, all coefficients/clusters are plotted.
     """
     if indices is not None:
-        coef_samples = samples[term.coef.name][..., indices]
+        coef_samples = jnp.asarray(samples[term.coef.name])[..., indices]
         colnames = [term.column_names[i] for i in indices]
     else:
-        coef_samples = samples[term.coef.name]
+        coef_samples = jnp.asarray(samples[term.coef.name])
         colnames = term.column_names
 
     df = (
@@ -567,10 +567,8 @@ def summarise_lin(
 
 def summarise_1d_smooth_clustered(
     clustered_term: lsl.Var,
-    samples: Mapping[str, jax.Array],
-    newdata: gs.Position
-    | None
-    | Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = None,
+    samples: Mapping[str, ArrayLike],
+    newdata: Mapping[str, ArrayLike] | None = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
@@ -634,7 +632,7 @@ def summarise_1d_smooth_clustered(
         if not jnp.issubdtype(x.value.dtype, jnp.floating):
             raise TypeError(
                 "Automatic grid creation is valid only for continuous x, got "
-                f"dtype {jnp.dtype(x.value)} for {x}."
+                f"dtype {jnp.asarray(x.value).dtype} for {x}."
             )
 
     if newdata is None and isinstance(labels, CategoryMapping):
@@ -692,9 +690,7 @@ def summarise_1d_smooth_clustered(
 
         grid = {x.name: newdata[x.name], cluster.basis.x.name: cgrid}
         full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
-        newdata_x: dict[str, ArrayLike | Sequence[int] | Sequence[str]] = dict(
-            zip(grid.keys(), full_grid_arrays)
-        )
+        newdata_x: Mapping[str, ArrayLike] = dict(zip(grid.keys(), full_grid_arrays))
 
         observed = {x: x in cluster.basis.x.value for x in cgrid}
     elif newdata is not None:
@@ -712,7 +708,7 @@ def summarise_1d_smooth_clustered(
 
     newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
 
-    term_samples = clustered_term.predict(samples, newdata=newdata_x)
+    term_samples = clustered_term.predict(dict(samples), newdata=newdata_x)
     term_summary = (
         gs.SamplesSummary.from_array(
             term_samples,

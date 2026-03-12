@@ -30,7 +30,7 @@ def demo_data(n: int, seed: int = 1) -> pd.DataFrame:
 
     >>> import liesel_gam as gam
     >>> gam.demo_data(n=100).columns
-    Index(['y', 'x_nonlin', 'x_lin', 'x_cat', 'x'], dtype='object')
+    Index(['y', 'x_nonlin', 'x_lin', 'x_cat', 'x'], dtype='str')
     """
     rng = np.random.default_rng(seed)
     x1 = rng.uniform(-2, 2, n)
@@ -81,9 +81,9 @@ def demo_data_ta(
         m = int(np.ceil(np.sqrt(n)))
         xs = np.linspace(0, 1, m)
         ys = np.linspace(0, 1, m)
-        x, y = np.meshgrid(xs, ys, indexing="xy")
-        x = x.ravel()
-        y = y.ravel()
+        x_, y_ = np.meshgrid(xs, ys, indexing="xy")
+        x = x_.ravel()
+        y = y_.ravel()
     else:
         x = rng.uniform(0, 1, n)
         y = rng.uniform(0, 1, n)

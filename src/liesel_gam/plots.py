@@ -8,7 +8,6 @@ import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import plotnine as p9
-from jax import Array
 from jax.typing import ArrayLike
 
 from .registry import CategoryMapping
@@ -29,7 +28,7 @@ KeyArray = Any
 
 def plot_1d_smooth(
     term: StrctTerm,
-    samples: dict[str, Array],
+    samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
     hdi_prob: float | None = None,
@@ -153,7 +152,7 @@ PlotVars = Literal[
 
 def plot_2d_smooth(
     term: StrctTensorProdTerm | StrctTerm,
-    samples: Mapping[str, jax.Array],
+    samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -199,7 +198,7 @@ def plot_2d_smooth(
             )
 
         for v in term.input_obs.values():
-            if jnp.issubdtype(v.value, jnp.integer):
+            if jnp.issubdtype(jnp.asarray(v.value).dtype, jnp.integer):
                 raise TypeError(
                     "'plot_2d_smooth' expects continuous marginals, got "
                     f"type {v.value.dtype} for {v}"
@@ -308,7 +307,7 @@ def plot_polys(
 
 def plot_regions(
     term: RITerm | MRFTerm | StrctTerm,
-    samples: Mapping[str, jax.Array],
+    samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
@@ -389,7 +388,7 @@ def plot_regions(
 
 def plot_forest(
     term: RITerm | MRFTerm | LinTerm | StrctLinTerm,
-    samples: Mapping[str, jax.Array],
+    samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
     ymin: str = "hdi_low",
@@ -470,7 +469,7 @@ def plot_forest(
 
 def plot_forest_lin(
     term: LinTerm | StrctLinTerm,
-    samples: Mapping[str, jax.Array],
+    samples: dict[str, ArrayLike],
     ymin: str = "hdi_low",
     ymax: str = "hdi_high",
     ci_quantiles: tuple[float, float] = (0.05, 0.95),
@@ -526,7 +525,7 @@ def plot_forest_lin(
 
 def plot_forest_clustered(
     term: RITerm | MRFTerm | StrctTerm,
-    samples: Mapping[str, jax.Array],
+    samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
     ymin: str = "hdi_low",
@@ -628,8 +627,8 @@ def plot_forest_clustered(
 
 def plot_1d_smooth_clustered(
     clustered_term: lsl.Var,
-    samples: Mapping[str, jax.Array],
-    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    samples: dict[str, ArrayLike],
+    newdata: None | dict[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
     color_scale: str = "viridis",
     ngrid: int = 20,
