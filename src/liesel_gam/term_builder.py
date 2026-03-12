@@ -552,7 +552,8 @@ class TermBuilder:
             context=context,
         )
 
-        term_name = self.names.create("lin" + "(" + basis.name + ")")
+        term_name = self.names.create(prefix + "lin" + "(" + basis.name + ")")
+        term_name = prefix + name if name is not None else term_name
 
         coef_name = self.names.beta(term_name)
 
@@ -567,8 +568,6 @@ class TermBuilder:
         term.model_spec = basis.model_spec
         term.mappings = basis.mappings
         term.column_names = basis.column_names
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
 
         return term
 
@@ -689,7 +688,9 @@ class TermBuilder:
         )
         basis._penalty = lsl.Value(jnp.eye(basis.nbases))
 
-        fname = self.names.create("slin" + "(" + basis.name + ")")
+        fname = self.names.create(prefix + "slin" + "(" + basis.name + ")")
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         term = StrctLinTerm(
             basis=basis,
@@ -705,9 +706,6 @@ class TermBuilder:
         term.model_spec = basis.model_spec
         term.mappings = basis.mappings
         term.column_names = basis.column_names
-
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
 
         return term
 
@@ -833,7 +831,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cr", basis.x.name)
+        fname = self.names.fname(prefix + "cr", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -846,8 +846,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def cs(
@@ -972,7 +970,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cs", basis.x.name)
+        fname = self.names.fname(prefix + "cs", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -985,8 +985,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def cc(
@@ -1112,7 +1110,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cc", basis.x.name)
+        fname = self.names.fname(prefix + "cc", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -1125,8 +1125,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def bs(
@@ -1256,7 +1254,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("bs", basis.x.name)
+        fname = self.names.fname(prefix + "bs", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -1269,8 +1269,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # P-spline
@@ -1415,22 +1413,21 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("ps", basis.x.name)
+        fname = self.names.fname(prefix + "ps", basis.x.name)
+        term_name = prefix + name if name is not None else fname
 
-        coef_name = self.names.beta(fname)
+        coef_name = self.names.beta(term_name)
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
-            name=fname,
+            scale=self.init_scale(scale, term_name),
+            name=term_name,
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
         if factor_scale:
             term.factor_scale()
 
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def np(
@@ -1569,7 +1566,9 @@ class TermBuilder:
         if diagonal_penalty:
             basis.diagonalize_penalty()
 
-        fname = self.names.fname("np", basis.x.name)
+        fname = self.names.fname(prefix + "np", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -1583,8 +1582,6 @@ class TermBuilder:
         if factor_scale:
             term.factor_scale()
 
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def cp(
@@ -1718,7 +1715,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("cp", basis.x.name)
+        fname = self.names.fname(prefix + "cp", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -1731,8 +1730,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # random intercept
@@ -1824,7 +1821,9 @@ class TermBuilder:
         """
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
-        fname = self.names.fname("ri", basis.x.name)
+        fname = self.names.fname(prefix + "ri", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
         coef_name = self.names.beta(fname)
 
         term = RITerm(
@@ -1848,8 +1847,6 @@ class TermBuilder:
             # this takes care of increasing the parameter number in case this term
             # covers unobserved clusters
             term.coef.value = jnp.zeros(nparams)
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # random scaling
@@ -1961,14 +1958,14 @@ class TermBuilder:
             xname = x_var.name
 
         fname = self.names.create("rs(" + xname + "|" + cluster + ")")
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
         term = lsl.Var.new_calc(
             lambda x, cluster: x * cluster,
             x=x_var,
             cluster=ri,
             name=fname,
         )
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # varying coefficient
@@ -2019,6 +2016,8 @@ class TermBuilder:
         """
         x_var = self.bases._get_var_and_value(x)[0]
         fname = self.names.create(x_var.name + "*" + by.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         term = lsl.Var.new_calc(
             lambda x, by: x * by,
@@ -2026,8 +2025,6 @@ class TermBuilder:
             by=by,
             name=fname,
         )
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # general smooth with MGCV bases
@@ -2060,6 +2057,8 @@ class TermBuilder:
         )
 
         fname = self.names.fname(bs, basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -2072,8 +2071,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # markov random field
@@ -2245,7 +2242,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("mrf", basis.x.name)
+        fname = self.names.fname(prefix + "mrf", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
         coef_name = self.names.beta(fname)
         term = MRFTerm(
             basis,
@@ -2266,8 +2265,6 @@ class TermBuilder:
         term.labels = list(basis.mrf_spec.mapping.labels_to_integers_map)
         term.mapping = basis.mrf_spec.mapping
 
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     # general basis function + penalty smooth
@@ -2407,7 +2404,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("f", basis.x.name)
+        fname = self.names.fname(prefix + "f", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
@@ -2419,8 +2418,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def kriging(
@@ -2559,7 +2556,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("kriging", basis.x.name)
+        fname = self.names.fname(prefix + "kriging", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
         coef_name = self.names.beta(fname)
         term = StrctTerm(
             basis,
@@ -2571,8 +2570,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def tp(
@@ -2701,7 +2698,9 @@ class TermBuilder:
             remove_null_space_completely=remove_null_space_completely,
         )
 
-        fname = self.names.fname("tp", basis.x.name)
+        fname = self.names.fname(prefix + "tp", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -2714,8 +2713,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def ts(
@@ -2842,7 +2839,9 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname("ts", basis.x.name)
+        fname = self.names.fname(prefix + "ts", basis.x.name)
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
 
         coef_name = self.names.beta(fname)
         term = StrctTerm(
@@ -2855,8 +2854,6 @@ class TermBuilder:
         )
         if factor_scale:
             term.factor_scale()
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def _ta(
@@ -2874,6 +2871,8 @@ class TermBuilder:
         ),
         include_main_effects: bool = False,
         _fname: str = "ta",
+        prefix: str = "",
+        name: str | None = None,
     ) -> StrctTensorProdTerm:
         r"""
         General anisotropic tensor product term.
@@ -2905,7 +2904,9 @@ class TermBuilder:
         inputs = ",".join(
             list(StrctTensorProdTerm._input_obs([t.basis for t in marginals]))
         )
-        fname = self.names.create(f"{_fname}(" + inputs + ")")
+        fname = self.names.create(prefix + f"{_fname}(" + inputs + ")")
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
         basis_name = self.names.create("B(" + inputs + ")")
         coef_name = self.names.beta(fname)
 
@@ -3136,9 +3137,9 @@ class TermBuilder:
             scales_inference=scales_inference,
             include_main_effects=False,
             _fname="tx",
+            prefix=prefix,
+            name=name,
         )
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
     def tf(
@@ -3258,9 +3259,9 @@ class TermBuilder:
             scales_inference=scales_inference,
             include_main_effects=True,
             _fname="tf",
+            prefix=prefix,
+            name=name,
         )
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
         return term
 
 
