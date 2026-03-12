@@ -444,6 +444,13 @@ def _test_term(
     smooth_factor_scale.scale.value == pytest.approx(2.0)
     smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
+    _, vars_ = model.pop_nodes_and_vars()
+    smooth = fn(vars_["x"], k=k, diagonal_penalty=False)
+    assert not any(jnp.isnan(smooth.value))
+    assert smooth.value.shape == columb.shape[0:1]
+    assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
+    assert not is_diagonal(smooth.basis.penalty.value)
+
 
 class TestTerms:
     def test_ps(self, columb):
