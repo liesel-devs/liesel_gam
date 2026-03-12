@@ -694,7 +694,8 @@ class IndexingTerm(StrctTerm):
 
         if not jnp.issubdtype(jnp.asarray(basis.value).dtype, jnp.integer):
             raise TypeError(
-                f"IndexingTerm requires integer basis, got {jnp.asarray(basis.value).dtype=}."
+                "IndexingTerm requires integer basis, "
+                f"got {jnp.asarray(basis.value).dtype=}."
             )
 
         super().__init__(
