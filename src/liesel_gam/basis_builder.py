@@ -924,7 +924,7 @@ class BasisBuilder:
 
         obs_vars = {}
         for xname in x:
-            xvar = self._get_var_and_value(xname)[0]
+            xvar: lsl.Var | lsl.TransientCalc = self._get_var_and_value(xname)[0]
             obs_vars[xvar.name] = xvar
 
         obs_values = {k: np.asarray(v.value) for k, v in obs_vars.items()}
@@ -944,12 +944,10 @@ class BasisBuilder:
         xname = ",".join([v.name for v in obs_vars.values()])
 
         if len(obs_vars) > 1:
-            xvar: lsl.Var | lsl.TransientCalc = (
-                lsl.TransientCalc(  # for memory-efficiency
-                    lambda *args: jnp.vstack(args).T,
-                    *list(obs_vars.values()),
-                    _name=self.names.create(xname),
-                )
+            xvar = lsl.TransientCalc(  # for memory-efficiency
+                lambda *args: jnp.vstack(args).T,
+                *list(obs_vars.values()),
+                _name=self.names.create(xname),
             )
         else:
             xvar = obs_vars[xname]
