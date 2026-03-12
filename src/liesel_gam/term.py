@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from functools import reduce
+from math import prod
 from typing import Any, Literal, Self
 
 import jax

@@ -40,6 +40,7 @@ from .term import IndexingTerm as IndexingTerm
 from .term import LinMixin as LinMixin
 from .term import LinTerm as LinTerm
 from .term import MRFTerm as MRFTerm
+from .term import MultivariateStrctTerm as MultivariateStrctTerm
 from .term import RITerm as RITerm
 from .term import SmoothTerm as SmoothTerm
 from .term import StrctLinTerm as StrctLinTerm
