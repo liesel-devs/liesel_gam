@@ -483,7 +483,7 @@ class TermBuilder:
         - ``a*b`` for expanding to ``a + b + a:b``
         - ``(a + b)**n`` for n-th order interactions
         - ``a / b`` for nesting
-        - ``C(a, ...)`` for categorical effects
+        - ``C(a, ...)`` for categorical effects (see formulaic_categorical_ for details)
         - ``b %in% a`` for inverted nesting
         - ``{a+1}`` for quoted Python code to be executed
         - ```weird name``` backtick-strings for weird names
@@ -539,6 +539,7 @@ class TermBuilder:
 
 
         .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
+        .. _formulaic_categorical: https://matthew.wardrop.casa/formulaic/latest/guides/contrasts/#contrast-codings
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
 
@@ -638,7 +639,7 @@ class TermBuilder:
         - ``a*b`` for expanding to ``a + b + a:b``
         - ``(a + b)**n`` for n-th order interactions
         - ``a / b`` for nesting
-        - ``C(a, ...)`` for categorical effects
+        - ``C(a, ...)`` for categorical effects (see formulaic_categorical_ for details)
         - ``b %in% a`` for inverted nesting
         - ``{a+1}`` for quoted Python code to be executed
         - ```weird name``` backtick-strings for weird names
@@ -675,6 +676,7 @@ class TermBuilder:
 
 
         .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
+        .. _formulaic_categorical: https://matthew.wardrop.casa/formulaic/latest/guides/contrasts/#contrast-codings
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
         include_intercept = False
