@@ -334,6 +334,9 @@ class StructuredPenaltyOperator:
         masks: jax.Array | None = None,
         validate_args: bool = False,
         tol: float = 1e-6,
+        batch_shape: Sequence[int] | tuple | None = None,
+        batch_shape_flat: int | None = None,
+        K: int | None = None,
     ) -> None:
         self._scales = jnp.asarray(scales)
         self._penalties = tuple([jnp.asarray(p) for p in penalties])
@@ -348,6 +351,20 @@ class StructuredPenaltyOperator:
 
         self._masks = masks
         self._tol = tol
+
+        self.batch_shape = (
+            batch_shape if batch_shape is not None else self._scales.shape[:-1]
+        )
+        if batch_shape_flat is not None:
+            self.batch_shape_flat = batch_shape_flat
+        else:
+            self.batch_shape_flat = (
+                int(jnp.prod(jnp.array(batch_shape))) if batch_shape else 1
+            )
+
+        self.K = K if K is not None else self._scales.shape[-1]
+
+        # flatten batch dims so we can vmap over a single leading dim
 
     @classmethod
     def from_penalties(
@@ -480,11 +497,10 @@ class StructuredPenaltyOperator:
         https://doi.org/10.1007/s11222-025-10569-y
         """
         variances = self.variances  # shape (B..., K)
-        batch_shape = variances.shape[:-1]
-        K = variances.shape[-1]
+        B_flat = self.batch_shape_flat
+        K = self.K
+        batch_shape = self.batch_shape
 
-        # flatten batch dims so we can vmap over a single leading dim
-        B_flat = int(jnp.prod(jnp.array(batch_shape))) if batch_shape else 1
         tau2_flat = variances.reshape(B_flat, K)  # (B_flat, K)
 
         # eigenvalues per penalty, flattened over batch
@@ -521,18 +537,18 @@ class StructuredPenaltyOperator:
         exploiting its structured composition of marginal precisions.
         """
         variances = self.variances  # shape (B..., K)
-        batch_shape = variances.shape[:-1]
+        batch_shape = self.batch_shape
         batch_shape_x = x.shape[:-1]
         if batch_shape_x and (batch_shape_x != batch_shape):
             raise ValueError(
                 f"x has batch shape {batch_shape_x}, but batch size is {batch_shape}."
             )
 
-        K = variances.shape[-1]
+        K = self.K
         N = x.shape[-1]
 
         # flatten batch dims so we can vmap over a single leading dim
-        B_flat = int(jnp.prod(jnp.array(batch_shape))) if batch_shape else 1
+        B_flat = self.batch_shape_flat
         tau2_flat = variances.reshape(B_flat, K)  # (B_flat, K)
         if batch_shape_x:
             x_flat = x.reshape(B_flat, N)  # (B_flat, N)
