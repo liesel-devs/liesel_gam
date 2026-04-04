@@ -352,14 +352,14 @@ class StructuredPenaltyOperator:
         self._masks = masks
         self._tol = tol
 
-        self.batch_shape = (
+        self.batch_shape = tuple(
             batch_shape if batch_shape is not None else self._scales.shape[:-1]
         )
         if batch_shape_flat is not None:
             self.batch_shape_flat = batch_shape_flat
         else:
             self.batch_shape_flat = (
-                int(jnp.prod(jnp.array(batch_shape))) if batch_shape else 1
+                int(jnp.prod(jnp.array(self.batch_shape))) if self.batch_shape else 1
             )
 
         self.K = K if K is not None else self._scales.shape[-1]

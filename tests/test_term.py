@@ -622,6 +622,8 @@ class TestMultivariateTPTerm:
         dist = s2d.coef.dist_node.init_dist()
         K = dist._op.materialize_penalty()
 
-        Kmarginal = s.basis.penalty.value + jnp.eye(s.nbases)
-        assert jnp.allclose(K[: s.nbases, : s.nbases], Kmarginal)
-        assert jnp.allclose(K[s.nbases :, s.nbases :], Kmarginal)
+        Kmarginal = jnp.kron(s.basis.penalty.value, jnp.eye(2)) + jnp.kron(
+            jnp.eye(2), jnp.eye(s.nbases)
+        )
+
+        assert jnp.allclose(K, Kmarginal)
