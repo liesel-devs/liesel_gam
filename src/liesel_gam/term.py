@@ -1310,8 +1310,8 @@ class MultivariateStrctTerm(UserVar):
 
         ndim = prod([p.shape[-1] for p in dimension_penalties])
 
-        penalties = list(dimension_penalties) + list(penalties_marginals)
-        scales = list(dimension_scale_vars) + list(scales_marginals)
+        penalties = list(penalties_marginals) + list(dimension_penalties)
+        scales = list(scales_marginals) + list(dimension_scale_vars)
 
         mvnds = MultivariateNormalStructured.get_locscale_constructor(
             penalties=penalties
