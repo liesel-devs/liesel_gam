@@ -359,7 +359,7 @@ class StructuredPenaltyOperator:
             self.batch_shape_flat = batch_shape_flat
         else:
             self.batch_shape_flat = (
-                int(jnp.prod(jnp.array(self.batch_shape))) if self.batch_shape else 1
+                int(prod(self.batch_shape)) if self.batch_shape else 1
             )
 
         self.K = K if K is not None else self._scales.shape[-1]
