@@ -3368,12 +3368,45 @@ class TermBuilder:
             common_scale=common_scale,
             order=order,
             inference=self._get_inference(inference),
-            scales_inference=scales_inference,
-            include_main_effects=True,
-            _fname="tf",
+            coef_name=r"\beta",
+            basis_name="B",
+            tx_name="tx",
+            tf_name="tf",
+            names_prefix=prefix,
+            group_terms_by_order=group_terms_by_order,
         )
-        term_name = name if name is not None else term.name
-        term.name = prefix + term_name
+        term.name = term_name
+
+        first_order_bases = []
+        for term_ in term.terms_by_order[1]:
+            first_order_bases.append(term_.basis)
+
+        for i in term.order:
+            if i == 1:
+                continue
+            for term_ in term.terms_by_order[i]:
+                assert hasattr(term_, "bases")
+                for basis in term_.bases:
+                    if basis not in first_order_bases:
+                        basis.name = self.names.create(basis.name)
+
+        for order_, subterms in term.terms_by_order.items():
+            if order_ == 1:
+                continue
+            for subterm in subterms:
+                subterm.coef.name = self.names.create(subterm.coef.name)
+                subterm.name = self.names.create(subterm.name)
+
+        if not common_scale:
+            for scale in term.scales:
+                if not isinstance(scale, lsl.Var):
+                    raise TypeError(
+                        f"Expected scale to be a liesel.model.Var, got {type(scale)}"
+                    )
+                _biject_and_replace_star_gibbs_with(
+                    scale, self._get_inference(scales_inference)
+                )
+
         return term
 
 
