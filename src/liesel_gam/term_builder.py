@@ -3385,6 +3385,7 @@ class TermBuilder:
             if i == 1:
                 continue
             for term_ in term.terms_by_order[i]:
+                assert hasattr(term_, "bases")
                 for basis in term_.bases:
                     if basis not in first_order_bases:
                         basis.name = self.names.create(basis.name)
