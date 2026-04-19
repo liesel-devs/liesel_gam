@@ -15,7 +15,15 @@ from liesel.model.model import TemporaryModel
 from .basis_builder import BasisBuilder
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
-from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
+from .term import (
+    LinTerm,
+    MRFTerm,
+    RITerm,
+    StrctInteractionTerm,
+    StrctLinTerm,
+    StrctTensorProdTerm,
+    StrctTerm,
+)
 from .var import ScaleIG, VarIGPrior
 
 InferenceTypes = Any
@@ -2875,7 +2883,7 @@ class TermBuilder:
         _fname: str = "ta",
         prefix: str = "",
         name: str | None = None,
-    ) -> StrctTensorProdTerm:
+    ) -> StrctInteractionTerm:
         r"""
         General anisotropic tensor product term.
 
@@ -2904,7 +2912,7 @@ class TermBuilder:
 
         """
         inputs = ",".join(
-            list(StrctTensorProdTerm._input_obs([t.basis for t in marginals]))
+            list(StrctInteractionTerm._input_obs([t.basis for t in marginals]))
         )
         fname = self.names.create(prefix + f"{_fname}(" + inputs + ")")
         term_name = prefix + name if name is not None else fname
@@ -2920,7 +2928,7 @@ class TermBuilder:
         elif common_scale is not None:
             common_scale = self.init_scale(common_scale, fname)
 
-        term = StrctTensorProdTerm(
+        term = StrctInteractionTerm(
             *marginals,
             common_scale=common_scale,
             name=fname,
@@ -2957,7 +2965,7 @@ class TermBuilder:
         ),
         prefix: str = "",
         name: str | None = None,
-    ) -> StrctTensorProdTerm:
+    ) -> StrctInteractionTerm:
         r"""
         General anisotropic tensor product interaction term without main effects.
 
@@ -2976,8 +2984,10 @@ class TermBuilder:
         common_scale
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
-            :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
-            in the notation used in :class:`.StrctTensorProdTerm`.
+            :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal dimensions
+            of this interaction
+            in the notation used in :class:`.StrctInteractionTerm`.
+            This does not affect the scales of the supplied marginals (main effects).
         inference
             Inference specification for this term's coefficient.
             The default (``"default"``) uses the :class:`.TermBuilder`'s default
@@ -2992,9 +3002,21 @@ class TermBuilder:
             Manually defined name of the term. If a prefix is specified, the prefix
             will be added to this name.
 
+        Notes
+        -----
+
+        .. note::
+            The methods :meth:`.tf` and :meth:`.tx`
+            are closely related. The former loosely corresponds to ``mgcv::ti``, and the
+            latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
+            centered marginals, :class:`.tx` will *only* include the
+            highest-order interaction of the supplied marginals, while
+            :class:`.tf` will include the highest-order interaction *and*
+            all lower-order interactions, including the main effects.
+
         See Also
         --------
-        .StrctTensorProdTerm : The term class returned by this method; includes further
+        .StrctInteractionTerm : The term class returned by this method; includes further
           details.
         .tf : Full tensor product, including main effects.
 
@@ -3014,7 +3036,7 @@ class TermBuilder:
 
         >>> pred += tb.tx(ps1, ps2)
         >>> pred.terms
-        {'tx(x_nonlin,x_lin)': StrctTensorProdTerm(name="tx(x_nonlin,x_lin)")}
+        {'tx(x_nonlin,x_lin)': StrctInteractionTerm(name="tx(x_nonlin,x_lin)")}
 
         .. rubric:: Anova decomposition
 
@@ -3033,7 +3055,7 @@ class TermBuilder:
         >>> len(pred.terms)
         3
 
-        .. rubric:: Isotropic tensor product
+        .. rubric:: Isotropic tensor product interaction
 
         >>> import liesel_gam as gam
         >>> import tensorflow_probability.substrates.jax.bijectors as tfb
@@ -3102,12 +3124,23 @@ class TermBuilder:
         3
 
 
-        Note that this term has four variance parameters: Two of them govern the
-        independent marginals, and another two govern the interaction term. This
-        added flexibility when using :meth:`.tx` is a further difference to
+        Note that this term has four variance parameters: Four of them govern the
+        independent marginals, and the other two govern the interaction,
+        because we initialize new marginals with new variance parameters for the
+        interaction term.
+
+        This added flexibility when using :meth:`.tx` is a further difference to
         :meth:`.tf`.
 
         .. rubric:: Three-dimensional interaction
+
+        Note that this term has six variance parameters: Three of them govern the
+        independent marginals, and the other three are used in the interaction terms,
+        because we initialize new marginals with new variance parameters for the
+        interaction terms.
+
+        This added flexibility when using :meth:`.tx` is a further difference to
+        :meth:`.tf`.
 
         >>> import liesel_gam as gam
         >>> df = gam.demo_data(100)
@@ -3119,18 +3152,29 @@ class TermBuilder:
         >>> ps2 = tb.ps("x_lin", k=20)
         >>> ps3 = tb.ps("x", k=20)
 
+        We first add the main effects:
+
         >>> pred += ps1, ps2, ps3
 
-        >>> pred += tb.tx(
-        ...     tb.ps("x_nonlin", k=7),
-        ...     tb.ps("x_lin", k=7),
-        ...     tb.ps("x", k=7),
-        ... )
+        Then we initialize a second set of marginals:
+
+        >>> ps1x = tb.ps("x_nonlin", k=7)
+        >>> ps2x = tb.ps("x_lin", k=7)
+        >>> ps3x = tb.ps("x", k=7)
+
+        Then the three bivariate interactions:
+
+        >>> pred += tb.tx(ps1x, ps2x)
+        >>> pred += tb.tx(ps1x, ps3x)
+        >>> pred += tb.tx(ps2x, ps3x)
+
+        And finally the trivariate interaction:
+
+        >>> pred += tb.tx(ps1x, ps2x, ps3x)
 
         >>> len(pred.terms)
-        4
-        >>> pred.terms["tx(x_nonlin,x_lin,x)"].coef.value.shape
-        (216,)
+        7
+
         """
         term = self._ta(
             *marginals,
@@ -3153,16 +3197,18 @@ class TermBuilder:
         | VarIGPrior
         | Literal["default"]
         | None = None,
+        order: Sequence[int] | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None | Literal["default"] = gs.MCMCSpec(
             gs.HMCKernel
         ),
         prefix: str = "",
         name: str | None = None,
+        group_terms_by_order: bool = False,
     ) -> StrctTensorProdTerm:
         r"""
         General full anisotropic tensor product term, including main effects and
-        interction.
+        interactions.
 
         Corresponds to ``mgcv::te``.
 
@@ -3180,7 +3226,14 @@ class TermBuilder:
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
             :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
-            in the notation used in :class:`.StrctTensorProdTerm`.
+            in the notation used in :class:`.StrctInteractionTerm`. Note that this
+            *will* also change the scales of the supplied marginals (main effects).
+        order
+            Sequence of intergers identifying the orders of interactions to be included
+            in this term. For example, if you want to include only the bi- and
+            trivariate interactions when supplying three marginals, pass
+            ``order=(2,3)``. The default ``order=None`` means that *all* orders will be
+            included; also the main effects.
         inference
             Inference specification for this term's coefficient.
             The default (``"default"``) uses the :class:`.TermBuilder`'s default
@@ -3194,6 +3247,23 @@ class TermBuilder:
         name
             Manually defined name of the term. If a prefix is specified, the prefix
             will be added to this name.
+        group_terms_by_order
+            If ``True``, an intermediate variable object will be created for each order
+            of interactions in this term. This can help to better organize the
+            plotted graph of a term, but otherwise has no effect except using slightly
+            more memory.
+
+        Notes
+        -----
+
+        .. note::
+            The methods :meth:`.tf` and :meth:`.tx`
+            are closely related. The former loosely corresponds to ``mgcv::ti``, and the
+            latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
+            centered marginals, :class:`.tx` will *only* include the
+            highest-order interaction of the supplied marginals, while
+            :class:`.tf` will include the highest-order interaction *and*
+            all lower-order interactions, including the main effects.
 
         See Also
         --------
@@ -3251,19 +3321,92 @@ class TermBuilder:
 
         >>> len(pred.terms)
         1
-        >>> pred.terms["tf(x_nonlin,x_lin,x)"].coef.value.shape
+
+        The attribute ``StrctTensorProd.terms_by_order`` organizes the individual
+        terms created by the full tensor product by interaction order.
+        For example, these are the main effects:
+
+        >>> pred.terms["tf(x_nonlin,x_lin,x)"].terms_by_order[1]  # doctest: +ELLIPSIS
+        [StrctTerm(name="ps(x_nonlin)"), ...]
+
+        These are the bivariate interactions:
+
+        >>> pred.terms["tf(x_nonlin,x_lin,x)"].terms_by_order[2]  # doctest: +ELLIPSIS
+        [StrctInteractionTerm(name="tx(x_nonlin,x_lin)"), ...]
+
+        And this is the trivariate interaction:
+
+        >>> pred.terms["tf(x_nonlin,x_lin,x)"].terms_by_order[3]
+        [StrctInteractionTerm(name="tx(x_nonlin,x_lin,x)")]
+
+        We can inspect the number of coefficients in the trivariate interaction term:
+
+        >>> interaction = pred.terms["tf(x_nonlin,x_lin,x)"].terms_by_order[3]
+        >>> interaction[0]
+        StrctInteractionTerm(name="tx(x_nonlin,x_lin,x)")
+        >>> interaction[0].coef.value.shape
         (216,)
         """
-        term = self._ta(
+        inputs = ",".join(
+            list(StrctInteractionTerm._input_obs([t.basis for t in marginals]))
+        )
+
+        fname = self.names.create(prefix + "tf(" + inputs + ")")
+        term_name = prefix + name if name is not None else fname
+        fname = term_name
+
+        if common_scale is not None and not isinstance(common_scale, float):
+            common_scale = self.init_scale(common_scale, fname)
+            _biject_and_replace_star_gibbs_with(
+                common_scale, self._get_inference(scales_inference)
+            )
+        elif common_scale is not None:
+            common_scale = self.init_scale(common_scale, fname)
+
+        term = StrctTensorProdTerm(
             *marginals,
             common_scale=common_scale,
+            order=order,
             inference=self._get_inference(inference),
-            scales_inference=scales_inference,
-            include_main_effects=True,
-            _fname="tf",
-            prefix=prefix,
-            name=name,
+            coef_name=r"\beta",
+            basis_name="B",
+            tx_name="tx",
+            tf_name="tf",
+            names_prefix=prefix,
+            group_terms_by_order=group_terms_by_order,
         )
+        term.name = term_name
+
+        first_order_bases = []
+        for term_ in term.terms_by_order[1]:
+            first_order_bases.append(term_.basis)
+
+        for i in term.order:
+            if i == 1:
+                continue
+            for term_ in term.terms_by_order[i]:
+                assert hasattr(term_, "bases")
+                for basis in term_.bases:
+                    if basis not in first_order_bases:
+                        basis.name = self.names.create(basis.name)
+
+        for order_, subterms in term.terms_by_order.items():
+            if order_ == 1:
+                continue
+            for subterm in subterms:
+                subterm.coef.name = self.names.create(subterm.coef.name)
+                subterm.name = self.names.create(subterm.name)
+
+        if not common_scale:
+            for scale in term.scales:
+                if not isinstance(scale, lsl.Var):
+                    raise TypeError(
+                        f"Expected scale to be a liesel.model.Var, got {type(scale)}"
+                    )
+                _biject_and_replace_star_gibbs_with(
+                    scale, self._get_inference(scales_inference)
+                )
+
         return term
 
 
