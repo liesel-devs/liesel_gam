@@ -3377,8 +3377,12 @@ class TermBuilder:
         )
         term.name = term_name
 
-        for basis in term.bases:
-            basis.name = self.names.create(basis.name)
+        for i in term.order:
+            if i == 1:
+                continue
+            for term_ in term.terms_by_order[i]:
+                for basis in term_.bases:
+                    basis.name = self.names.create(basis.name)
 
         for order_, subterms in term.terms_by_order.items():
             if order_ == 1:
