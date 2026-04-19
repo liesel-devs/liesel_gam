@@ -1638,7 +1638,7 @@ class MultivariateStrctTerm(UserVar):
         basis_name: str | None = None,
         _update_on_init: bool = True,
     ):
-        StrctTensorProdTerm._validate_marginals(marginals)
+        StrctInteractionTerm._validate_marginals(marginals)
 
         dimension_scale_vars = []
         for s in dimension_scales:
@@ -1652,9 +1652,9 @@ class MultivariateStrctTerm(UserVar):
             )
 
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
-        bases_marginals = StrctTensorProdTerm._get_bases(marginals)
+        bases_marginals = StrctInteractionTerm._get_bases(marginals)
 
-        penalties_marginals = StrctTensorProdTerm._get_penalties(bases_marginals)
+        penalties_marginals = StrctInteractionTerm._get_penalties(bases_marginals)
 
         scales_marginals = [t.scale for t in marginals]
 
@@ -1663,12 +1663,10 @@ class MultivariateStrctTerm(UserVar):
         def rowwise_kron(*bases):
             return reduce(_rowwise_kron, bases)
 
+        self.xnames = ",".join(list(StrctInteractionTerm._input_obs(bases_marginals)))
+
         if basis_name is None:
-            basis_name = (
-                "B("
-                + ",".join(list(StrctTensorProdTerm._input_obs(bases_marginals)))
-                + ")"
-            )
+            basis_name = "B(" + self.xnames + ")"
 
         assert basis_name is not None
         basis = lsl.Var.new_calc(rowwise_kron, *bases_marginals, name=basis_name)
@@ -1730,7 +1728,7 @@ class MultivariateStrctTerm(UserVar):
         """
         A dictionary of strong input variables.
         """
-        return StrctTensorProdTerm._input_obs(self.marginal_bases)
+        return StrctInteractionTerm._input_obs(self.marginal_bases)
 
     @classmethod
     def f(
@@ -1744,7 +1742,7 @@ class MultivariateStrctTerm(UserVar):
         _update_on_init: bool = True,
     ) -> Self:
         xnames = list(
-            StrctTensorProdTerm._input_obs(StrctTensorProdTerm._get_bases(marginals))
+            StrctInteractionTerm._input_obs(StrctInteractionTerm._get_bases(marginals))
         )
         name = fname + "(" + ",".join(xnames) + ")"
 
@@ -1762,3 +1760,118 @@ class MultivariateStrctTerm(UserVar):
         )
 
         return term
+
+
+class MultivariateTPTerm(UserVar):
+    def __init__(
+        self,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
+        dimension_penalties: Sequence[Array],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        order: Sequence[int] | None = None,
+        inference: InferenceTypes = None,
+        names_prefix: str = "",
+        tx_name: str = "mx",
+        tf_name: str = "mf",
+        coef_name: str = r"\gamma",
+        basis_name: str = "B",
+        group_terms_by_order: bool = False,
+        _update_on_init: bool = True,
+    ):
+        for term__ in marginals:
+            if term__.scale is None:
+                raise ValueError(
+                    f"Scale of {term__} is None, which is not allowed "
+                    f"in {type(self).__name__}."
+                )
+        nmargins = len(marginals)
+        terms_combinations = []
+        for i in range(1, (nmargins + 1)):
+            terms_combinations += list(combinations(marginals, i))
+
+        self.order = order if order is not None else tuple(range(1, len(marginals) + 1))
+
+        self.terms_by_order: dict[int, list[MultivariateStrctTerm]] = {}
+
+        scale_ = _init_scale_ig(common_scale) if common_scale is not None else None
+
+        interactions = []
+        for term_marginals in terms_combinations:
+            order_term = len(term_marginals)
+            if order_term not in self.order:
+                continue
+
+            term = MultivariateStrctTerm(
+                *term_marginals,
+                dimension_penalties=dimension_penalties,
+                dimension_scales=dimension_scales,
+                inference=inference,
+                _update_on_init=_update_on_init,
+            )
+
+            term.name = names_prefix + f"{tx_name}({term.xnames})"
+            term.coef.name = names_prefix + "$" + coef_name + r"_{" + term.name + r"}$"
+            term.basis.name = names_prefix + basis_name + "(" + term.xnames + ")"
+
+            interactions.append(term)
+
+            if not self.terms_by_order.get(order_term, None):
+                self.terms_by_order[order_term] = [term]
+            else:
+                self.terms_by_order[order_term].append(term)
+
+        for o in self.order:
+            if o not in self.terms_by_order:
+                raise ValueError(
+                    f"Order {order} was supplied, but no interactions "
+                    f"of order {o} found."
+                )
+
+        if common_scale is not None:
+            assert scale_ is not None
+            for term_ in marginals:
+                term_.replace_scale(scale_)
+
+        self.marginals = marginals
+        self._terms_list = list(marginals) + interactions
+        self.marginal_terms = marginals
+        self.marginal_bases = StrctInteractionTerm._get_bases(marginals)
+
+        self.marginal_penalties = StrctInteractionTerm._get_penalties(
+            self.marginal_bases
+        )
+        self.dimension_penalties = dimension_penalties
+
+        self.xnames = ",".join(list(self.input_obs))
+
+        if group_terms_by_order:
+            self.term_groups = {}
+            for o, o_terms in self.terms_by_order.items():
+                self.term_groups[o] = lsl.Var.new_calc(
+                    lambda *args: sum(args),
+                    *o_terms,
+                    _update_on_init=_update_on_init,
+                    name=names_prefix + f"${tf_name}^{{({o})}}({self.xnames})$",
+                )
+
+            calc = lsl.Calc(
+                lambda *args: sum(args),
+                *list(self.term_groups.values()),
+                _update_on_init=_update_on_init,
+            )
+        else:
+            calc = lsl.Calc(
+                lambda *args: sum(args),
+                *self._terms_list,
+                _update_on_init=_update_on_init,
+            )
+
+        super().__init__(calc, name=names_prefix + f"{tf_name}({self.xnames})")
+
+    @property
+    def input_obs(self) -> dict[str, lsl.Var]:
+        """
+        A dictionary of strong input variables.
+        """
+        return StrctInteractionTerm._input_obs(self.marginal_bases)
