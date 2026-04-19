@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from functools import reduce
+from itertools import combinations
+from math import prod
 from typing import Any, Literal, Self
 
 import jax
@@ -277,6 +279,7 @@ class StrctTerm(UserVar):
             self.coef.update()
 
         self._scale_is_factored = False
+        self._disallow_scale_factorization = False
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
@@ -312,6 +315,18 @@ class StrctTerm(UserVar):
     def scale(self) -> lsl.Var | lsl.Node | None:
         """The scale variable used by the prior on the coefficients."""
         return self._scale
+
+    def replace_scale(self, new: lsl.Var, disallow_factorization: bool = True) -> None:
+        if self.scale_is_factored:
+            raise ValueError(
+                f"Scale of {self} cannot be replace, because it has been factored "
+                " using .factor_scale()."
+            )
+
+        self._scale = new
+        assert self.coef.dist_node is not None
+        self.coef.dist_node["scale"] = new
+        self._disallow_scale_factorization = disallow_factorization
 
     def _validate_scale_for_factoring(self):
         if self.scale is None:
@@ -916,9 +931,9 @@ class StrctLinTerm(StrctTerm, LinMixin):
     pass
 
 
-class StrctTensorProdTerm(UserVar):
+class StrctInteractionTerm(UserVar):
     r"""
-    General anisotropic structured additive tensor product term.
+    Anisotropic structured additive interaction term.
 
     Parameters
     ----------
@@ -947,6 +962,7 @@ class StrctTensorProdTerm(UserVar):
     See Also
     --------
     .StrctTerm : Basic (isotropic) structured additive term.
+    .StrctTensorProdTerm : Full anisotropic tensor product term.
     .TermBuilder : Initializes structured additive terms.
     .BasisBuilder : Initializes structured additive term basis matrices.
     .Basis : Basis matrix object.
@@ -954,6 +970,15 @@ class StrctTensorProdTerm(UserVar):
 
     Notes
     -----
+
+    .. note::
+        The classes :class:`.StrctInteractionTerm` and :class:`.StrctTensorProdTerm`
+        are closely related. The former loosely corresponds to ``mgcv::ti``, and the
+        latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
+        centered marginals, :class:`.StrctInteractionTerm` will *only* include the
+        highest-order interaction of the supplied marginals, while
+        :class:`.StrctTensorProdTerm` will include the highest-order interaction *and*
+        all lower-order interactions, including the main effects.
 
     Assumes that the term is a tensor product of :math:`M` marginal bases that can be
     written as
@@ -1058,7 +1083,6 @@ class StrctTensorProdTerm(UserVar):
     - Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
       Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
       https://doi.org/10.1007/s11222-025-10569-y
-
     """
 
     def __init__(
@@ -1072,23 +1096,63 @@ class StrctTensorProdTerm(UserVar):
         include_main_effects: bool = False,
         _update_on_init: bool = True,
     ):
+        for term__ in marginals:
+            if term__.scale is None:
+                raise ValueError(
+                    f"Scale of {term__} is None, which is not allowed "
+                    f"in {type(self).__name__}."
+                )
+
+        if include_main_effects and len(marginals) > 2:
+            raise ValueError(
+                "For more than two marginals, include_main_effects=True is probably "
+                "not the right tool, since it will not include lower-order "
+                "interactions. Please consider using liesel_gam.StrctTensorProdTerm "
+                "instead."
+            )
+
         self._validate_marginals(marginals)
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
         bases = self._get_bases(marginals)
         penalties = self._get_penalties(bases)
 
         if common_scale is None:
-            scales = [t.scale for t in marginals]
+            scales = [t.scale for t in marginals if t.scale is not None]
         else:
-            scales = [_init_scale_ig(common_scale) for _ in bases]
+            scale_ = _init_scale_ig(common_scale)
+
+            if isinstance(scale_, ScaleIG):
+                var_ = scale_.value_node[0]
+
+                if isinstance(var_, lsl.Var):
+                    if var_.inference is None or not hasattr(var_.inference, "kernel"):
+                        pass
+                    else:
+                        if hasattr(var_.inference.kernel, "__name__"):
+                            scale_kernel_name = var_.inference.kernel.__name__
+                        else:
+                            scale_kernel_name = ""
+
+                        if scale_kernel_name == "StarVarianceGibbs":
+                            raise ValueError(
+                                f"{scale_kernel_name} kernel is invalid for a tensor "
+                                "product. "
+                                "Please manually set a valid .inference specification "
+                                "for your "
+                                "common scale."
+                            )
+            assert scale_ is not None
+            scales = [scale_] * len(bases)
 
         _rowwise_kron = jax.vmap(jnp.kron)
 
         def rowwise_kron(*bases):
             return reduce(_rowwise_kron, bases)
 
+        self.xnames = ",".join(list(self._input_obs(bases)))
+
         if basis_name is None:
-            basis_name = "B(" + ",".join(list(self._input_obs(bases))) + ")"
+            basis_name = "B(" + self.xnames + ")"
 
         assert basis_name is not None
         basis = lsl.Var.new_calc(rowwise_kron, *bases, name=basis_name)
@@ -1257,3 +1321,306 @@ class StrctTensorProdTerm(UserVar):
         )
 
         return term
+
+
+class StrctTensorProdTerm(UserVar):
+    r"""
+    Anisotropic structured additive tensor product term.
+
+    Parameters
+    ----------
+    *marginals
+        Marginal terms.
+    common_scale
+        A single, common scale to cover all marginal dimensions, resulting in an
+        isotropic tensor product. This mean setting
+        :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
+        in the notation used below.
+    order
+        Sequence of intergers identifying the orders of interactions to be included
+        in this term. For example, if you want to include only the bi- and
+        trivariate interactions when supplying three marginals, pass
+        ``order=(2,3)``. The default ``order=None`` means that *all* orders will be
+        included; also the main effects.
+    names_prefix
+        Prefix to be added to the names of all variables created by this term.
+        The names of the main effects (marginals) will not be changed.
+    tx_name
+        Function component for the names of the interaction terms internally created by
+        this term. The naming pattern is ``"{tx_name}(x1, x2, ...)"``.
+    tf_name
+        Function component for this term's name.
+        The naming pattern is ``"{tf_name}(x1, x2, ...)"``.
+    coef_name
+        Symbol component of the coefficient names created by this term.
+        The naming pattern is ``"${coef_name}_{term_name}$"``, where ``term_name`` is
+        the name of a lower-order interaction in this term.
+        Does not affect the names of the marginal terms' coefficients.
+    basis_name
+        Function component for the names of interaction bases internally created by
+        this term. The naming pattern is ``"{basis_name}(x1, x2, ...)"``.
+    group_terms_by_order
+        If ``True``, an intermediate variable object will be created for each order
+        of interactions in this term. This can help to better organize the
+        plotted graph of a term, but otherwise has no effect except using slightly
+        more memory.
+    _update_on_init
+        Whether to update the term upon initialization.
+
+    See Also
+    --------
+    .StrctTerm : Basic (isotropic) structured additive term.
+    .StrctTensorProdTerm : Full anisotropic tensor product term.
+    .TermBuilder : Initializes structured additive terms.
+    .BasisBuilder : Initializes structured additive term basis matrices.
+    .Basis : Basis matrix object.
+    .StrctTerm.f : Alternative, more convenient constructor.
+
+    Notes
+    -----
+
+    .. note::
+        The classes :class:`.StrctInteractionTerm` and :class:`.StrctTensorProdTerm`
+        are closely related. The former loosely corresponds to ``mgcv::ti``, and the
+        latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
+        centered marginals, :class:`.StrctInteractionTerm` will *only* include the
+        highest-order interaction of the supplied marginals, while
+        :class:`.StrctTensorProdTerm` will include the highest-order interaction *and*
+        all lower-order interactions, including the main effects.
+
+    Assumes that the term is a tensor product of :math:`M` marginal bases that can be
+    written as
+
+    .. math::
+
+        s(\mathbf{x}_i) = \sum_{j=1}^J B_j(\mathbf{x}_i)\beta_j =
+        \mathbf{b}^\top \boldsymbol{\beta},
+
+    where
+
+    - :math:`i=1, \dots, N` is the observation index,
+    - :math:`\mathbf{x}_i^\top = [x_{i,1}, \dots, x_{i,M}]` are covariate
+      observations, where :math:`M` denotes the number of covariates included in this
+      term,
+    - :math:`\mathbf{b}(\mathbf{x}_i)^\top = [B_1(\mathbf{x}_i),
+      \dots, B_J(\mathbf{x}_i)]`
+      are a set of basis function evaluations, and
+    - :math:`\boldsymbol{\beta}^\top = [\beta_1, \dots, \beta_J]`
+      are the corresponding coefficients.
+
+    The vector of basis function evaluations is the Kronecker product of the marginal
+    bases:
+
+    .. math::
+
+        \mathbf{b}(\mathbf{x}_i)^\top = \mathbf{b}_1(x_{i,1})^\top
+        \otimes \mathbf{b}_2(x_{i,2})^\top
+        \otimes \cdots \otimes
+        \mathbf{b}_M(x_{i,M})^\top,
+
+    In this notation, we assume that the marginal bases
+    often functions of just one covariate each, which is the common case.
+    The individual terms have (potentially different) basis dimensions
+    :math:`J_1, \dots, J_M`, such that the tensor product basis dimension is
+    :math:`J = \prod_{m=1}^M J_m`.
+
+    The coefficient vector is equipped with a potentially rank-deficient multivariate
+    Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as
+
+    .. math::
+
+        p(\boldsymbol{\beta} | \boldsymbol{\tau}^2)
+        \propto
+        \operatorname{Det}(\mathbf{K}(\boldsymbol{\tau}^2))^{1/2}
+        \exp \left(
+        - \frac{1}{2}
+        \boldsymbol{\beta}^\top
+        \mathbf{K}(\boldsymbol{\tau}^2)
+        \boldsymbol{\beta}
+        \right),
+
+    with the precision matrix constructed from marginal penalties
+    :math:`\tilde{\mathbf{K}}_1, \dots, \tilde{\mathbf{K}}_M`
+    and variance parameters :math:`\tau^2_1,\dots, \tau^2_M` as
+
+    .. math::
+
+        \mathbf{K}(\boldsymbol{\tau}^2)
+        = \frac{\mathbf{K}_1}{\tau^2_1}
+        +
+        \cdots
+        +
+        \frac{\mathbf{K}_M}{\tau^2_M},
+
+    where
+
+    .. math::
+
+        \mathbf{K}_m = \mathbf{I}_{J_1}
+        \otimes \cdots \otimes
+        \mathbf{I}_{J_{m-1}}
+        \otimes
+          \tilde{\mathbf{K}}_m
+        \otimes
+        \mathbf{I}_{J_{m+1}}
+        \otimes
+        \cdots
+        \mathbf{I}_{J_{M}},
+
+    and :math:`\mathbf{I}_{J_m}` denotes the identity matrix of dimension
+    :math:`J_m \times J_m`.
+
+    Since :math:`\mathbf{K}(\boldsymbol{\tau}^2)` may be rank-deficient,
+    :math:`\operatorname{Det}(\mathbf{K}(\boldsymbol{\tau}^2))` is the
+    pseudo-determinant, or generalized determinant.
+
+    This term exploits the clearly defined structure of the precision matrix
+    to obtain a computationally and memory-efficient evaluation of the prior,
+    implemented in the :class:`.MultivariateNormalStructured` distribution class.
+    We also implement the results obtained by Bach & Klein (2025) for efficiently
+    computing the pseudo-determinant; a key prerequisite for making higher-dimensional
+    tensor products feasible.
+
+
+    References
+    ----------
+    - Kneib, T., Klein, N., Lang, S., & Umlauf, N. (2019). Modular regression—A Lego
+      system for building structured additive distributional regression models with
+      tensor product interactions. TEST, 28(1), 1–39.
+      https://doi.org/10.1007/s11749-019-00631-z
+    - Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
+      Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
+      https://doi.org/10.1007/s11222-025-10569-y
+    """
+
+    def __init__(
+        self,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
+        order: Sequence[int] | None = None,
+        inference: InferenceTypes = None,
+        names_prefix: str = "",
+        tx_name: str = "tx",
+        tf_name: str = "tf",
+        coef_name: str = r"\beta",
+        basis_name: str = "B",
+        group_terms_by_order: bool = False,
+        _update_on_init: bool = True,
+    ):
+        for term__ in marginals:
+            if term__.scale is None:
+                raise ValueError(
+                    f"Scale of {term__} is None, which is not allowed "
+                    f"in {type(self).__name__}."
+                )
+        nmargins = len(marginals)
+        terms_combinations = []
+        for i in range(2, (nmargins + 1)):
+            terms_combinations += list(combinations(marginals, i))
+
+        self.order = order if order is not None else tuple(range(1, len(marginals) + 1))
+
+        self.terms_by_order: dict[int, list[StrctTerm | StrctInteractionTerm]] = {}
+
+        if 1 in self.order:
+            self.terms_by_order[1] = list(marginals)
+
+        scale_ = _init_scale_ig(common_scale) if common_scale is not None else None
+
+        interactions = []
+        for term_marginals in terms_combinations:
+            order_term = len(term_marginals)
+            if order_term not in self.order:
+                continue
+
+            term = StrctInteractionTerm(
+                *term_marginals,
+                common_scale=scale_,
+                inference=inference,
+                _update_on_init=_update_on_init,
+                include_main_effects=False,
+            )
+
+            term.name = names_prefix + f"{tx_name}({term.xnames})"
+            term.coef.name = names_prefix + "$" + coef_name + r"_{" + term.name + r"}$"
+            term.basis.name = names_prefix + basis_name + "(" + term.xnames + ")"
+
+            interactions.append(term)
+
+            if not self.terms_by_order.get(order_term, None):
+                self.terms_by_order[order_term] = [term]
+            else:
+                self.terms_by_order[order_term].append(term)
+
+        for o in self.order:
+            if o not in self.terms_by_order:
+                raise ValueError(
+                    f"Order {order} was supplied, but no interactions "
+                    f"of order {o} found."
+                )
+
+        if common_scale is not None:
+            assert scale_ is not None
+            for term_ in marginals:
+                term_.replace_scale(scale_)
+
+        self.marginals = marginals
+        self._terms_list = list(marginals) + interactions
+        self.bases = StrctInteractionTerm._get_bases(marginals)
+        self.penalties = StrctInteractionTerm._get_penalties(self.bases)
+
+        self.xnames = ",".join(list(self.input_obs))
+
+        if group_terms_by_order:
+            self.term_groups = {}
+            for o, o_terms in self.terms_by_order.items():
+                self.term_groups[o] = lsl.Var.new_calc(
+                    lambda *args: sum(args),
+                    *o_terms,
+                    _update_on_init=_update_on_init,
+                    name=names_prefix + f"${tf_name}^{{({o})}}({self.xnames})$",
+                )
+
+            calc = lsl.Calc(
+                lambda *args: sum(args),
+                *list(self.term_groups.values()),
+                _update_on_init=_update_on_init,
+            )
+        else:
+            calc = lsl.Calc(
+                lambda *args: sum(args),
+                *self._terms_list,
+                _update_on_init=_update_on_init,
+            )
+
+        super().__init__(calc, name=names_prefix + f"{tf_name}({self.xnames})")
+
+    @property
+    def terms(
+        self,
+    ) -> dict[str, StrctTerm | StrctInteractionTerm | IndexingTerm | RITerm | MRFTerm]:
+        """Dictionary of terms in this tensor product."""
+        return {term.name: term for term in self._terms_list}
+
+    @property
+    def scales(self) -> list[lsl.Var | lsl.Node]:
+        scales = []
+        for i in self.order:
+            if i == 1:
+                for term in self.terms_by_order[i]:
+                    if term.scale not in scales and term.scale is not None:
+                        scales.append(term.scale)
+            else:
+                for term in self.terms_by_order[i]:
+                    assert hasattr(term, "scales")
+                    for scale in term.scales:
+                        if scale not in scales:
+                            scales.append(scale)
+        return scales
+
+    @property
+    def input_obs(self) -> dict[str, lsl.Var]:
+        """
+        A dictionary of strong input variables.
+        """
+        return StrctInteractionTerm._input_obs(self.bases)
