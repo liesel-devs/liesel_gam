@@ -394,14 +394,14 @@ class TestTermWithCustomPenalty:
         term.diagonalize_penalty()
 
 
-class TestTPTerm:
+class TestInteractionTerm:
     def test_init(self, columb):
         tb = gam.TermBuilder.from_df(columb)
 
         s1 = tb.ps("x", k=10)
         s2 = tb.ps("y", k=10)
 
-        ta = gam.StrctTensorProdTerm.f(s1, s2)
+        ta = gam.StrctInteractionTerm.f(s1, s2)
 
         assert ta.coef.value.shape == (9 * 9,)
         assert "x" in ta.input_obs
@@ -413,7 +413,7 @@ class TestTPTerm:
         s1 = tb.tp("x", "area", k=10)
         s2 = tb.ps("y", k=10)
 
-        ta = gam.StrctTensorProdTerm.f(s1, s2)
+        ta = gam.StrctInteractionTerm.f(s1, s2)
 
         assert ta.coef.value.shape == (9 * 9,)
         assert "x" in ta.input_obs
@@ -431,7 +431,7 @@ class TestTPTerm:
         t1 = gam.StrctTerm.f(Bx, scale=1.0)
         t2 = gam.StrctTerm.f(By, scale=1.0)
 
-        ta = gam.StrctTensorProdTerm(t1, t2)
+        ta = gam.StrctInteractionTerm(t1, t2)
         assert "x" in ta.input_obs
         assert "y" in ta.input_obs
 
@@ -447,7 +447,7 @@ class TestTPTerm:
         t2 = gam.StrctTerm.f(By)
 
         with pytest.raises(ValueError):
-            gam.StrctTensorProdTerm(t1, t2)
+            gam.StrctInteractionTerm(t1, t2)
 
     def test_non_penalty(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -458,7 +458,7 @@ class TestTPTerm:
         px.basis._penalty = None
 
         with pytest.raises(TypeError):
-            gam.StrctTensorProdTerm(px, py)
+            gam.StrctInteractionTerm(px, py)
 
     def test_include_main_effects(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -466,13 +466,13 @@ class TestTPTerm:
         px = tb.ps("x", k=20)
         py = tb.ps("y", k=20)
 
-        tp = gam.StrctTensorProdTerm(px, py, include_main_effects=True)
+        tp = gam.StrctInteractionTerm(px, py, include_main_effects=True)
         assert tp.value_node[0] is px
         assert tp.value_node[1] is py
         assert isinstance(tp.value_node["basis"], lsl.Var)
         assert isinstance(tp.value_node["coef"], lsl.Var)
 
-        tp = gam.StrctTensorProdTerm(px, py)
+        tp = gam.StrctInteractionTerm(px, py)
         with pytest.raises(IndexError):
             tp.value_node[0]
         assert isinstance(tp.value_node["basis"], lsl.Var)
@@ -487,7 +487,7 @@ class TestTPTerm:
         assert px.basis.x.strong
         assert py.basis.x.strong
 
-        tp = gam.StrctTensorProdTerm(px, py)
+        tp = gam.StrctInteractionTerm(px, py)
         assert tp.input_obs["x"] is px.basis.x
         assert jnp.allclose(tp.input_obs["x"].value, columb["x"].to_numpy())
         assert tp.input_obs["y"] is py.basis.x
@@ -516,7 +516,7 @@ class TestTPTerm:
         assert isinstance(px.basis.x, lsl.TransientCalc)
         assert py.basis.x.strong
 
-        tp = gam.StrctTensorProdTerm(px, py)
+        tp = gam.StrctInteractionTerm(px, py)
         assert jnp.allclose(tp.input_obs["x"].value, columb["x"].to_numpy())
         assert jnp.allclose(tp.input_obs["area"].value, columb["area"].to_numpy())
         assert tp.input_obs["y"] is py.basis.x
@@ -525,6 +525,268 @@ class TestTPTerm:
         tp.input_obs["x"].name = ""
         with pytest.raises(ValueError):
             tp.input_obs
+
+
+class TestTensorProdTerm:
+    def test_init_2d(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2)
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+
+        assert 1 in ta.terms_by_order
+        assert 2 in ta.terms_by_order
+        assert len(ta.terms_by_order[1]) == 2
+        assert len(ta.terms_by_order[2]) == 1
+
+        ti = ta.terms_by_order[2][0]
+
+        assert ti.coef.value.shape == (9 * 9,)
+        assert "x" in ti.input_obs
+        assert "y" in ti.input_obs
+
+    def test_init_3d(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3)
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+        assert 1 in ta.terms_by_order
+        assert 2 in ta.terms_by_order
+        assert 3 in ta.terms_by_order
+        assert len(ta.terms_by_order[1]) == 3
+        assert len(ta.terms_by_order[2]) == 3
+        assert len(ta.terms_by_order[3]) == 1
+
+        ti = ta.terms_by_order[2][0]
+
+        assert ti.coef.value.shape == (9 * 9,)
+        assert "x" in ti.input_obs
+        assert "y" in ti.input_obs
+
+        ti3 = ta.terms_by_order[3][0]
+        assert ti3.coef.value.shape == (9 * 9 * 9,)
+        assert "x" in ti3.input_obs
+        assert "y" in ti3.input_obs
+        assert "area" in ti3.input_obs
+
+    def test_order(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, order=(1,))
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+        assert 1 in ta.terms_by_order
+        assert 2 not in ta.terms_by_order
+        assert 3 not in ta.terms_by_order
+        assert len(ta.terms_by_order[1]) == 3
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, order=(2,))
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+        assert 1 not in ta.terms_by_order
+        assert 2 in ta.terms_by_order
+        assert 3 not in ta.terms_by_order
+        assert len(ta.terms_by_order[2]) == 3
+
+        ti = ta.terms_by_order[2][0]
+
+        assert ti.coef.value.shape == (9 * 9,)
+        assert "x" in ti.input_obs
+        assert "y" in ti.input_obs
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, order=(3,))
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+        assert 1 not in ta.terms_by_order
+        assert 2 not in ta.terms_by_order
+        assert 3 in ta.terms_by_order
+        assert len(ta.terms_by_order[3]) == 1
+
+        ti3 = ta.terms_by_order[3][0]
+        assert ti3.coef.value.shape == (9 * 9 * 9,)
+        assert "x" in ti3.input_obs
+        assert "y" in ti3.input_obs
+        assert "area" in ti3.input_obs
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, order=(2, 3))
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+        assert 1 not in ta.terms_by_order
+        assert 2 in ta.terms_by_order
+        assert 3 in ta.terms_by_order
+        assert len(ta.terms_by_order[2]) == 3
+        assert len(ta.terms_by_order[3]) == 1
+
+        ti = ta.terms_by_order[2][0]
+
+        assert ti.coef.value.shape == (9 * 9,)
+        assert "x" in ti.input_obs
+        assert "y" in ti.input_obs
+
+        ti3 = ta.terms_by_order[3][0]
+        assert ti3.coef.value.shape == (9 * 9 * 9,)
+        assert "x" in ti3.input_obs
+        assert "y" in ti3.input_obs
+        assert "area" in ti3.input_obs
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, order=(1, 3))
+        assert "x" in ta.input_obs
+        assert "y" in ta.input_obs
+        assert "area" in ta.input_obs
+
+        assert 1 in ta.terms_by_order
+        assert 2 not in ta.terms_by_order
+        assert 3 in ta.terms_by_order
+        assert len(ta.terms_by_order[1]) == 3
+        assert len(ta.terms_by_order[3]) == 1
+
+        ti3 = ta.terms_by_order[3][0]
+        assert ti3.coef.value.shape == (9 * 9 * 9,)
+        assert "x" in ti3.input_obs
+        assert "y" in ti3.input_obs
+        assert "area" in ti3.input_obs
+
+    def test_names_prefix(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, names_prefix="m.")
+        assert ta.name.startswith("m.")
+
+        for term in ta.terms_by_order[2]:
+            assert term.name.startswith("m.")
+            assert term.coef.name.startswith("m.")
+
+        for term in ta.terms_by_order[3]:
+            assert term.name.startswith("m.")
+            assert term.coef.name.startswith("m.")
+
+        for term in ta.terms_by_order[1]:
+            assert not term.name.startswith("m.")
+            assert not term.coef.name.startswith("m.")
+
+    def test_common_scale(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        scale = lsl.Var.new_param(1.0)
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, common_scale=scale)
+
+        for term in ta.terms_by_order[1]:
+            assert term.scale is scale
+            assert term.coef.dist_node["scale"] is scale
+
+        for i in [2, 3]:
+            for term in ta.terms_by_order[i]:
+                for term_scale in term.scales:
+                    assert term_scale is scale
+
+        assert s1.scale is scale
+        assert s2.scale is scale
+        assert s3.scale is scale
+
+        assert s1.coef.dist_node["scale"] is scale
+        assert s2.coef.dist_node["scale"] is scale
+        assert s3.coef.dist_node["scale"] is scale
+
+    def test_tx_name(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, tx_name="ti")
+
+        for i in [2, 3]:
+            for term in ta.terms_by_order[i]:
+                assert term.name.startswith("ti(")
+
+    def test_tf_name(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, tf_name="ti")
+        assert ta.name.startswith("ti(")
+
+    def test_coef_name(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, coef_name=r"\gamma")
+
+        for term in ta.terms_by_order[1]:
+            assert "beta" in term.coef.name
+
+        for i in [2, 3]:
+            for term in ta.terms_by_order[i]:
+                assert "gamma" in term.coef.name
+
+    def test_basis_name(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, basis_name="C")
+
+        for term in ta.terms_by_order[1]:
+            assert term.basis.name == f"B({term.basis.x.name})"
+
+        for i in [2, 3]:
+            for term in ta.terms_by_order[i]:
+                assert term.basis.name == f"C({term.xnames})"
+
+    def test_group_terms_by_order(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s1 = tb.ps("x", k=10)
+        s2 = tb.ps("y", k=10)
+        s3 = tb.ps("area", k=10)
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, group_terms_by_order=True)
+
+        assert len(ta.all_input_vars()) == 3
+
+        ta = gam.StrctTensorProdTerm(s1, s2, s3, group_terms_by_order=False)
+
+        assert len(ta.all_input_vars()) == 7
 
 
 class TestIndexingTerm:

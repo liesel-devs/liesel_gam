@@ -43,6 +43,7 @@ from .term import MRFTerm as MRFTerm
 from .term import MultivariateStrctTerm as MultivariateStrctTerm
 from .term import RITerm as RITerm
 from .term import SmoothTerm as SmoothTerm
+from .term import StrctInteractionTerm as StrctInteractionTerm
 from .term import StrctLinTerm as StrctLinTerm
 from .term import StrctTensorProdTerm as StrctTensorProdTerm
 from .term import StrctTerm as StrctTerm

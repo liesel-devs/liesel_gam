@@ -21,7 +21,15 @@ from .summary import (
     summarise_nd_smooth,
     summarise_regions,
 )
-from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
+from .term import (
+    LinTerm,
+    MRFTerm,
+    RITerm,
+    StrctInteractionTerm,
+    StrctLinTerm,
+    StrctTensorProdTerm,
+    StrctTerm,
+)
 
 KeyArray = Any
 
@@ -151,7 +159,7 @@ PlotVars = Literal[
 
 
 def plot_2d_smooth(
-    term: StrctTensorProdTerm | StrctTerm,
+    term: StrctInteractionTerm | StrctTensorProdTerm | StrctTerm,
     samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
@@ -189,7 +197,7 @@ def plot_2d_smooth(
         If *True*, then the function will create a large grid of all combinations of
         covariate values in ``newdata`` that correspond to this term.
     """
-    if isinstance(term, StrctTensorProdTerm):
+    if isinstance(term, StrctInteractionTerm | StrctTensorProdTerm):
         names = list(term.input_obs)
         if len(names) != 2:
             raise ValueError(

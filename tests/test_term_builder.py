@@ -698,14 +698,14 @@ class TestTPTerm:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         ta = tb.tf(psy, psx, common_scale=gam.VarIGPrior(1.0, 0.005))
-        assert ta.basis.value.shape == (49, 9 * 9)
+        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
         for i in range(len(ta.scales)):
             assert ta.scales[i].value_node[0].value_node[0].inference is not None
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         ta = tb.tf(psy, psx, common_scale=1.0)
-        assert ta.basis.value.shape == (49, 9 * 9)
+        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
         for i in range(len(ta.scales)):
             assert ta.scales[i].strong
             assert ta.scales[i].inference is None
