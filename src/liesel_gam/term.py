@@ -1834,7 +1834,7 @@ class MultivariateTPTerm(UserVar):
                 term_.replace_scale(scale_)
 
         self.marginals = marginals
-        self._terms_list = list(marginals) + interactions
+        self._terms_list = interactions
         self.marginal_terms = marginals
         self.marginal_bases = StrctInteractionTerm._get_bases(marginals)
 
