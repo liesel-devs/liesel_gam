@@ -16,6 +16,8 @@ can be safely and efficiently used in batched operations:
   bases in the provided model, and returns a position of the evaluated bases.
 """
 
+from collections.abc import Sequence
+
 import liesel.model as lsl
 from liesel.goose.types import Position
 
@@ -52,7 +54,7 @@ def _remove_singleton_vars(gb: lsl.GraphBuilder) -> lsl.GraphBuilder:
 
 
 def consolidate_bases(
-    model: lsl.Model, copy: bool = True
+    model: lsl.Model, copy: bool = True, exclude: Sequence[str] | None = None
 ) -> tuple[lsl.Model, lsl.Model]:
     """
     Turns all :class:`.Basis` variables in the provided model into strong,
@@ -64,6 +66,7 @@ def consolidate_bases(
     If ``copy=False``, all data will be extracted from the original model, instead
     of creating copies. This saves memory, but renders the original model empty.
     """
+    exclude = [] if exclude is None else exclude
     if copy:
         nodes, vars_ = model.copy_nodes_and_vars()
     else:
@@ -76,6 +79,8 @@ def consolidate_bases(
 
     for var in gb.vars:
         if not isinstance(var, Basis):
+            continue
+        if var.name in exclude:
             continue
         weak_basis = var
         strong_basis = lsl.Var.new_obs(weak_basis.update().value, name=weak_basis.name)
