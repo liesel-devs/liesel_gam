@@ -12,7 +12,15 @@ from jax.typing import ArrayLike
 from liesel.goose.summary_m import SummaryQuantities
 
 from .registry import CategoryMapping
-from .term import LinTerm, MRFTerm, RITerm, StrctLinTerm, StrctTensorProdTerm, StrctTerm
+from .term import (
+    LinTerm,
+    MRFTerm,
+    RITerm,
+    StrctInteractionTerm,
+    StrctLinTerm,
+    StrctTensorProdTerm,
+    StrctTerm,
+)
 
 KeyArray = Any
 
@@ -152,13 +160,13 @@ def grid_nd(inputs: dict[str, jax.typing.ArrayLike], ngrid: int) -> dict[str, An
 
 
 def input_grid_nd_smooth(
-    term: StrctTensorProdTerm | StrctTerm | LinTerm, ngrid: int
+    term: StrctTensorProdTerm | StrctInteractionTerm | StrctTerm | LinTerm, ngrid: int
 ) -> dict[str, jax.typing.ArrayLike]:
     """
     Creates a dictionary of meshgrids of the covariate input variables to the ``term``
     argument.
     """
-    if isinstance(term, StrctTensorProdTerm):
+    if isinstance(term, StrctInteractionTerm | StrctTensorProdTerm):
         inputs = {k: v.value for k, v in term.input_obs.items()}
         return grid_nd(inputs, ngrid)
 
@@ -208,7 +216,7 @@ PlotVars = Literal[
 
 
 def summarise_nd_smooth(
-    term: StrctTerm | StrctTensorProdTerm,
+    term: StrctTerm | StrctInteractionTerm | StrctTensorProdTerm,
     samples: Mapping[str, ArrayLike],
     newdata: None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,

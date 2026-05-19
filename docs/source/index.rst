@@ -149,6 +149,7 @@ Terms and Variables
     :nosignatures:
 
     ~liesel_gam.StrctTerm
+    ~liesel_gam.StrctInteractionTerm
     ~liesel_gam.StrctTensorProdTerm
     ~liesel_gam.LinTerm
     ~liesel_gam.StrctLinTerm
