@@ -756,6 +756,7 @@ class StrctTerm(UserVar):
         self.coef.value = jnp.zeros(self.nbases)
         return self
 
+
 SmoothTerm = StrctTerm
 
 
