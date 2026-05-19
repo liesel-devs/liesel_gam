@@ -23,10 +23,38 @@ ArrayLike = jax.typing.ArrayLike
 
 
 def mvn_diag_prior(scale: lsl.Var) -> lsl.Dist:
+    """
+    Create an independent normal prior for coefficient vectors.
+
+    Parameters
+    ----------
+    scale
+        Scale variable passed to :class:`tensorflow_probability`'s normal
+        distribution.
+
+    Examples
+    --------
+    >>> scale = lsl.Var.new_value(1.0)
+    >>> mvn_diag_prior(scale).distribution
+    <class 'tensorflow_probability.substrates.jax.distributions.normal.Normal'>
+    """
     return lsl.Dist(tfd.Normal, loc=0.0, scale=scale)
 
 
 def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Dist:
+    """
+    Create a structured Gaussian prior from a fixed penalty matrix.
+
+    The penalty must be strong/fixed; varying penalties are not supported here.
+
+    Examples
+    --------
+    >>> scale = lsl.Var.new_value(1.0)
+    >>> penalty = lsl.Value(jnp.eye(2))
+    >>> prior = mvn_structured_prior(scale, penalty)
+    >>> prior.distribution is MultivariateNormalSingular
+    True
+    """
     if isinstance(penalty, lsl.Var) and not penalty.strong:
         raise NotImplementedError(
             "Varying penalties are currently not supported by this function."
@@ -46,10 +74,17 @@ def term_prior(
     penalty: lsl.Var | lsl.Value | None,
 ) -> lsl.Dist | None:
     """
-    Returns
-    - None if scale=None
-    - A simple Normal prior with loc=0.0 and scale=scale if penalty=None
-    - A potentially rank-deficient structured multivariate normal prior otherwise
+    Select the coefficient prior for a term.
+
+    Returns ``None`` when ``scale`` is ``None``, an independent normal prior when no
+    penalty is supplied, and a structured multivariate normal prior otherwise.
+
+    Examples
+    --------
+    >>> term_prior(None, None) is None
+    True
+    >>> term_prior(lsl.Var.new_value(1.0), None).distribution
+    <class 'tensorflow_probability.substrates.jax.distributions.normal.Normal'>
     """
     if scale is None:
         if penalty is not None:
@@ -164,7 +199,7 @@ class StrctTerm(UserVar):
         If ``True`` (default) the internal calculation/graph nodes are evaluated during
         initialization. Set to ``False`` to delay initial evaluation.
     validate_scalar_scale
-        If ``True`` (default), the term will error if the  ``scale`` variable does not
+        If ``True`` (default), the term will error if the ``scale`` variable does not
         hold a scalar scale. This is appropriate for most cases. If ``False``, the term
         will also allow an array-valued ``scale`` variable of shape ``(nbases,)``. This
         only really makes sense when also reparameterizing the term using
@@ -230,6 +265,17 @@ class StrctTerm(UserVar):
     The choice of basis functions :math:`B_j` and penalty matrix :math:`\mathbf{K}`
     determines the nature of the term.
 
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> basis = Basis(
+    ...     jnp.column_stack([jnp.ones_like(x), x]),
+    ...     xname="x",
+    ...     penalty=jnp.eye(2),
+    ... )
+    >>> term = StrctTerm.f(basis, scale=1.0)
+    >>> term.name, term.nbases, term.value.shape
+    ('f(x)', 2, (4,))
     """
 
     def __init__(
@@ -290,6 +336,14 @@ class StrctTerm(UserVar):
     def scale_is_factored(self) -> bool:
         """
         Whether the term has been reparameterized using :meth:`.factor_scale`.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> term = StrctTerm(basis, penalty=None, scale=1.0)
+        >>> term.scale_is_factored
+        False
         """
         return self._scale_is_factored
 
@@ -297,25 +351,81 @@ class StrctTerm(UserVar):
     def coef(self) -> lsl.Var:
         """
         The coefficient variable of this term.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> term = StrctTerm(basis, penalty=None, scale=1.0)
+        >>> term.coef.value.shape
+        (2,)
         """
         return self._coef
 
     @property
     def basis(self) -> Basis:
-        """The basis matrix object of this term."""
+        """
+        The basis matrix object of this term.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> term = StrctTerm(basis, penalty=None, scale=1.0)
+        >>> term.basis.name
+        'B(x)'
+        """
         return self._basis
 
     @property
     def nbases(self) -> int:
-        """Number of basis functions (number of columns in the basis matrix)."""
+        """
+        Number of basis functions, equal to the number of basis-matrix columns.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> StrctTerm(basis, penalty=None, scale=1.0).nbases
+        2
+        """
         return jnp.shape(self.basis.value)[-1]
 
     @property
     def scale(self) -> lsl.Var | lsl.Node | None:
-        """The scale variable used by the prior on the coefficients."""
+        """
+        The scale variable used by the coefficient prior.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> term = StrctTerm(basis, penalty=None, scale=1.0)
+        >>> float(term.scale.value)
+        1.0
+        """
         return self._scale
 
     def replace_scale(self, new: lsl.Var, disallow_factorization: bool = True) -> None:
+        """
+        Replace the scale variable and update the coefficient prior.
+
+        Parameters
+        ----------
+        new
+            Replacement scale variable.
+        disallow_factorization
+            Whether subsequent scale factorization should be disabled.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> term = StrctTerm(basis, penalty=None, scale=1.0)
+        >>> term.replace_scale(lsl.Var.new_value(2.0))
+        >>> float(term.scale.value)
+        2.0
+        """
         if self.scale_is_factored:
             raise ValueError(
                 f"Scale of {self} cannot be replace, because it has been factored "
@@ -382,11 +492,23 @@ class StrctTerm(UserVar):
 
     def factor_scale(self, atol: float = 1e-5) -> Self:
         """
-        Turns this term into a partially standardized form.
+        Turn this term into a partially standardized form.
 
         This means the prior for the coefficient will be turned from ``coef ~ N(0,
         scale^2 * inv(penalty))`` into ``latent_coef ~ N(0, inv(penalty)); coef = scale
         * latent_coef``.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ... )
+        >>> term = StrctTerm.f(basis, scale=1.0)
+        >>> term.factor_scale().scale_is_factored
+        True
         """
 
         self._validate_scale_for_factoring()
@@ -476,6 +598,14 @@ class StrctTerm(UserVar):
         Returns
         -------
         A term instance configured with the given basis and prior settings.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+        >>> term = StrctTerm.f(basis, scale=1.0)
+        >>> term.name, term.coef.value.shape
+        ('f(x)', (2,))
         """
         if not basis.x.name:
             raise ValueError("basis.x must be named.")
@@ -535,6 +665,18 @@ class StrctTerm(UserVar):
         --------
         .Basis.diagonalize_penalty : The term calls this method internally. More details
             are documented there.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ... )
+        >>> term = StrctTerm.f(basis, scale=1.0).diagonalize_penalty()
+        >>> bool(is_diagonal(term.basis.penalty.value))
+        True
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.diagonalize_penalty(atol)
@@ -542,7 +684,7 @@ class StrctTerm(UserVar):
 
     def scale_penalty(self) -> Self:
         """
-        Scale the penalty matrix by its infinite norm.
+        Scale the penalty matrix by its infinity norm.
 
         The penalty matrix is divided by its infinity norm (max absolute row sum) so
         that its values are numerically well-conditioned for downstream use. The updated
@@ -556,6 +698,18 @@ class StrctTerm(UserVar):
         --------
         .Basis.scale_penalty : The term calls this method internally. More details
             are documented there.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=2.0 * jnp.eye(2),
+        ... )
+        >>> term = StrctTerm.f(basis, scale=1.0).scale_penalty()
+        >>> float(jnp.max(term.basis.penalty.value))
+        1.0
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.scale_penalty()
@@ -584,12 +738,23 @@ class StrctTerm(UserVar):
         --------
         .Basis.constrain : The term calls this method internally. More details
             are documented there.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ... )
+        >>> term = StrctTerm.f(basis, scale=1.0).constrain(jnp.ones((1, 2)))
+        >>> term.nbases
+        1
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.constrain(constraint)
         self.coef.value = jnp.zeros(self.nbases)
         return self
-
 
 SmoothTerm = StrctTerm
 
@@ -600,6 +765,27 @@ class MRFTerm(StrctTerm):
 
     Derived from :class:`.StrctTerm`, with a few additional attributes that give
     access to information about the Markov random field setup.
+
+    Examples
+    --------
+    ``MRFTerm`` objects are usually created by :class:`.TermBuilder`, which also
+    attaches label and neighborhood metadata.
+
+    >>> import pandas as pd
+    >>> import liesel_gam as gam
+    >>> df = pd.DataFrame({"region": ["a", "b", "a"]})
+    >>> term = gam.TermBuilder.from_df(df).mrf(
+    ...     "region",
+    ...     nb={"a": ["b"], "b": ["a"]},
+    ...     absorb_cons=False,
+    ...     diagonal_penalty=False,
+    ...     scale_penalty=False,
+    ...     scale=1.0,
+    ... )
+    >>> term.neighbors
+    {'a': ['b'], 'b': ['a']}
+    >>> term.labels
+    ['a', 'b']
     """
 
     _neighbors = None
@@ -615,39 +801,125 @@ class MRFTerm(StrctTerm):
 
         The keys are region labels. The values are lists of the labels of neighboring
         regions.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"region": ["a", "b", "a"]})
+        >>> term = gam.TermBuilder.from_df(df).mrf(
+        ...     "region",
+        ...     nb={"a": ["b"], "b": ["a"]},
+        ...     absorb_cons=False,
+        ...     diagonal_penalty=False,
+        ...     scale_penalty=False,
+        ...     scale=1.0,
+        ... )
+        >>> term.neighbors["a"]
+        ['b']
         """
         return self._neighbors
 
     @neighbors.setter
     def neighbors(self, value: dict[str, list[str]] | None) -> None:
+        """
+        Set the neighborhood dictionary for the term.
+
+        This setter is primarily used by :meth:`.TermBuilder.mrf` after constructing
+        the Markov random field basis.
+        """
         self._neighbors = value
 
     @property
     def polygons(self) -> dict[str, ArrayLike] | None:
         """
         Dictionary of arrays. The keys of the dict are the region labels. The
-        corresponding values define each region through a 2d array of polygon
+        corresponding values define each region through a 2-D array of polygon
         information.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"region": ["a", "b", "a"]})
+        >>> polys = {
+        ...     "a": jnp.array([[0.0, 0.0], [1.0, 0.0]]),
+        ...     "b": jnp.array([[1.0, 0.0], [2.0, 0.0]]),
+        ... }
+        >>> term = gam.TermBuilder.from_df(df).mrf(
+        ...     "region",
+        ...     polys=polys,
+        ...     absorb_cons=False,
+        ...     diagonal_penalty=False,
+        ...     scale_penalty=False,
+        ...     scale=1.0,
+        ... )
+        >>> sorted(term.polygons)
+        ['a', 'b']
         """
         return self._polygons
 
     @polygons.setter
     def polygons(self, value: dict[str, ArrayLike] | None) -> None:
+        """
+        Set polygon coordinates keyed by region label.
+
+        This setter is primarily used by :meth:`.TermBuilder.mrf`.
+        """
         self._polygons = value
 
     @property
     def labels(self) -> list[str] | None:
-        """Region labels."""
+        """
+        Region labels.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"region": ["b", "a", "b"]})
+        >>> term = gam.TermBuilder.from_df(df).mrf(
+        ...     "region",
+        ...     nb={"a": ["b"], "b": ["a"]},
+        ...     absorb_cons=False,
+        ...     diagonal_penalty=False,
+        ...     scale_penalty=False,
+        ...     scale=1.0,
+        ... )
+        >>> term.labels
+        ['a', 'b']
+        """
         return self._labels
 
     @labels.setter
     def labels(self, value: list[str]) -> None:
+        """
+        Set the region labels.
+
+        This setter is primarily used by :meth:`.TermBuilder.mrf`.
+        """
         self._labels = value
 
     @property
     def mapping(self) -> CategoryMapping:
         """
         A label-integer mapping for the regions in this term.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"region": ["a", "b", "a"]})
+        >>> term = gam.TermBuilder.from_df(df).mrf(
+        ...     "region",
+        ...     nb={"a": ["b"], "b": ["a"]},
+        ...     absorb_cons=False,
+        ...     diagonal_penalty=False,
+        ...     scale_penalty=False,
+        ...     scale=1.0,
+        ... )
+        >>> term.mapping.labels_to_integers(["b"]).tolist()
+        [1]
         """
         if self._mapping is None:
             raise ValueError("No mapping defined.")
@@ -655,6 +927,11 @@ class MRFTerm(StrctTerm):
 
     @mapping.setter
     def mapping(self, value: CategoryMapping) -> None:
+        """
+        Set the label-integer mapping for the regions.
+
+        This setter is primarily used by :meth:`.TermBuilder.mrf`.
+        """
         self._mapping = value
 
     @property
@@ -664,11 +941,33 @@ class MRFTerm(StrctTerm):
 
         Ordering is such that the order corresponds to the columns of the basis
         and penalty matrices. Only available for unconstrained MRF.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"region": ["b", "a", "b"]})
+        >>> term = gam.TermBuilder.from_df(df).mrf(
+        ...     "region",
+        ...     nb={"a": ["b"], "b": ["a"]},
+        ...     absorb_cons=False,
+        ...     diagonal_penalty=False,
+        ...     scale_penalty=False,
+        ...     scale=1.0,
+        ... )
+        >>> term.ordered_labels
+        ['a', 'b']
         """
         return self._ordered_labels
 
     @ordered_labels.setter
     def ordered_labels(self, value: list[str]) -> None:
+        """
+        Set labels ordered like the basis and penalty columns.
+
+        This setter is primarily used by :meth:`.TermBuilder.mrf` when the basis
+        still has a clear parameter-to-label correspondence.
+        """
         self._ordered_labels = value
 
 
@@ -682,7 +981,7 @@ class IndexingTerm(StrctTerm):
     necessary to store the full matrix in memory and evaluate the term as a dot product
     ``basis @ coef``.
 
-    Instead, we can simply store a 1d array of indices, identifying the nonzero column
+    Instead, we can simply store a 1-D array of indices, identifying the nonzero column
     for each row of the basis matrix, and use this index to access the corresponding
     coefficient. This scenario is common for independent random intercepts.
 
@@ -690,6 +989,13 @@ class IndexingTerm(StrctTerm):
 
     In case you do need to materialize the full, sparse basis of such a term, you can
     use :meth:`.IndexingTerm.init_full_basis`.
+
+    Examples
+    --------
+    >>> basis = Basis(jnp.array([0, 1, 0, 1]), xname="group", penalty=None)
+    >>> term = IndexingTerm(basis, penalty=jnp.eye(2), scale=1.0)
+    >>> term.value.shape, term.nclusters
+    ((4,), 2)
     """
 
     def __init__(
@@ -735,12 +1041,27 @@ class IndexingTerm(StrctTerm):
 
     @property
     def nbases(self) -> int:
+        """
+        Number of coefficients represented by the indexed basis.
+
+        Examples
+        --------
+        >>> basis = Basis(jnp.array([0, 1, 0, 1]), xname="group", penalty=None)
+        >>> IndexingTerm(basis, penalty=jnp.eye(2), scale=1.0).nbases
+        2
+        """
         return self.nclusters
 
     @property
     def nclusters(self) -> int:
         """
         Number of unique clusters in this term (equals the number of coefficients).
+
+        Examples
+        --------
+        >>> basis = Basis(jnp.array([0, 1, 0, 1]), xname="group", penalty=None)
+        >>> IndexingTerm(basis, penalty=jnp.eye(2), scale=1.0).nclusters
+        2
         """
         nclusters = jnp.unique(self.basis.value).size
         return int(nclusters)
@@ -749,6 +1070,13 @@ class IndexingTerm(StrctTerm):
         """
         Materializes a :class:`.Basis` object that holds the full basis matrix
         corresponding to this term.
+
+        Examples
+        --------
+        >>> basis = Basis(jnp.array([0, 1, 0, 1]), xname="group", penalty=None)
+        >>> term = IndexingTerm(basis, penalty=jnp.eye(2), scale=1.0)
+        >>> term.init_full_basis().value.shape
+        (4, 2)
         """
         full_basis = Basis(
             self.basis.x, basis_fn=jax.nn.one_hot, num_classes=self.nclusters, name=""
@@ -762,6 +1090,17 @@ class RITerm(IndexingTerm):
 
     Specialized subclass of :class:`.IndexingTerm`, which itself is derived from
     :class:`.StrctTerm`.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import liesel_gam as gam
+    >>> df = pd.DataFrame({"group": ["a", "b", "a"]})
+    >>> term = gam.TermBuilder.from_df(df).ri("group", scale=1.0)
+    >>> term.nclusters
+    2
+    >>> term.labels
+    ['a', 'b']
     """
 
     _labels = None
@@ -769,6 +1108,18 @@ class RITerm(IndexingTerm):
 
     @property
     def nclusters(self) -> int:
+        """
+        Number of clusters represented by this random-intercept term.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"group": ["a", "b", "a"]})
+        >>> term = gam.TermBuilder.from_df(df).ri("group", scale=1.0)
+        >>> term.nclusters
+        2
+        """
         try:
             nclusters = len(self.mapping.labels_to_integers_map)
         except ValueError:
@@ -780,6 +1131,15 @@ class RITerm(IndexingTerm):
     def labels(self) -> list[str]:
         """
         List of labels for all clusters represented by this term.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"group": ["b", "a", "b"]})
+        >>> term = gam.TermBuilder.from_df(df).ri("group", scale=1.0)
+        >>> term.labels
+        ['a', 'b']
         """
         if self._labels is None:
             raise ValueError("No labels defined.")
@@ -787,6 +1147,11 @@ class RITerm(IndexingTerm):
 
     @labels.setter
     def labels(self, value: list[str]) -> None:
+        """
+        Set the labels for all clusters.
+
+        This setter is primarily used by :meth:`.TermBuilder.ri`.
+        """
         if not len(value) == self.nclusters:
             raise ValueError(f"Expected {self.nclusters} labels, got {len(value)}.")
         self._labels = value
@@ -795,6 +1160,15 @@ class RITerm(IndexingTerm):
     def mapping(self) -> CategoryMapping:
         """
         A label-integer mapping for the clusters in this term.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"group": ["a", "b", "a"]})
+        >>> term = gam.TermBuilder.from_df(df).ri("group", scale=1.0)
+        >>> term.mapping.labels_to_integers(["a"]).tolist()
+        [0]
         """
         if self._mapping is None:
             raise ValueError("No mapping defined.")
@@ -802,6 +1176,11 @@ class RITerm(IndexingTerm):
 
     @mapping.setter
     def mapping(self, value: CategoryMapping) -> None:
+        """
+        Set the label-integer mapping for the clusters.
+
+        This setter is primarily used by :meth:`.TermBuilder.ri`.
+        """
         self._mapping = value
 
 
@@ -813,6 +1192,14 @@ class BasisDot(UserVar):
     does not assume any prior distribution, or structure of the prior distribution, for
     the coefficients. Instead, a prior for the coefficients of this term (if desired) is
     defined manually as a :class:`liesel.model.Dist` in the ``prior`` argument.
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+    >>> term = BasisDot(basis)
+    >>> term.coef.value.shape, term.value.shape
+    ((2,), (4,))
     """
 
     def __init__(
@@ -842,7 +1229,18 @@ class BasisDot(UserVar):
 
 
 class LinMixin:
-    """Mixin that adds attributes for linear terms to a class."""
+    """
+    Mixin that adds formula metadata to linear-term classes.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import liesel_gam as gam
+    >>> df = pd.DataFrame({"x": [0.0, 1.0], "z": [1.0, 2.0]})
+    >>> term = gam.TermBuilder.from_df(df).lin("x + z")
+    >>> term.column_names
+    ['x', 'z']
+    """
 
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
@@ -852,6 +1250,15 @@ class LinMixin:
     def model_spec(self) -> ModelSpec:
         """
         The model spec used internally by ``formulaic`` to set up the basis matrix.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"x": [0.0, 1.0], "z": [1.0, 2.0]})
+        >>> term = gam.TermBuilder.from_df(df).lin("x + z")
+        >>> str(term.model_spec.formula)
+        '1 + x + z'
         """
         if self._model_spec is None:
             raise ValueError("No model spec defined.")
@@ -859,6 +1266,12 @@ class LinMixin:
 
     @model_spec.setter
     def model_spec(self, value: ModelSpec):
+        """
+        Set the :class:`formulaic.ModelSpec` used by this linear term.
+
+        This setter is primarily used by :meth:`.TermBuilder.lin` and
+        :meth:`.TermBuilder.slin`.
+        """
         if not isinstance(value, ModelSpec):
             raise TypeError(
                 f"Replacement must be of type {ModelSpec}, got {type(value)}."
@@ -870,6 +1283,15 @@ class LinMixin:
         """
         A dictionary of label-integer mappings for all categorical variables in this
         term.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"cat": ["a", "b", "a"]})
+        >>> term = gam.TermBuilder.from_df(df).lin("cat")
+        >>> term.mappings["cat"].labels_to_integers(["b"]).tolist()
+        [1]
         """
         if self._mappings is None:
             raise ValueError("No mappings defined.")
@@ -877,6 +1299,12 @@ class LinMixin:
 
     @mappings.setter
     def mappings(self, value: dict[str, CategoryMapping]):
+        """
+        Set categorical label mappings for this linear term.
+
+        This setter is primarily used by :meth:`.TermBuilder.lin` and
+        :meth:`.TermBuilder.slin`.
+        """
         if not isinstance(value, dict):
             raise TypeError(f"Replacement must be of type dict, got {type(value)}.")
 
@@ -890,13 +1318,30 @@ class LinMixin:
 
     @property
     def column_names(self) -> list[str]:
-        """List of column names for this term."""
+        """
+        List of column names for this term.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import liesel_gam as gam
+        >>> df = pd.DataFrame({"x": [0.0, 1.0], "cat": ["a", "b"]})
+        >>> term = gam.TermBuilder.from_df(df).lin("x + cat")
+        >>> term.column_names
+        ['x', 'cat[T.b]']
+        """
         if self._column_names is None:
             raise ValueError("No column names defined.")
         return self._column_names
 
     @column_names.setter
     def column_names(self, value: Sequence[str]):
+        """
+        Set column names for this term.
+
+        This setter is primarily used by :meth:`.TermBuilder.lin` and
+        :meth:`.TermBuilder.slin`.
+        """
         if not isinstance(value, Sequence):
             raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
 
@@ -915,6 +1360,14 @@ class LinMixin:
 class LinTerm(BasisDot, LinMixin):
     """
     Specialized :class:`.BasisDot` for general linear effects.
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> basis = Basis(jnp.column_stack([jnp.ones_like(x), x]), xname="x")
+    >>> term = LinTerm(basis)
+    >>> term.value.shape
+    (4,)
     """
 
     pass
@@ -925,6 +1378,18 @@ class StrctLinTerm(StrctTerm, LinMixin):
     Specialized :class:`.StrctTerm` for linear effects.
 
     This term can be used, for example, to set up linear effects with a ridge prior.
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> basis = Basis(
+    ...     jnp.column_stack([jnp.ones_like(x), x]),
+    ...     xname="x",
+    ...     penalty=jnp.eye(2),
+    ... )
+    >>> term = StrctLinTerm(basis, penalty=basis.penalty, scale=1.0)
+    >>> term.coef.value.shape
+    (2,)
     """
 
     pass
@@ -940,7 +1405,7 @@ class StrctInteractionTerm(UserVar):
         Marginal terms.
     common_scale
         A single, common scale to cover all marginal dimensions, resulting in an
-        isotropic tensor product. This mean setting
+        isotropic tensor product. This means setting
         :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
         in the notation used below.
     name
@@ -1009,8 +1474,8 @@ class StrctInteractionTerm(UserVar):
         \otimes \cdots \otimes
         \mathbf{b}_M(x_{i,M})^\top,
 
-    In this notation, we assume that the marginal bases
-    often functions of just one covariate each, which is the common case.
+    In this notation, we assume that the marginal bases are often functions of just
+    one covariate each, which is the common case.
     The individual terms have (potentially different) basis dimensions
     :math:`J_1, \dots, J_M`, such that the tensor product basis dimension is
     :math:`J = \prod_{m=1}^M J_m`.
@@ -1082,6 +1547,22 @@ class StrctInteractionTerm(UserVar):
     - Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
       Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
       https://doi.org/10.1007/s11222-025-10569-y
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> y = jnp.linspace(1.0, 2.0, 4)
+    >>> bx = Basis(
+    ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+    ... )
+    >>> by = Basis(
+    ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+    ... )
+    >>> sx = StrctTerm.f(bx, scale=1.0)
+    >>> sy = StrctTerm.f(by, scale=2.0)
+    >>> term = StrctInteractionTerm(sx, sy)
+    >>> term.basis.value.shape, term.coef.value.shape
+    ((4, 4), (4,))
     """
 
     def __init__(
@@ -1237,6 +1718,23 @@ class StrctInteractionTerm(UserVar):
     def input_obs(self) -> dict[str, lsl.Var]:
         """
         A dictionary of strong input variables.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> y = jnp.linspace(1.0, 2.0, 4)
+        >>> bx = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+        ... )
+        >>> by = Basis(
+        ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+        ... )
+        >>> term = StrctInteractionTerm(
+        ...     StrctTerm.f(bx, scale=1.0),
+        ...     StrctTerm.f(by, scale=2.0),
+        ... )
+        >>> sorted(term.input_obs)
+        ['x', 'y']
         """
         return self._input_obs(self.bases)
 
@@ -1296,12 +1794,29 @@ class StrctInteractionTerm(UserVar):
         common_scale
             A single, common scale to cover both marginal dimensions, resulting in an
             isotropic tensor product.
-        name
-            Name of the term
+        fname
+            Function-name prefix used when constructing the term name.
         include_main_effects
             If ``True``, the marginal terms will be added to this term's value.
         _update_on_init
             Whether to update the term upon initialization.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> y = jnp.linspace(1.0, 2.0, 4)
+        >>> bx = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+        ... )
+        >>> by = Basis(
+        ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+        ... )
+        >>> term = StrctInteractionTerm.f(
+        ...     StrctTerm.f(bx, scale=1.0),
+        ...     StrctTerm.f(by, scale=2.0),
+        ... )
+        >>> term.name, term.coef.value.shape
+        ('ta(x,y)', (4,))
         """
         xnames = list(cls._input_obs(cls._get_bases(marginals)))
         name = fname + "(" + ",".join(xnames) + ")"
@@ -1332,11 +1847,11 @@ class StrctTensorProdTerm(UserVar):
         Marginal terms.
     common_scale
         A single, common scale to cover all marginal dimensions, resulting in an
-        isotropic tensor product. This mean setting
+        isotropic tensor product. This means setting
         :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
         in the notation used below.
     order
-        Sequence of intergers identifying the orders of interactions to be included
+        Sequence of integers identifying the orders of interactions to be included
         in this term. For example, if you want to include only the bi- and
         trivariate interactions when supplying three marginals, pass
         ``order=(2,3)``. The default ``order=None`` means that *all* orders will be
@@ -1417,8 +1932,8 @@ class StrctTensorProdTerm(UserVar):
         \otimes \cdots \otimes
         \mathbf{b}_M(x_{i,M})^\top,
 
-    In this notation, we assume that the marginal bases
-    often functions of just one covariate each, which is the common case.
+    In this notation, we assume that the marginal bases are functions of just
+    one covariate each, which is the common case.
     The individual terms have (potentially different) basis dimensions
     :math:`J_1, \dots, J_M`, such that the tensor product basis dimension is
     :math:`J = \prod_{m=1}^M J_m`.
@@ -1475,7 +1990,7 @@ class StrctTensorProdTerm(UserVar):
 
     This term exploits the clearly defined structure of the precision matrix
     to obtain a computationally and memory-efficient evaluation of the prior,
-    implemented in the :class:`.MultivariateNormalStructured` distribution class.
+    implemented in the :class:`.MultivariateNormalPenaltyOperator` distribution class.
     We also implement the results obtained by Bach & Klein (2025) for efficiently
     computing the pseudo-determinant; a key prerequisite for making higher-dimensional
     tensor products feasible.
@@ -1490,6 +2005,22 @@ class StrctTensorProdTerm(UserVar):
     - Bach, P., & Klein, N. (2025). Anisotropic multidimensional smoothing using
       Bayesian tensor product P-splines. Statistics and Computing, 35(2), 43.
       https://doi.org/10.1007/s11222-025-10569-y
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> y = jnp.linspace(1.0, 2.0, 4)
+    >>> bx = Basis(
+    ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+    ... )
+    >>> by = Basis(
+    ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+    ... )
+    >>> sx = StrctTerm.f(bx, scale=1.0)
+    >>> sy = StrctTerm.f(by, scale=2.0)
+    >>> term = StrctTensorProdTerm(sx, sy)
+    >>> len(term.terms), term.value.shape
+    (3, (4,))
     """
 
     def __init__(
@@ -1598,11 +2129,50 @@ class StrctTensorProdTerm(UserVar):
     def terms(
         self,
     ) -> dict[str, StrctTerm | StrctInteractionTerm | IndexingTerm | RITerm | MRFTerm]:
-        """Dictionary of terms in this tensor product."""
+        """
+        Dictionary of terms contained in this tensor product.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> y = jnp.linspace(1.0, 2.0, 4)
+        >>> bx = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+        ... )
+        >>> by = Basis(
+        ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+        ... )
+        >>> term = StrctTensorProdTerm(
+        ...     StrctTerm.f(bx, scale=1.0),
+        ...     StrctTerm.f(by, scale=2.0),
+        ... )
+        >>> sorted(term.terms)
+        ['f(x)', 'f(y)', 'tx(x,y)']
+        """
         return {term.name: term for term in self._terms_list}
 
     @property
     def scales(self) -> list[lsl.Var | lsl.Node]:
+        """
+        Unique scale variables used by the marginal and interaction terms.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> y = jnp.linspace(1.0, 2.0, 4)
+        >>> bx = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+        ... )
+        >>> by = Basis(
+        ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+        ... )
+        >>> term = StrctTensorProdTerm(
+        ...     StrctTerm.f(bx, scale=1.0),
+        ...     StrctTerm.f(by, scale=2.0),
+        ... )
+        >>> [float(scale.value) for scale in term.scales]
+        [1.0, 2.0]
+        """
         scales = []
         for i in self.order:
             if i == 1:
@@ -1621,5 +2191,22 @@ class StrctTensorProdTerm(UserVar):
     def input_obs(self) -> dict[str, lsl.Var]:
         """
         A dictionary of strong input variables.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> y = jnp.linspace(1.0, 2.0, 4)
+        >>> bx = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]), xname="x", penalty=jnp.eye(2)
+        ... )
+        >>> by = Basis(
+        ...     jnp.column_stack([jnp.ones_like(y), y]), xname="y", penalty=jnp.eye(2)
+        ... )
+        >>> term = StrctTensorProdTerm(
+        ...     StrctTerm.f(bx, scale=1.0),
+        ...     StrctTerm.f(by, scale=2.0),
+        ... )
+        >>> sorted(term.input_obs)
+        ['x', 'y']
         """
         return StrctInteractionTerm._input_obs(self.bases)
