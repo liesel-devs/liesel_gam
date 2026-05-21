@@ -238,7 +238,7 @@ class Basis(UserVar):
     def nbases(self) -> int:
         """Number of basis functions (number of columns in the basis matrix)."""
         basis_shape = jnp.shape(self.value)
-        if len(basis_shape) >= 1:
+        if len(basis_shape) > 1:
             nbases: int = basis_shape[-1]
         else:
             nbases = 1  # scalar case
@@ -300,6 +300,10 @@ class Basis(UserVar):
         else:
             pen_arr = jnp.asarray(pen)
             pen_val = lsl.Value(pen_arr)
+
+        if self.value.ndim < 2:
+            # 1d bases don't necessarily allow shape validation of penalties.
+            return pen_val
 
         if not pen_arr.shape[-1] == self.nbases:
             raise ValueError(
