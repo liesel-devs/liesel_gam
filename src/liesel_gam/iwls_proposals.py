@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 import jax.numpy as jnp
@@ -9,6 +10,8 @@ from liesel.goose.types import ModelInterface, ModelState
 
 from .predictor import AdditivePredictor
 from .term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
+
+logger = logging.getLogger(__name__)
 
 
 def _raise_if_scale_factored(term: StrctTerm) -> None:
@@ -94,24 +97,34 @@ def gaussian_iwls_spec_scale(
 def apply_gaussian_iwls_spec_loc(
     predictor: AdditivePredictor,
     scale_name: str = "scale",
+    verbose: bool = False,
     **kwargs,
 ):
     for term in predictor.terms.values():
         if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+            if verbose:
+                logger.info(f"Skipping '{term.name}', inference left unchanged.")
             continue
         term.coef.inference = gaussian_iwls_spec_loc(
             term=term, scale_name=scale_name, **kwargs
         )
+        if verbose:
+            logger.info(f"Updating inference of '{term.name}' coefficient.")
 
 
 def apply_gaussian_iwls_spec_scale(
     predictor: AdditivePredictor,
+    verbose: bool = False,
     **kwargs,
 ):
     for term in predictor.terms.values():
         if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+            if verbose:
+                logger.info(f"Skipping '{term.name}', inference left unchanged.")
             continue
         term.coef.inference = gaussian_iwls_spec_scale(term=term, **kwargs)
+        if verbose:
+            logger.info(f"Updating inference of '{term.name}' coefficient.")
 
 
 @dataclass
