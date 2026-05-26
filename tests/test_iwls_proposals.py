@@ -8,10 +8,13 @@ from liesel_gam.basis import Basis
 from liesel_gam.iwls_proposals import (
     GaussianLocCholInfo,
     GaussianScaleCholInfo,
+    IWLSCholInfo,
     apply_gaussian_iwls_spec_loc,
     apply_gaussian_iwls_spec_scale,
     gaussian_iwls_spec_loc,
     gaussian_iwls_spec_scale,
+    gaussian_loc_working_weights,
+    gaussian_scale_working_weights,
 )
 from liesel_gam.predictor import AdditivePredictor
 from liesel_gam.term import StrctTerm
@@ -114,6 +117,18 @@ def test_loc_working_weights_clip_observation_scale_at_machine_epsilon():
     assert jnp.allclose(actual, expected)
 
 
+def test_gaussian_loc_working_weights_clip_observation_scale_at_machine_epsilon():
+    state = {"obs_scale": jnp.array([0.0, 2.0], dtype=jnp.float32)}
+
+    eps = jnp.sqrt(jnp.finfo(jnp.float32).eps)
+    expected = 1.0 / jnp.clip(state["obs_scale"], min=eps) ** 2
+
+    actual = gaussian_loc_working_weights(DictModel(), state, scale_name="obs_scale")
+
+    assert jnp.all(jnp.isfinite(actual))
+    assert jnp.allclose(actual, expected)
+
+
 @pytest.mark.parametrize(
     "obs_scale",
     (
@@ -169,6 +184,37 @@ def test_scale_working_weights_are_constant_two():
 
     assert actual.shape == ()
     assert actual == pytest.approx(2.0)
+
+
+def test_gaussian_scale_working_weights_are_constant_two():
+    _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
+
+    actual = gaussian_scale_working_weights(DictModel(), state)
+
+    assert actual.shape == ()
+    assert actual == pytest.approx(2.0)
+
+
+def test_iwls_chol_info_uses_supplied_working_weights_function():
+    Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
+    weights = jnp.array([0.5, 1.5, 2.5], dtype=Z.dtype)
+
+    def working_weights(model, model_state):
+        return model.extract_position(["custom_weights"], model_state)["custom_weights"]
+
+    state = state | {"custom_weights": weights}
+    info = IWLSCholInfo(
+        basis_name="B",
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=DictModel(),
+        working_weights_fn=working_weights,
+    )
+
+    expected = _expected_precision(Z, penalty, weights, state["tau"])
+
+    assert jnp.allclose(info.working_weights(state), weights)
+    assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
 
 
 def test_scale_precision_matches_weighted_crossproduct():

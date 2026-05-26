@@ -7,7 +7,9 @@ structured additive terms.
 """
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from functools import partial
 
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -21,6 +23,8 @@ from .term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
 
 logger = logging.getLogger(__name__)
 
+WorkingWeightsFn = Callable[[lsl.Model | ModelInterface, ModelState], ArrayLike]
+
 
 def _raise_if_scale_factored(term: StrctTerm) -> None:
     """
@@ -31,6 +35,59 @@ def _raise_if_scale_factored(term: StrctTerm) -> None:
             "Gaussian IWLS proposal specs do not currently support scale-factored "
             f"terms, got {term}."
         )
+
+
+def gaussian_loc_working_weights(
+    model: lsl.Model | ModelInterface,
+    model_state: ModelState,
+    *,
+    scale_name: str = "scale",
+) -> Array:
+    """
+    Compute Gaussian location working weights.
+
+    Parameters
+    ----------
+    model
+        Liesel model or model interface used to extract the observation scale.
+    model_state
+        Current model state.
+    scale_name
+        Name of the model variable containing the Gaussian observation scale.
+
+    Returns
+    -------
+    jax.Array
+        Scalar or observation-wise weights ``1 / scale**2``.
+    """
+    pos = model.extract_position([scale_name], model_state)
+    scale = pos[scale_name]
+    eps = jnp.sqrt(jnp.finfo(jnp.asarray(scale).dtype).eps)
+    return 1 / (jnp.clip(scale, min=eps) ** 2)
+
+
+def gaussian_scale_working_weights(
+    model: lsl.Model | ModelInterface,
+    model_state: ModelState,
+) -> Array:
+    """
+    Return the constant Gaussian scale working weight.
+
+    Parameters
+    ----------
+    model
+        Liesel model or model interface. The value is accepted for API symmetry
+        with :func:`gaussian_loc_working_weights` and is not used.
+    model_state
+        Current model state. The value is accepted for API symmetry with
+        :func:`gaussian_loc_working_weights` and is not used.
+
+    Returns
+    -------
+    jax.Array
+        Scalar weight with value ``2.0``.
+    """
+    return jnp.array(2.0)
 
 
 def gaussian_iwls_spec_loc(
@@ -224,7 +281,108 @@ def apply_gaussian_iwls_spec_scale(
 
 
 @dataclass
-class GaussianLocCholInfo:
+class IWLSCholInfo:
+    """
+    Compute Cholesky factors for IWLS proposals from working weights.
+
+    Parameters
+    ----------
+    basis_name
+        Name of the basis matrix variable for the structured term.
+    smooth_scale_name
+        Name of the smoothing scale variable used in the coefficient prior.
+    penalty
+        Penalty matrix of the structured coefficient prior.
+    model
+        Liesel model or model interface used to extract variables from model
+        states.
+    working_weights_fn
+        Function that computes scalar or observation-wise working weights from
+        a model and model state.
+    scale_factored
+        Whether the corresponding term uses scale factorization. This is
+        currently unsupported and raises an error if set to ``True``.
+    """
+
+    basis_name: str
+    smooth_scale_name: str
+    penalty: ArrayLike
+    model: lsl.Model | ModelInterface
+    working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
+    scale_factored: bool = field(default=False, kw_only=True)
+
+    def __post_init__(self) -> None:
+        """
+        Validate that the Cholesky helper can handle the term parameterization.
+        """
+        if self.scale_factored:
+            raise ValueError(
+                "Gaussian IWLS proposals do not currently support scale-factored "
+                "chol-info objects."
+            )
+
+    def working_weights(self, model_state: ModelState) -> Array:
+        """
+        Compute the working weights for the current model state.
+
+        Parameters
+        ----------
+        model_state
+            Current model state.
+
+        Returns
+        -------
+        jax.Array
+            Scalar or observation-wise working weights.
+        """
+        return jnp.asarray(self.working_weights_fn(self.model, model_state))
+
+    def precision(self, model_state: ModelState) -> Array:
+        """
+        Compute the IWLS proposal precision matrix.
+
+        The precision is ``Z.T @ W @ Z + penalty / tau**2`` plus a small
+        diagonal jitter, where ``Z`` is the basis matrix, ``W`` contains the
+        working weights, and ``tau`` is the smoothing scale.
+
+        Parameters
+        ----------
+        model_state
+            Current model state.
+
+        Returns
+        -------
+        jax.Array
+            Positive-definite proposal precision matrix.
+        """
+        pos = self.model.extract_position(
+            [self.basis_name, self.smooth_scale_name], model_state
+        )
+        Z = pos[self.basis_name]
+        scale = pos[self.smooth_scale_name]
+
+        # Weights: support scalar or vector without materializing a diagonal.
+        w = jnp.asarray(self.working_weights(model_state), dtype=Z.dtype)
+        ZW = Z * (w[:, None] if w.ndim == 1 else w)
+
+        # Z^T W Z without constructing W.
+        ZTWZ = Z.T @ ZW
+
+        eps = jnp.sqrt(jnp.finfo(Z.dtype).eps)
+        inv_scale2 = 1.0 / jnp.clip(scale, min=eps) ** 2
+
+        P = ZTWZ + inv_scale2 * self.penalty
+        return P + 1e-6 * jnp.mean(jnp.diag(P)) * jnp.eye(P.shape[0], P.shape[1])
+
+    def chol_info(self, model_state: ModelState) -> Array:
+        """
+        Compute the lower Cholesky factor of the proposal precision matrix.
+        """
+        return jnp.linalg.cholesky(self.precision(model_state))
+
+
+@dataclass(init=False)
+class GaussianLocCholInfo(IWLSCholInfo):
     """
     Compute Cholesky factors for Gaussian location IWLS proposals.
 
@@ -250,91 +408,41 @@ class GaussianLocCholInfo:
         currently unsupported and raises an error if set to ``True``.
     """
 
-    basis_name: str
     smooth_name: str
-    smooth_scale_name: str
     scale_name: str
-    penalty: ArrayLike
-    model: lsl.Model | ModelInterface
     n: int
-    scale_factored: bool = False
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        basis_name: str,
+        smooth_name: str,
+        smooth_scale_name: str,
+        scale_name: str,
+        penalty: ArrayLike,
+        model: lsl.Model | ModelInterface,
+        n: int,
+        scale_factored: bool = False,
+    ) -> None:
         """
-        Validate that the Cholesky helper can handle the term parameterization.
+        Initialize the Cholesky helper.
         """
-        if self.scale_factored:
-            raise ValueError(
-                "Gaussian IWLS proposals do not currently support scale-factored "
-                "chol-info objects."
-            )
-
-    def working_weights(self, model_state: ModelState) -> Array:
-        """
-        Compute Gaussian location working weights from the observation scale.
-
-        Parameters
-        ----------
-        model_state
-            Current model state.
-
-        Returns
-        -------
-        jax.Array
-            Scalar or observation-wise weights ``1 / scale**2``.
-        """
-        pos = self.model.extract_position([self.scale_name], model_state)
-        scale = pos[self.scale_name]
-        eps = jnp.sqrt(jnp.finfo(jnp.asarray(scale).dtype).eps)
-        return 1 / (jnp.clip(scale, min=eps) ** 2)
-
-    def precision(self, model_state: ModelState) -> Array:
-        """
-        Compute the IWLS proposal precision matrix.
-
-        The precision is ``Z.T @ W @ Z + penalty / tau**2`` plus a small
-        diagonal jitter, where ``Z`` is the basis matrix, ``W`` contains the
-        Gaussian location working weights, and ``tau`` is the smoothing scale.
-
-        Parameters
-        ----------
-        model_state
-            Current model state.
-
-        Returns
-        -------
-        jax.Array
-            Positive-definite proposal precision matrix.
-        """
-        pos = self.model.extract_position(
-            [self.basis_name, self.smooth_scale_name], model_state
+        super().__init__(
+            basis_name=basis_name,
+            smooth_scale_name=smooth_scale_name,
+            penalty=penalty,
+            model=model,
+            working_weights_fn=partial(
+                gaussian_loc_working_weights, scale_name=scale_name
+            ),
+            scale_factored=scale_factored,
         )
-        Z = pos[self.basis_name]
-        scale = pos[self.smooth_scale_name]
-
-        # Weights: support scalar or vector without materializing a diagonal
-        w = jnp.asarray(self.working_weights(model_state), dtype=Z.dtype)
-        # if scalar, broadcasts; if vector, row-weights
-        ZW = Z * (w[:, None] if w.ndim == 1 else w)
-
-        # Z^T W Z without constructing W
-        ZTWZ = Z.T @ ZW
-
-        eps = jnp.sqrt(jnp.finfo(Z.dtype).eps)  # small but not too small
-        inv_scale2 = 1.0 / jnp.clip(scale, min=eps) ** 2
-
-        P = ZTWZ + inv_scale2 * self.penalty
-        return P + 1e-6 * jnp.mean(jnp.diag(P)) * jnp.eye(P.shape[0], P.shape[1])
-
-    def chol_info(self, model_state: ModelState) -> Array:
-        """
-        Compute the lower Cholesky factor of the proposal precision matrix.
-        """
-        return jnp.linalg.cholesky(self.precision(model_state))
+        self.smooth_name = smooth_name
+        self.scale_name = scale_name
+        self.n = n
 
 
-@dataclass
-class GaussianScaleCholInfo:
+@dataclass(init=False)
+class GaussianScaleCholInfo(IWLSCholInfo):
     """
     Compute Cholesky factors for Gaussian scale IWLS proposals.
 
@@ -358,82 +466,29 @@ class GaussianScaleCholInfo:
         currently unsupported and raises an error if set to ``True``.
     """
 
-    basis_name: str
     smooth_name: str
-    smooth_scale_name: str
-    penalty: ArrayLike
-    model: lsl.Model | ModelInterface
     n: int
-    scale_factored: bool = False
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        basis_name: str,
+        smooth_name: str,
+        smooth_scale_name: str,
+        penalty: ArrayLike,
+        model: lsl.Model | ModelInterface,
+        n: int,
+        scale_factored: bool = False,
+    ) -> None:
         """
-        Validate that the Cholesky helper can handle the term parameterization.
+        Initialize the Cholesky helper.
         """
-        if self.scale_factored:
-            raise ValueError(
-                "Gaussian IWLS proposals do not currently support scale-factored "
-                "chol-info objects."
-            )
-
-    def working_weights(self, model_state: ModelState) -> Array:
-        """
-        Return the constant Gaussian scale working weight.
-
-        Parameters
-        ----------
-        model_state
-            Current model state. The value is accepted for API symmetry with
-            :class:`.GaussianLocCholInfo` and is not used.
-
-        Returns
-        -------
-        jax.Array
-            Scalar weight with value ``2.0``.
-        """
-        return jnp.array(2.0)
-
-    def precision(self, model_state: ModelState) -> Array:
-        """
-        Compute the IWLS proposal precision matrix.
-
-        The precision is ``Z.T @ W @ Z + penalty / tau**2`` plus a small
-        diagonal jitter, where ``Z`` is the basis matrix, ``W`` is the constant
-        Gaussian scale working weight, and ``tau`` is the smoothing scale.
-
-        Parameters
-        ----------
-        model_state
-            Current model state.
-
-        Returns
-        -------
-        jax.Array
-            Positive-definite proposal precision matrix.
-        """
-        pos = self.model.extract_position(
-            [self.basis_name, self.smooth_scale_name], model_state
+        super().__init__(
+            basis_name=basis_name,
+            smooth_scale_name=smooth_scale_name,
+            penalty=penalty,
+            model=model,
+            working_weights_fn=gaussian_scale_working_weights,
+            scale_factored=scale_factored,
         )
-        Z = pos[self.basis_name]
-        scale = pos[self.smooth_scale_name]
-
-        # Weights: support scalar or vector without materializing a diagonal
-        w = jnp.asarray(self.working_weights(model_state), dtype=Z.dtype)
-        ZW = Z * (
-            w[:, None] if w.ndim == 1 else w
-        )  # if scalar, broadcasts; if vector, row-weights
-
-        # Z^T W Z without constructing W
-        ZTWZ = Z.T @ ZW
-
-        eps = jnp.sqrt(jnp.finfo(Z.dtype).eps)  # small but not too small
-        inv_scale2 = 1.0 / jnp.clip(scale, min=eps) ** 2
-
-        P = ZTWZ + inv_scale2 * self.penalty
-        return P + 1e-6 * jnp.mean(jnp.diag(P)) * jnp.eye(P.shape[0], P.shape[1])
-
-    def chol_info(self, model_state: ModelState) -> Array:
-        """
-        Compute the lower Cholesky factor of the proposal precision matrix.
-        """
-        return jnp.linalg.cholesky(self.precision(model_state))
+        self.smooth_name = smooth_name
+        self.n = n
