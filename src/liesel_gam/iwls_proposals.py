@@ -9,6 +9,7 @@ structured additive terms.
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -139,15 +140,7 @@ def gaussian_iwls_spec_loc(
             n=term.value.shape[0],
         )
 
-        kernel_kwargs = {
-            "da_tune_step_size": False,
-            "initial_step_size": 1.0,
-            "chol_info_fn": chol_info.chol_info,
-        }
-
-        kernel_kwargs |= kwargs
-
-        return gs.IWLSKernel(position_keys, **kernel_kwargs)
+        return chol_info.kernel_constructor()(position_keys, **kwargs)
 
     spec = gs.MCMCSpec(
         kernel=init_iwls_kernel,
@@ -199,15 +192,7 @@ def gaussian_iwls_spec_scale(
             n=term.value.shape[0],
         )
 
-        kernel_kwargs = {
-            "da_tune_step_size": False,
-            "initial_step_size": 1.0,
-            "chol_info_fn": chol_info.chol_info,
-        }
-
-        kernel_kwargs |= kwargs
-
-        return gs.IWLSKernel(position_keys, **kernel_kwargs)
+        return chol_info.kernel_constructor()(position_keys, **kwargs)
 
     spec = gs.MCMCSpec(
         kernel=init_iwls_kernel,
@@ -312,6 +297,30 @@ class IWLSCholInfo:
     model: lsl.Model | ModelInterface
     working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
     scale_factored: bool = field(default=False, kw_only=True)
+
+    def kernel_constructor(self) -> Callable[..., gs.IWLSKernel]:
+        """
+        Return an IWLS kernel constructor using this Cholesky-info object.
+
+        Returns
+        -------
+        callable
+            Function that takes ``position_keys`` and keyword arguments for
+            :class:`liesel.goose.IWLSKernel`, and returns an IWLS kernel using
+            this Cholesky-info object's :meth:`chol_info` method.
+        """
+
+        def init_iwls_kernel(position_keys, **kwargs) -> gs.IWLSKernel:
+            kernel_kwargs: dict[str, Any] = {
+                "da_tune_step_size": False,
+                "initial_step_size": 1.0,
+                "chol_info_fn": self.chol_info,
+            }
+            kernel_kwargs |= kwargs
+
+            return gs.IWLSKernel(position_keys, **kernel_kwargs)
+
+        return init_iwls_kernel
 
     def __post_init__(self) -> None:
         """

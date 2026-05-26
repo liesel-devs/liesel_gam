@@ -216,6 +216,36 @@ def test_iwls_chol_info_uses_supplied_working_weights_function():
     assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
 
 
+def test_iwls_chol_info_kernel_constructor_uses_bound_chol_info():
+    Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
+    weights = jnp.array([0.5, 1.5, 2.5], dtype=Z.dtype)
+
+    def working_weights(model, model_state):
+        return model.extract_position(["custom_weights"], model_state)["custom_weights"]
+
+    state = state | {"custom_weights": weights}
+    chol_info = IWLSCholInfo(
+        basis_name="B",
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=DictModel(),
+        working_weights_fn=working_weights,
+    )
+    kernel_constructor = chol_info.kernel_constructor()
+    kernel = kernel_constructor(["coef"], fallback_chol_info=None)
+
+    assert isinstance(kernel, gs.IWLSKernel)
+    assert kernel.position_keys == ("coef",)
+    assert kernel.initial_step_size == pytest.approx(1.0)
+    assert kernel.da_tune_step_size is False
+    assert kernel.fallback_chol_info is None
+    assert kernel.chol_info_fn.__self__ is chol_info
+    assert jnp.allclose(
+        kernel.chol_info_fn(state),
+        jnp.linalg.cholesky(_expected_precision(Z, penalty, weights, state["tau"])),
+    )
+
+
 def test_scale_precision_matches_weighted_crossproduct():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     info = _scale_info(penalty)
