@@ -1,5 +1,5 @@
 """
-IWLS proposal specifications for Gaussian additive predictors.
+IWLS proposal specifications for additive predictors.
 
 The helpers in this module construct :class:`liesel.goose.MCMCSpec` objects
 that use :class:`liesel.goose.IWLSKernel` with a custom Cholesky factor for
@@ -27,27 +27,52 @@ WorkingWeightsFn = Callable[[lsl.Model | ModelInterface, ModelState], ArrayLike]
 IWLSProposalTerm = StrctTerm | RITerm | MRFTerm | StrctLinTerm
 
 
-def _raise_if_scale_factored(term: StrctTerm) -> None:
+def _raise_if_scale_factored(term: IWLSProposalTerm) -> None:
     """
     Raise an error if a term uses scale factorization.
     """
     if term.scale_is_factored:
         raise ValueError(
-            "Gaussian IWLS proposal specs do not currently support scale-factored "
-            f"terms, got {term}."
+            "IWLS proposal specs do not currently support scale-factored terms, "
+            f"got {term}."
         )
 
 
-class GaussianIWLSWeights:
+class IWLSWeights:
     """
-    Working-weight factories for Gaussian IWLS proposals.
+    Working-weight factories for IWLS proposals.
 
     The static methods return functions with the signature expected by
     :class:`.IWLSProposal`.
     """
 
     @staticmethod
-    def loc(scale_name: str = "scale") -> WorkingWeightsFn:
+    def constant(value: ArrayLike = 1.0) -> WorkingWeightsFn:
+        """
+        Return constant working weights.
+
+        Parameters
+        ----------
+        value
+            Scalar or observation-wise constant weights. The default is ``1.0``.
+
+        Returns
+        -------
+        callable
+            Function that ignores the model state and returns ``value`` as a JAX
+            array.
+        """
+
+        def working_weights(
+            model: lsl.Model | ModelInterface,
+            model_state: ModelState,
+        ) -> Array:
+            return jnp.asarray(value)
+
+        return working_weights
+
+    @staticmethod
+    def gaussian_loc(scale_name: str = "scale") -> WorkingWeightsFn:
         """
         Return working weights for Gaussian location terms.
 
@@ -75,7 +100,7 @@ class GaussianIWLSWeights:
         return working_weights
 
     @staticmethod
-    def scale() -> WorkingWeightsFn:
+    def gaussian_scale() -> WorkingWeightsFn:
         """
         Return working weights for Gaussian scale terms.
 
@@ -94,8 +119,108 @@ class GaussianIWLSWeights:
         return working_weights
 
 
+class GaussianIWLSWeights(IWLSWeights):
+    """
+    Backward-compatible Gaussian working-weight factories.
+
+    Prefer :class:`.IWLSWeights` for new code.
+    """
+
+    loc = staticmethod(IWLSWeights.gaussian_loc)
+    scale = staticmethod(IWLSWeights.gaussian_scale)
+
+
+def iwls_spec(
+    term: IWLSProposalTerm,
+    working_weights_fn: WorkingWeightsFn | None = None,
+    **kwargs,
+) -> gs.MCMCSpec:
+    """
+    Create an IWLS inference specification for a structured additive term.
+
+    The returned :class:`liesel.goose.MCMCSpec` initializes an
+    :class:`liesel.goose.IWLSKernel` whose proposal precision is based on the
+    supplied working weights and on the term's structured prior penalty. If no
+    working weights are supplied, constant unit weights are used.
+
+    Parameters
+    ----------
+    term
+        Structured additive term whose coefficient variable should be sampled.
+        Scale-factored terms are currently not supported.
+    working_weights_fn
+        Function that computes scalar or observation-wise working weights from a
+        model and model state. Defaults to :meth:`IWLSWeights.constant`.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :class:`liesel.goose.IWLSKernel`. These values override the defaults
+        ``da_tune_step_size=False`` and ``initial_step_size=1.0``.
+
+    Returns
+    -------
+    liesel.goose.MCMCSpec
+        Inference specification for ``term.coef``.
+    """
+    _raise_if_scale_factored(term)
+    working_weights_fn = working_weights_fn or IWLSWeights.constant()
+
+    def init_iwls_kernel(position_keys, term):
+        """
+        Initialize the IWLS kernel after the term has been attached to a model.
+        """
+        _raise_if_scale_factored(term)
+        proposal = IWLSProposal.from_term(term, working_weights_fn)
+
+        return proposal.kernel_factory()(position_keys, **kwargs)
+
+    spec = gs.MCMCSpec(
+        kernel=init_iwls_kernel,
+        kernel_kwargs={"term": term},
+    )
+
+    return spec
+
+
+def apply_iwls_spec(
+    predictor: AdditivePredictor,
+    working_weights_fn: WorkingWeightsFn | None = None,
+    verbose: bool = False,
+    **kwargs,
+):
+    """
+    Assign IWLS specifications to structured predictor terms.
+
+    The function updates the ``inference`` attribute of each supported structured
+    term's coefficient variable in-place. Unsupported terms are skipped.
+
+    Parameters
+    ----------
+    predictor
+        Additive predictor whose terms should be updated.
+    working_weights_fn
+        Function that computes scalar or observation-wise working weights from a
+        model and model state. Defaults to :meth:`IWLSWeights.constant`.
+    verbose
+        If ``True``, log whether each term is updated or skipped.
+    **kwargs
+        Additional keyword arguments forwarded to :func:`iwls_spec`.
+    """
+    for term in predictor.terms.values():
+        if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+            if verbose:
+                logger.info(f"Skipping '{term.name}', inference left unchanged.")
+            continue
+        term.coef.inference = iwls_spec(
+            term=term,
+            working_weights_fn=working_weights_fn,
+            **kwargs,
+        )
+        if verbose:
+            logger.info(f"Updating inference of '{term.name}' coefficient.")
+
+
 def gaussian_iwls_spec_loc(
-    term: StrctTerm,
+    term: IWLSProposalTerm,
     scale_name: str = "scale",
     **kwargs,
 ) -> gs.MCMCSpec:
@@ -144,7 +269,7 @@ def gaussian_iwls_spec_loc(
 
 
 def gaussian_iwls_spec_scale(
-    term: StrctTerm,
+    term: IWLSProposalTerm,
     **kwargs,
 ) -> gs.MCMCSpec:
     """
@@ -364,8 +489,8 @@ class IWLSProposal:
         """
         if self.scale_factored:
             raise ValueError(
-                "Gaussian IWLS proposals do not currently support scale-factored "
-                "IWLS proposal objects."
+                "IWLS proposals do not currently support scale-factored proposal "
+                "objects."
             )
 
     def working_weights(self, model_state: ModelState) -> Array:
@@ -460,19 +585,16 @@ class GaussianLocIWLSProposal(IWLSProposal):
     n: int
 
     @classmethod
-    def from_term(
+    def from_term(  # type: ignore[override]
         cls,
         term: IWLSProposalTerm,
-        working_weights_fn: WorkingWeightsFn | None = None,
         *,
-        scale_name: str = "scale",
+        scale_name: str,
     ) -> Self:
         """
         Construct a Gaussian location IWLS proposal from a structured term.
         """
-        working_weights_fn = working_weights_fn or GaussianIWLSWeights.loc(
-            scale_name=scale_name
-        )
+        working_weights_fn = IWLSWeights.gaussian_loc(scale_name=scale_name)
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
             basis_name=base.basis_name,
@@ -499,12 +621,13 @@ class GaussianLocIWLSProposal(IWLSProposal):
         """
         Initialize the Cholesky helper.
         """
+        working_weights_fn = IWLSWeights.gaussian_loc(scale_name=scale_name)
         super().__init__(
             basis_name=basis_name,
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
-            working_weights_fn=GaussianIWLSWeights.loc(scale_name=scale_name),
+            working_weights_fn=working_weights_fn,
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name
@@ -541,15 +664,14 @@ class GaussianScaleIWLSProposal(IWLSProposal):
     n: int
 
     @classmethod
-    def from_term(
+    def from_term(  # type: ignore[override]
         cls,
         term: IWLSProposalTerm,
-        working_weights_fn: WorkingWeightsFn | None = None,
     ) -> Self:
         """
         Construct a Gaussian scale IWLS proposal from a structured term.
         """
-        working_weights_fn = working_weights_fn or GaussianIWLSWeights.scale()
+        working_weights_fn = IWLSWeights.gaussian_scale()
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
             basis_name=base.basis_name,
@@ -574,12 +696,13 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         """
         Initialize the Cholesky helper.
         """
+        working_weights_fn = IWLSWeights.gaussian_scale()
         super().__init__(
             basis_name=basis_name,
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
-            working_weights_fn=GaussianIWLSWeights.scale(),
+            working_weights_fn=working_weights_fn,
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name
@@ -588,6 +711,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
 
 # Backward-compatible aliases for the original Cholesky-focused names.
 GaussianIWLS = GaussianIWLSWeights
+IWLS = IWLSWeights
 IWLSCholInfo = IWLSProposal
 GaussianLocCholInfo = GaussianLocIWLSProposal
 GaussianScaleCholInfo = GaussianScaleIWLSProposal

@@ -10,10 +10,13 @@ from liesel_gam.iwls_proposals import (
     GaussianLocIWLSProposal,
     GaussianScaleIWLSProposal,
     IWLSProposal,
+    IWLSWeights,
     apply_gaussian_iwls_spec_loc,
     apply_gaussian_iwls_spec_scale,
+    apply_iwls_spec,
     gaussian_iwls_spec_loc,
     gaussian_iwls_spec_scale,
+    iwls_spec,
 )
 from liesel_gam.predictor import AdditivePredictor
 from liesel_gam.term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
@@ -162,9 +165,55 @@ def test_gaussian_iwls_weights_loc_clips_observation_scale_at_machine_epsilon():
     eps = jnp.sqrt(jnp.finfo(jnp.float32).eps)
     expected = 1.0 / jnp.clip(state["obs_scale"], min=eps) ** 2
 
-    actual = GaussianIWLSWeights.loc(scale_name="obs_scale")(DictModel(), state)
+    actual = IWLSWeights.gaussian_loc(scale_name="obs_scale")(DictModel(), state)
 
     assert jnp.all(jnp.isfinite(actual))
+    assert jnp.allclose(actual, expected)
+
+
+def test_iwls_weights_constant_defaults_to_one():
+    state = {"obs_scale": jnp.array([1.0, 2.0], dtype=jnp.float32)}
+
+    actual = IWLSWeights.constant()(DictModel(), state)
+
+    assert actual.shape == ()
+    assert actual == pytest.approx(1.0)
+
+
+def test_iwls_weights_constant_accepts_observation_wise_weights():
+    weights = jnp.array([0.5, 1.5, 2.5], dtype=jnp.float32)
+
+    actual = IWLSWeights.constant(weights)(DictModel(), {})
+
+    assert jnp.allclose(actual, weights)
+
+
+def test_iwls_proposal_precision_uses_constant_unit_weights():
+    Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
+    info = IWLSProposal(
+        basis_name="B",
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=DictModel(),
+        working_weights_fn=IWLSWeights.constant(),
+    )
+
+    expected = _expected_precision(
+        Z,
+        penalty,
+        jnp.array(1.0, dtype=Z.dtype),
+        state["tau"],
+    )
+
+    assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
+
+
+def test_gaussian_iwls_weights_backwards_compatible_loc_alias():
+    state = {"obs_scale": jnp.array([0.0, 2.0], dtype=jnp.float32)}
+
+    actual = GaussianIWLSWeights.loc(scale_name="obs_scale")(DictModel(), state)
+    expected = IWLSWeights.gaussian_loc(scale_name="obs_scale")(DictModel(), state)
+
     assert jnp.allclose(actual, expected)
 
 
@@ -228,10 +277,20 @@ def test_scale_working_weights_are_constant_two():
 def test_gaussian_iwls_weights_scale_returns_constant_two():
     _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
 
-    actual = GaussianIWLSWeights.scale()(DictModel(), state)
+    actual = IWLSWeights.gaussian_scale()(DictModel(), state)
 
     assert actual.shape == ()
     assert actual == pytest.approx(2.0)
+
+
+def test_gaussian_iwls_weights_backwards_compatible_scale_alias():
+    _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
+
+    actual = GaussianIWLSWeights.scale()(DictModel(), state)
+    expected = IWLSWeights.gaussian_scale()(DictModel(), state)
+
+    assert actual.shape == ()
+    assert jnp.allclose(actual, expected)
 
 
 def test_iwls_proposal_uses_supplied_working_weights_function():
@@ -260,7 +319,7 @@ def test_iwls_proposal_uses_supplied_working_weights_function():
 def test_iwls_proposal_from_term_extracts_geometry_from_supported_terms(term):
     model = _model_for_term(term)
 
-    proposal = IWLSProposal.from_term(term, GaussianIWLSWeights.scale())
+    proposal = IWLSProposal.from_term(term, IWLSWeights.gaussian_scale())
 
     assert proposal.basis_name == term.basis.name
     assert proposal.smooth_scale_name == term.scale.name
@@ -273,7 +332,7 @@ def test_iwls_proposal_from_term_rejects_terms_without_model():
     term, _ = _term_and_scale()
 
     with pytest.raises(ValueError, match="attached to a model"):
-        IWLSProposal.from_term(term, GaussianIWLSWeights.scale())
+        IWLSProposal.from_term(term, IWLSWeights.gaussian_scale())
 
 
 def test_gaussian_iwls_proposals_can_be_constructed_from_term():
@@ -353,6 +412,53 @@ def test_scale_chol_info_rejects_scale_factored():
 
     with pytest.raises(ValueError, match="scale-factored"):
         _scale_info(penalty, scale_factored=True)
+
+
+def test_iwls_spec_builds_untuned_kernel_with_constant_unit_weights():
+    term, model = _term_model()
+
+    spec = iwls_spec(term, fallback_chol_info=None)
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+    proposal = kernel.chol_info_fn.__self__
+
+    assert isinstance(spec, gs.MCMCSpec)
+    assert spec.kernel_kwargs == {"term": term}
+    assert isinstance(kernel, gs.IWLSKernel)
+    assert kernel.position_keys == (term.coef.name,)
+    assert kernel.initial_step_size == pytest.approx(1.0)
+    assert kernel.da_tune_step_size is False
+    assert kernel.fallback_chol_info is None
+    assert isinstance(proposal, IWLSProposal)
+    assert not isinstance(proposal, GaussianLocIWLSProposal | GaussianScaleIWLSProposal)
+    assert proposal.basis_name == term.basis.name
+    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.model is model
+    assert proposal.scale_factored is False
+    assert proposal.working_weights(model.state) == pytest.approx(1.0)
+    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+
+
+def test_iwls_spec_forwards_kernel_kwargs():
+    term, _ = _term_model()
+
+    spec = iwls_spec(
+        term,
+        initial_step_size=0.25,
+        da_tune_step_size=True,
+        fallback_chol_info="chol_of_modified_info",
+    )
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+
+    assert kernel.initial_step_size == pytest.approx(0.25)
+    assert kernel.da_tune_step_size is True
+    assert kernel.fallback_chol_info == "chol_of_modified_info"
+
+
+def test_iwls_spec_rejects_factored_terms():
+    term, _ = _term_model(factor_scale=True)
+
+    with pytest.raises(ValueError, match="scale-factored"):
+        iwls_spec(term)
 
 
 def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
@@ -437,6 +543,35 @@ def test_gaussian_iwls_spec_scale_rejects_factored_terms():
 
     with pytest.raises(ValueError, match="scale-factored"):
         gaussian_iwls_spec_scale(term)
+
+
+def test_apply_iwls_spec_assigns_structured_terms_only():
+    term, obs_scale = _term_and_scale()
+    offset = lsl.Var.new_value(jnp.ones_like(term.value), name="offset")
+    predictor = AdditivePredictor("loc", intercept=False)
+    predictor += term, offset
+
+    apply_iwls_spec(predictor, fallback_chol_info=None)
+    model = lsl.Model([predictor, obs_scale])
+    spec = term.coef.inference
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+
+    assert isinstance(spec, gs.MCMCSpec)
+    assert getattr(offset, "inference", None) is None
+    assert isinstance(kernel.chol_info_fn.__self__, IWLSProposal)
+    assert kernel.chol_info_fn.__self__.working_weights(model.state) == pytest.approx(
+        1.0
+    )
+    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+
+
+def test_apply_iwls_spec_rejects_factored_terms():
+    term, _ = _term_and_scale(factor_scale=True)
+    predictor = AdditivePredictor("loc", intercept=False)
+    predictor += term
+
+    with pytest.raises(ValueError, match="scale-factored"):
+        apply_iwls_spec(predictor)
 
 
 def test_apply_gaussian_iwls_spec_loc_assigns_structured_terms_only():
