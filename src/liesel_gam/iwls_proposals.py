@@ -42,7 +42,7 @@ class GaussianIWLS:
     Working-weight factories for Gaussian IWLS proposals.
 
     The static methods return functions with the signature expected by
-    :class:`.IWLSCholInfo`.
+    :class:`.IWLSProposal`.
     """
 
     @staticmethod
@@ -130,7 +130,7 @@ def gaussian_iwls_spec_loc(
         Initialize the IWLS kernel after the term has been attached to a model.
         """
         _raise_if_scale_factored(term)
-        chol_info = GaussianLocCholInfo(
+        proposal = GaussianLocIWLSProposal(
             basis_name=term.basis.name,
             smooth_name=term.name,
             smooth_scale_name=term.scale.name,
@@ -140,7 +140,7 @@ def gaussian_iwls_spec_loc(
             n=term.value.shape[0],
         )
 
-        return chol_info.kernel_constructor()(position_keys, **kwargs)
+        return proposal.kernel_factory()(position_keys, **kwargs)
 
     spec = gs.MCMCSpec(
         kernel=init_iwls_kernel,
@@ -183,7 +183,7 @@ def gaussian_iwls_spec_scale(
         Initialize the IWLS kernel after the term has been attached to a model.
         """
         _raise_if_scale_factored(term)
-        chol_info = GaussianScaleCholInfo(
+        proposal = GaussianScaleIWLSProposal(
             basis_name=term.basis.name,
             smooth_name=term.name,
             smooth_scale_name=term.scale.name,
@@ -192,7 +192,7 @@ def gaussian_iwls_spec_scale(
             n=term.value.shape[0],
         )
 
-        return chol_info.kernel_constructor()(position_keys, **kwargs)
+        return proposal.kernel_factory()(position_keys, **kwargs)
 
     spec = gs.MCMCSpec(
         kernel=init_iwls_kernel,
@@ -268,9 +268,9 @@ def apply_gaussian_iwls_spec_scale(
 
 
 @dataclass
-class IWLSCholInfo:
+class IWLSProposal:
     """
-    Compute Cholesky factors for IWLS proposals from working weights.
+    Compute IWLS proposal geometry from working weights.
 
     Parameters
     ----------
@@ -298,16 +298,16 @@ class IWLSCholInfo:
     working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
     scale_factored: bool = field(default=False, kw_only=True)
 
-    def kernel_constructor(self) -> Callable[..., gs.IWLSKernel]:
+    def kernel_factory(self) -> Callable[..., gs.IWLSKernel]:
         """
-        Return an IWLS kernel constructor using this Cholesky-info object.
+        Return an IWLS kernel factory using this proposal object.
 
         Returns
         -------
         callable
             Function that takes ``position_keys`` and keyword arguments for
             :class:`liesel.goose.IWLSKernel`, and returns an IWLS kernel using
-            this Cholesky-info object's :meth:`chol_info` method.
+            this proposal object's :meth:`chol_info` method.
         """
 
         def init_iwls_kernel(position_keys, **kwargs) -> gs.IWLSKernel:
@@ -329,7 +329,7 @@ class IWLSCholInfo:
         if self.scale_factored:
             raise ValueError(
                 "Gaussian IWLS proposals do not currently support scale-factored "
-                "chol-info objects."
+                "IWLS proposal objects."
             )
 
     def working_weights(self, model_state: ModelState) -> Array:
@@ -393,9 +393,9 @@ class IWLSCholInfo:
 
 
 @dataclass(init=False)
-class GaussianLocCholInfo(IWLSCholInfo):
+class GaussianLocIWLSProposal(IWLSProposal):
     """
-    Compute Cholesky factors for Gaussian location IWLS proposals.
+    Compute IWLS proposals for Gaussian location terms.
 
     Parameters
     ----------
@@ -451,9 +451,9 @@ class GaussianLocCholInfo(IWLSCholInfo):
 
 
 @dataclass(init=False)
-class GaussianScaleCholInfo(IWLSCholInfo):
+class GaussianScaleIWLSProposal(IWLSProposal):
     """
-    Compute Cholesky factors for Gaussian scale IWLS proposals.
+    Compute IWLS proposals for Gaussian scale terms.
 
     Parameters
     ----------
@@ -501,3 +501,9 @@ class GaussianScaleCholInfo(IWLSCholInfo):
         )
         self.smooth_name = smooth_name
         self.n = n
+
+
+# Backward-compatible aliases for the original Cholesky-focused names.
+IWLSCholInfo = IWLSProposal
+GaussianLocCholInfo = GaussianLocIWLSProposal
+GaussianScaleCholInfo = GaussianScaleIWLSProposal

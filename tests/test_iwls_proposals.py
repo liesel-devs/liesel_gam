@@ -7,9 +7,9 @@ import pytest
 from liesel_gam.basis import Basis
 from liesel_gam.iwls_proposals import (
     GaussianIWLS,
-    GaussianLocCholInfo,
-    GaussianScaleCholInfo,
-    IWLSCholInfo,
+    GaussianLocIWLSProposal,
+    GaussianScaleIWLSProposal,
+    IWLSProposal,
     apply_gaussian_iwls_spec_loc,
     apply_gaussian_iwls_spec_scale,
     gaussian_iwls_spec_loc,
@@ -56,7 +56,7 @@ def _expected_precision(Z, penalty, weights, smooth_scale):
 
 
 def _loc_info(penalty, scale_factored=False):
-    return GaussianLocCholInfo(
+    return GaussianLocIWLSProposal(
         basis_name="B",
         smooth_name="f(x)",
         smooth_scale_name="tau",
@@ -69,7 +69,7 @@ def _loc_info(penalty, scale_factored=False):
 
 
 def _scale_info(penalty, scale_factored=False):
-    return GaussianScaleCholInfo(
+    return GaussianScaleIWLSProposal(
         basis_name="B",
         smooth_name="f(x)",
         smooth_scale_name="tau",
@@ -194,7 +194,7 @@ def test_gaussian_iwls_scale_factory_returns_constant_two():
     assert actual == pytest.approx(2.0)
 
 
-def test_iwls_chol_info_uses_supplied_working_weights_function():
+def test_iwls_proposal_uses_supplied_working_weights_function():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     weights = jnp.array([0.5, 1.5, 2.5], dtype=Z.dtype)
 
@@ -202,7 +202,7 @@ def test_iwls_chol_info_uses_supplied_working_weights_function():
         return model.extract_position(["custom_weights"], model_state)["custom_weights"]
 
     state = state | {"custom_weights": weights}
-    info = IWLSCholInfo(
+    info = IWLSProposal(
         basis_name="B",
         smooth_scale_name="tau",
         penalty=penalty,
@@ -216,7 +216,7 @@ def test_iwls_chol_info_uses_supplied_working_weights_function():
     assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
 
 
-def test_iwls_chol_info_kernel_constructor_uses_bound_chol_info():
+def test_iwls_proposal_kernel_factory_uses_bound_proposal():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     weights = jnp.array([0.5, 1.5, 2.5], dtype=Z.dtype)
 
@@ -224,22 +224,22 @@ def test_iwls_chol_info_kernel_constructor_uses_bound_chol_info():
         return model.extract_position(["custom_weights"], model_state)["custom_weights"]
 
     state = state | {"custom_weights": weights}
-    chol_info = IWLSCholInfo(
+    proposal = IWLSProposal(
         basis_name="B",
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         working_weights_fn=working_weights,
     )
-    kernel_constructor = chol_info.kernel_constructor()
-    kernel = kernel_constructor(["coef"], fallback_chol_info=None)
+    kernel_factory = proposal.kernel_factory()
+    kernel = kernel_factory(["coef"], fallback_chol_info=None)
 
     assert isinstance(kernel, gs.IWLSKernel)
     assert kernel.position_keys == ("coef",)
     assert kernel.initial_step_size == pytest.approx(1.0)
     assert kernel.da_tune_step_size is False
     assert kernel.fallback_chol_info is None
-    assert kernel.chol_info_fn.__self__ is chol_info
+    assert kernel.chol_info_fn.__self__ is proposal
     assert jnp.allclose(
         kernel.chol_info_fn(state),
         jnp.linalg.cholesky(_expected_precision(Z, penalty, weights, state["tau"])),
@@ -284,7 +284,7 @@ def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
         fallback_chol_info=None,
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    chol_info = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__
 
     assert isinstance(spec, gs.MCMCSpec)
     assert spec.kernel_kwargs == {"term": term}
@@ -293,14 +293,14 @@ def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
     assert kernel.initial_step_size == pytest.approx(1.0)
     assert kernel.da_tune_step_size is False
     assert kernel.fallback_chol_info is None
-    assert isinstance(chol_info, GaussianLocCholInfo)
-    assert chol_info.basis_name == term.basis.name
-    assert chol_info.smooth_name == term.name
-    assert chol_info.smooth_scale_name == term.scale.name
-    assert chol_info.scale_name == "obs_scale"
-    assert chol_info.model is model
-    assert chol_info.n == term.value.shape[0]
-    assert chol_info.scale_factored is False
+    assert isinstance(proposal, GaussianLocIWLSProposal)
+    assert proposal.basis_name == term.basis.name
+    assert proposal.smooth_name == term.name
+    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.scale_name == "obs_scale"
+    assert proposal.model is model
+    assert proposal.n == term.value.shape[0]
+    assert proposal.scale_factored is False
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
 
 
@@ -333,7 +333,7 @@ def test_gaussian_iwls_spec_scale_builds_untuned_kernel_with_custom_chol_info():
 
     spec = gaussian_iwls_spec_scale(term, fallback_chol_info=None)
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    chol_info = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__
 
     assert isinstance(spec, gs.MCMCSpec)
     assert spec.kernel_kwargs == {"term": term}
@@ -342,13 +342,13 @@ def test_gaussian_iwls_spec_scale_builds_untuned_kernel_with_custom_chol_info():
     assert kernel.initial_step_size == pytest.approx(1.0)
     assert kernel.da_tune_step_size is False
     assert kernel.fallback_chol_info is None
-    assert isinstance(chol_info, GaussianScaleCholInfo)
-    assert chol_info.basis_name == term.basis.name
-    assert chol_info.smooth_name == term.name
-    assert chol_info.smooth_scale_name == term.scale.name
-    assert chol_info.model is model
-    assert chol_info.n == term.value.shape[0]
-    assert chol_info.scale_factored is False
+    assert isinstance(proposal, GaussianScaleIWLSProposal)
+    assert proposal.basis_name == term.basis.name
+    assert proposal.smooth_name == term.name
+    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.model is model
+    assert proposal.n == term.value.shape[0]
+    assert proposal.scale_factored is False
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
 
 
@@ -376,7 +376,7 @@ def test_apply_gaussian_iwls_spec_loc_assigns_structured_terms_only():
 
     assert isinstance(spec, gs.MCMCSpec)
     assert getattr(offset, "inference", None) is None
-    assert isinstance(kernel.chol_info_fn.__self__, GaussianLocCholInfo)
+    assert isinstance(kernel.chol_info_fn.__self__, GaussianLocIWLSProposal)
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
 
 
@@ -402,7 +402,7 @@ def test_apply_gaussian_iwls_spec_scale_assigns_structured_terms_only():
 
     assert isinstance(spec, gs.MCMCSpec)
     assert getattr(offset, "inference", None) is None
-    assert isinstance(kernel.chol_info_fn.__self__, GaussianScaleCholInfo)
+    assert isinstance(kernel.chol_info_fn.__self__, GaussianScaleIWLSProposal)
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
 
 
