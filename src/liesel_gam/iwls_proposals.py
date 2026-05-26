@@ -9,7 +9,7 @@ structured additive terms.
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Self
 
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -24,6 +24,7 @@ from .term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
 logger = logging.getLogger(__name__)
 
 WorkingWeightsFn = Callable[[lsl.Model | ModelInterface, ModelState], ArrayLike]
+IWLSProposalTerm = StrctTerm | RITerm | MRFTerm | StrctLinTerm
 
 
 def _raise_if_scale_factored(term: StrctTerm) -> None:
@@ -130,15 +131,7 @@ def gaussian_iwls_spec_loc(
         Initialize the IWLS kernel after the term has been attached to a model.
         """
         _raise_if_scale_factored(term)
-        proposal = GaussianLocIWLSProposal(
-            basis_name=term.basis.name,
-            smooth_name=term.name,
-            smooth_scale_name=term.scale.name,
-            scale_name=scale_name,
-            penalty=term.basis.penalty.value,
-            model=term.model,
-            n=term.value.shape[0],
-        )
+        proposal = GaussianLocIWLSProposal.from_term(term, scale_name=scale_name)
 
         return proposal.kernel_factory()(position_keys, **kwargs)
 
@@ -183,14 +176,7 @@ def gaussian_iwls_spec_scale(
         Initialize the IWLS kernel after the term has been attached to a model.
         """
         _raise_if_scale_factored(term)
-        proposal = GaussianScaleIWLSProposal(
-            basis_name=term.basis.name,
-            smooth_name=term.name,
-            smooth_scale_name=term.scale.name,
-            penalty=term.basis.penalty.value,
-            model=term.model,
-            n=term.value.shape[0],
-        )
+        proposal = GaussianScaleIWLSProposal.from_term(term)
 
         return proposal.kernel_factory()(position_keys, **kwargs)
 
@@ -297,6 +283,56 @@ class IWLSProposal:
     model: lsl.Model | ModelInterface
     working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
     scale_factored: bool = field(default=False, kw_only=True)
+
+    @classmethod
+    def from_term(
+        cls,
+        term: IWLSProposalTerm,
+        working_weights_fn: WorkingWeightsFn,
+    ) -> Self:
+        """
+        Construct an IWLS proposal from a structured term.
+
+        Parameters
+        ----------
+        term
+            Structured term whose basis, smoothing scale, penalty, and model
+            should define the proposal geometry.
+        working_weights_fn
+            Function that computes scalar or observation-wise working weights
+            from a model and model state.
+
+        Returns
+        -------
+        IWLSProposal
+            Proposal object using geometry extracted from ``term``.
+        """
+        model = term.model
+        if model is None:
+            raise ValueError(f"The term {term} must be attached to a model.")
+
+        if term.scale is None:
+            raise ValueError(f"The term {term} must have a smoothing scale.")
+
+        if term.basis.penalty is None:
+            raise ValueError(f"The term {term} must have a penalty matrix.")
+
+        basis_name = term.basis.name
+        if not basis_name:
+            raise ValueError(f"The basis of term {term} must be named.")
+
+        smooth_scale_name = term.scale.name
+        if not smooth_scale_name:
+            raise ValueError(f"The smoothing scale of term {term} must be named.")
+
+        return cls(
+            basis_name=basis_name,
+            smooth_scale_name=smooth_scale_name,
+            penalty=term.basis.penalty.value,
+            model=model,
+            working_weights_fn=working_weights_fn,
+            scale_factored=term.scale_is_factored,
+        )
 
     def kernel_factory(self) -> Callable[..., gs.IWLSKernel]:
         """
@@ -423,6 +459,32 @@ class GaussianLocIWLSProposal(IWLSProposal):
     scale_name: str
     n: int
 
+    @classmethod
+    def from_term(
+        cls,
+        term: IWLSProposalTerm,
+        working_weights_fn: WorkingWeightsFn | None = None,
+        *,
+        scale_name: str = "scale",
+    ) -> Self:
+        """
+        Construct a Gaussian location IWLS proposal from a structured term.
+        """
+        working_weights_fn = working_weights_fn or GaussianIWLS.loc(
+            scale_name=scale_name
+        )
+        base = IWLSProposal.from_term(term, working_weights_fn)
+        return cls(
+            basis_name=base.basis_name,
+            smooth_name=term.name,
+            smooth_scale_name=base.smooth_scale_name,
+            scale_name=scale_name,
+            penalty=base.penalty,
+            model=base.model,
+            n=term.value.shape[0],
+            scale_factored=base.scale_factored,
+        )
+
     def __init__(
         self,
         basis_name: str,
@@ -477,6 +539,27 @@ class GaussianScaleIWLSProposal(IWLSProposal):
 
     smooth_name: str
     n: int
+
+    @classmethod
+    def from_term(
+        cls,
+        term: IWLSProposalTerm,
+        working_weights_fn: WorkingWeightsFn | None = None,
+    ) -> Self:
+        """
+        Construct a Gaussian scale IWLS proposal from a structured term.
+        """
+        working_weights_fn = working_weights_fn or GaussianIWLS.scale()
+        base = IWLSProposal.from_term(term, working_weights_fn)
+        return cls(
+            basis_name=base.basis_name,
+            smooth_name=term.name,
+            smooth_scale_name=base.smooth_scale_name,
+            penalty=base.penalty,
+            model=base.model,
+            n=term.value.shape[0],
+            scale_factored=base.scale_factored,
+        )
 
     def __init__(
         self,

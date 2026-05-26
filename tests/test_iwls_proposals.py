@@ -16,7 +16,7 @@ from liesel_gam.iwls_proposals import (
     gaussian_iwls_spec_scale,
 )
 from liesel_gam.predictor import AdditivePredictor
-from liesel_gam.term import StrctTerm
+from liesel_gam.term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
 
 
 class DictModel:
@@ -100,6 +100,46 @@ def _term_model(factor_scale=False):
     term, obs_scale = _term_and_scale(factor_scale=factor_scale)
     model = lsl.Model([term, obs_scale])
     return term, model
+
+
+def _model_for_term(term):
+    obs_scale = lsl.Var.new_param(jnp.array(2.0), name="obs_scale")
+    model = lsl.Model([term, obs_scale])
+    return model
+
+
+def _structured_term_class_examples():
+    x = jnp.linspace(-1.0, 1.0, 6)
+    basis_matrix = jnp.column_stack([jnp.ones_like(x), x])
+    penalty = jnp.array([[1.0, 0.2], [0.2, 2.0]], dtype=basis_matrix.dtype)
+
+    basis = Basis(basis_matrix, xname="x_strct", penalty=penalty, use_callback=False)
+    yield StrctTerm.f(basis, scale=lsl.Var.new_param(jnp.array(1.5), name="tau_strct"))
+
+    basis = Basis(basis_matrix, xname="x_mrf", penalty=penalty, use_callback=False)
+    yield MRFTerm.f(basis, scale=lsl.Var.new_param(jnp.array(1.5), name="tau_mrf"))
+
+    basis = Basis(basis_matrix, xname="x_lin", penalty=penalty, use_callback=False)
+    yield StrctLinTerm(
+        basis,
+        penalty=basis.penalty,
+        scale=lsl.Var.new_param(jnp.array(1.5), name="tau_lin"),
+        name="strct_lin",
+    )
+
+    group = jnp.array([0, 1, 0, 1])
+    ri_basis = Basis(
+        group,
+        xname="group",
+        penalty=jnp.eye(2),
+        use_callback=False,
+    )
+    yield RITerm(
+        ri_basis,
+        penalty=ri_basis.penalty,
+        scale=lsl.Var.new_param(jnp.array(1.5), name="tau_ri"),
+        name="ri",
+    )
 
 
 def test_loc_working_weights_clip_observation_scale_at_machine_epsilon():
@@ -214,6 +254,46 @@ def test_iwls_proposal_uses_supplied_working_weights_function():
 
     assert jnp.allclose(info.working_weights(state), weights)
     assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("term", list(_structured_term_class_examples()))
+def test_iwls_proposal_from_term_extracts_geometry_from_supported_terms(term):
+    model = _model_for_term(term)
+
+    proposal = IWLSProposal.from_term(term, GaussianIWLS.scale())
+
+    assert proposal.basis_name == term.basis.name
+    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.penalty is term.basis.penalty.value
+    assert proposal.model is model
+    assert proposal.scale_factored is False
+
+
+def test_iwls_proposal_from_term_rejects_terms_without_model():
+    term, _ = _term_and_scale()
+
+    with pytest.raises(ValueError, match="attached to a model"):
+        IWLSProposal.from_term(term, GaussianIWLS.scale())
+
+
+def test_gaussian_iwls_proposals_can_be_constructed_from_term():
+    term, model = _term_model()
+
+    loc_proposal = GaussianLocIWLSProposal.from_term(term, scale_name="obs_scale")
+    scale_proposal = GaussianScaleIWLSProposal.from_term(term)
+
+    assert loc_proposal.basis_name == term.basis.name
+    assert loc_proposal.smooth_name == term.name
+    assert loc_proposal.smooth_scale_name == term.scale.name
+    assert loc_proposal.scale_name == "obs_scale"
+    assert loc_proposal.model is model
+    assert loc_proposal.n == term.value.shape[0]
+
+    assert scale_proposal.basis_name == term.basis.name
+    assert scale_proposal.smooth_name == term.name
+    assert scale_proposal.smooth_scale_name == term.scale.name
+    assert scale_proposal.model is model
+    assert scale_proposal.n == term.value.shape[0]
 
 
 def test_iwls_proposal_kernel_factory_uses_bound_proposal():
