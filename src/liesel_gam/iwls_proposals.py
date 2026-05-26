@@ -9,7 +9,6 @@ structured additive terms.
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from functools import partial
 
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -37,57 +36,60 @@ def _raise_if_scale_factored(term: StrctTerm) -> None:
         )
 
 
-def gaussian_loc_working_weights(
-    model: lsl.Model | ModelInterface,
-    model_state: ModelState,
-    *,
-    scale_name: str = "scale",
-) -> Array:
+class GaussianIWLS:
     """
-    Compute Gaussian location working weights.
+    Working-weight factories for Gaussian IWLS proposals.
 
-    Parameters
-    ----------
-    model
-        Liesel model or model interface used to extract the observation scale.
-    model_state
-        Current model state.
-    scale_name
-        Name of the model variable containing the Gaussian observation scale.
-
-    Returns
-    -------
-    jax.Array
-        Scalar or observation-wise weights ``1 / scale**2``.
+    The static methods return functions with the signature expected by
+    :class:`.IWLSCholInfo`.
     """
-    pos = model.extract_position([scale_name], model_state)
-    scale = pos[scale_name]
-    eps = jnp.sqrt(jnp.finfo(jnp.asarray(scale).dtype).eps)
-    return 1 / (jnp.clip(scale, min=eps) ** 2)
 
+    @staticmethod
+    def loc(scale_name: str = "scale") -> WorkingWeightsFn:
+        """
+        Return working weights for Gaussian location terms.
 
-def gaussian_scale_working_weights(
-    model: lsl.Model | ModelInterface,
-    model_state: ModelState,
-) -> Array:
-    """
-    Return the constant Gaussian scale working weight.
+        Parameters
+        ----------
+        scale_name
+            Name of the model variable containing the Gaussian observation scale.
 
-    Parameters
-    ----------
-    model
-        Liesel model or model interface. The value is accepted for API symmetry
-        with :func:`gaussian_loc_working_weights` and is not used.
-    model_state
-        Current model state. The value is accepted for API symmetry with
-        :func:`gaussian_loc_working_weights` and is not used.
+        Returns
+        -------
+        callable
+            Function that computes scalar or observation-wise weights
+            ``1 / scale**2`` from a model and model state.
+        """
 
-    Returns
-    -------
-    jax.Array
-        Scalar weight with value ``2.0``.
-    """
-    return jnp.array(2.0)
+        def working_weights(
+            model: lsl.Model | ModelInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([scale_name], model_state)
+            scale = pos[scale_name]
+            eps = jnp.sqrt(jnp.finfo(jnp.asarray(scale).dtype).eps)
+            return 1 / (jnp.clip(scale, min=eps) ** 2)
+
+        return working_weights
+
+    @staticmethod
+    def scale() -> WorkingWeightsFn:
+        """
+        Return working weights for Gaussian scale terms.
+
+        Returns
+        -------
+        callable
+            Function that returns the constant scalar weight ``2.0``.
+        """
+
+        def working_weights(
+            model: lsl.Model | ModelInterface,
+            model_state: ModelState,
+        ) -> Array:
+            return jnp.array(2.0)
+
+        return working_weights
 
 
 def gaussian_iwls_spec_loc(
@@ -431,9 +433,7 @@ class GaussianLocCholInfo(IWLSCholInfo):
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
-            working_weights_fn=partial(
-                gaussian_loc_working_weights, scale_name=scale_name
-            ),
+            working_weights_fn=GaussianIWLS.loc(scale_name=scale_name),
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name
@@ -487,7 +487,7 @@ class GaussianScaleCholInfo(IWLSCholInfo):
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
-            working_weights_fn=gaussian_scale_working_weights,
+            working_weights_fn=GaussianIWLS.scale(),
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name

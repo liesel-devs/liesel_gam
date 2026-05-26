@@ -6,6 +6,7 @@ import pytest
 
 from liesel_gam.basis import Basis
 from liesel_gam.iwls_proposals import (
+    GaussianIWLS,
     GaussianLocCholInfo,
     GaussianScaleCholInfo,
     IWLSCholInfo,
@@ -13,8 +14,6 @@ from liesel_gam.iwls_proposals import (
     apply_gaussian_iwls_spec_scale,
     gaussian_iwls_spec_loc,
     gaussian_iwls_spec_scale,
-    gaussian_loc_working_weights,
-    gaussian_scale_working_weights,
 )
 from liesel_gam.predictor import AdditivePredictor
 from liesel_gam.term import StrctTerm
@@ -117,13 +116,13 @@ def test_loc_working_weights_clip_observation_scale_at_machine_epsilon():
     assert jnp.allclose(actual, expected)
 
 
-def test_gaussian_loc_working_weights_clip_observation_scale_at_machine_epsilon():
+def test_gaussian_iwls_loc_factory_clips_observation_scale_at_machine_epsilon():
     state = {"obs_scale": jnp.array([0.0, 2.0], dtype=jnp.float32)}
 
     eps = jnp.sqrt(jnp.finfo(jnp.float32).eps)
     expected = 1.0 / jnp.clip(state["obs_scale"], min=eps) ** 2
 
-    actual = gaussian_loc_working_weights(DictModel(), state, scale_name="obs_scale")
+    actual = GaussianIWLS.loc(scale_name="obs_scale")(DictModel(), state)
 
     assert jnp.all(jnp.isfinite(actual))
     assert jnp.allclose(actual, expected)
@@ -186,10 +185,10 @@ def test_scale_working_weights_are_constant_two():
     assert actual == pytest.approx(2.0)
 
 
-def test_gaussian_scale_working_weights_are_constant_two():
+def test_gaussian_iwls_scale_factory_returns_constant_two():
     _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
 
-    actual = gaussian_scale_working_weights(DictModel(), state)
+    actual = GaussianIWLS.scale()(DictModel(), state)
 
     assert actual.shape == ()
     assert actual == pytest.approx(2.0)
