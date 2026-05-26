@@ -6,7 +6,7 @@ import pytest
 
 from liesel_gam.basis import Basis
 from liesel_gam.iwls_proposals import (
-    GaussianIWLS,
+    GaussianIWLSWeights,
     GaussianLocIWLSProposal,
     GaussianScaleIWLSProposal,
     IWLSProposal,
@@ -156,13 +156,13 @@ def test_loc_working_weights_clip_observation_scale_at_machine_epsilon():
     assert jnp.allclose(actual, expected)
 
 
-def test_gaussian_iwls_loc_factory_clips_observation_scale_at_machine_epsilon():
+def test_gaussian_iwls_weights_loc_clips_observation_scale_at_machine_epsilon():
     state = {"obs_scale": jnp.array([0.0, 2.0], dtype=jnp.float32)}
 
     eps = jnp.sqrt(jnp.finfo(jnp.float32).eps)
     expected = 1.0 / jnp.clip(state["obs_scale"], min=eps) ** 2
 
-    actual = GaussianIWLS.loc(scale_name="obs_scale")(DictModel(), state)
+    actual = GaussianIWLSWeights.loc(scale_name="obs_scale")(DictModel(), state)
 
     assert jnp.all(jnp.isfinite(actual))
     assert jnp.allclose(actual, expected)
@@ -225,10 +225,10 @@ def test_scale_working_weights_are_constant_two():
     assert actual == pytest.approx(2.0)
 
 
-def test_gaussian_iwls_scale_factory_returns_constant_two():
+def test_gaussian_iwls_weights_scale_returns_constant_two():
     _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
 
-    actual = GaussianIWLS.scale()(DictModel(), state)
+    actual = GaussianIWLSWeights.scale()(DictModel(), state)
 
     assert actual.shape == ()
     assert actual == pytest.approx(2.0)
@@ -260,7 +260,7 @@ def test_iwls_proposal_uses_supplied_working_weights_function():
 def test_iwls_proposal_from_term_extracts_geometry_from_supported_terms(term):
     model = _model_for_term(term)
 
-    proposal = IWLSProposal.from_term(term, GaussianIWLS.scale())
+    proposal = IWLSProposal.from_term(term, GaussianIWLSWeights.scale())
 
     assert proposal.basis_name == term.basis.name
     assert proposal.smooth_scale_name == term.scale.name
@@ -273,7 +273,7 @@ def test_iwls_proposal_from_term_rejects_terms_without_model():
     term, _ = _term_and_scale()
 
     with pytest.raises(ValueError, match="attached to a model"):
-        IWLSProposal.from_term(term, GaussianIWLS.scale())
+        IWLSProposal.from_term(term, GaussianIWLSWeights.scale())
 
 
 def test_gaussian_iwls_proposals_can_be_constructed_from_term():

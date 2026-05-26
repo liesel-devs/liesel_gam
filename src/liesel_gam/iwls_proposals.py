@@ -38,7 +38,7 @@ def _raise_if_scale_factored(term: StrctTerm) -> None:
         )
 
 
-class GaussianIWLS:
+class GaussianIWLSWeights:
     """
     Working-weight factories for Gaussian IWLS proposals.
 
@@ -470,7 +470,7 @@ class GaussianLocIWLSProposal(IWLSProposal):
         """
         Construct a Gaussian location IWLS proposal from a structured term.
         """
-        working_weights_fn = working_weights_fn or GaussianIWLS.loc(
+        working_weights_fn = working_weights_fn or GaussianIWLSWeights.loc(
             scale_name=scale_name
         )
         base = IWLSProposal.from_term(term, working_weights_fn)
@@ -504,7 +504,7 @@ class GaussianLocIWLSProposal(IWLSProposal):
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
-            working_weights_fn=GaussianIWLS.loc(scale_name=scale_name),
+            working_weights_fn=GaussianIWLSWeights.loc(scale_name=scale_name),
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name
@@ -549,7 +549,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         """
         Construct a Gaussian scale IWLS proposal from a structured term.
         """
-        working_weights_fn = working_weights_fn or GaussianIWLS.scale()
+        working_weights_fn = working_weights_fn or GaussianIWLSWeights.scale()
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
             basis_name=base.basis_name,
@@ -579,7 +579,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
-            working_weights_fn=GaussianIWLS.scale(),
+            working_weights_fn=GaussianIWLSWeights.scale(),
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name
@@ -587,6 +587,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
 
 
 # Backward-compatible aliases for the original Cholesky-focused names.
+GaussianIWLS = GaussianIWLSWeights
 IWLSCholInfo = IWLSProposal
 GaussianLocCholInfo = GaussianLocIWLSProposal
 GaussianScaleCholInfo = GaussianScaleIWLSProposal
