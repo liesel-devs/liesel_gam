@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 
 WorkingWeightsFn = Callable[[lsl.Model | ModelInterface, ModelState], ArrayLike]
 IWLSProposalTerm = StrctTerm | RITerm | MRFTerm | StrctLinTerm
+_CONSTANT_WORKING_WEIGHTS_ATTR = "_liesel_gam_constant_working_weights"
+
+
+def _mark_constant_working_weights(
+    working_weights_fn: WorkingWeightsFn,
+) -> WorkingWeightsFn:
+    """
+    Mark a working-weights function as coming from IWLSWeights.constant.
+    """
+    setattr(working_weights_fn, _CONSTANT_WORKING_WEIGHTS_ATTR, True)
+    return working_weights_fn
+
+
+def _uses_constant_working_weights(working_weights_fn: WorkingWeightsFn) -> bool:
+    """
+    Check whether a working-weights function comes from IWLSWeights.constant.
+    """
+    return bool(getattr(working_weights_fn, _CONSTANT_WORKING_WEIGHTS_ATTR, False))
 
 
 def _raise_if_scale_factored(term: IWLSProposalTerm) -> None:
@@ -69,7 +87,7 @@ class IWLSWeights:
         ) -> Array:
             return jnp.asarray(value)
 
-        return working_weights
+        return _mark_constant_working_weights(working_weights)
 
     @staticmethod
     def gaussian_loc(scale_name: str = "scale") -> WorkingWeightsFn:
@@ -153,8 +171,11 @@ def iwls_spec(
         model and model state. Defaults to :meth:`IWLSWeights.constant`.
     **kwargs
         Additional keyword arguments forwarded to
-        :class:`liesel.goose.IWLSKernel`. These values override the defaults
-        ``da_tune_step_size=False`` and ``initial_step_size=1.0``.
+        :class:`liesel.goose.IWLSKernel`. The step-size defaults depend on the
+        working weights: weights created by :meth:`IWLSWeights.constant` inherit
+        the defaults of :class:`liesel.goose.IWLSKernel`; other weights use
+        ``da_tune_step_size=False`` and ``initial_step_size=1.0``. All of these
+        values can be overridden.
 
     Returns
     -------
@@ -468,15 +489,23 @@ class IWLSProposal:
         callable
             Function that takes ``position_keys`` and keyword arguments for
             :class:`liesel.goose.IWLSKernel`, and returns an IWLS kernel using
-            this proposal object's :meth:`chol_info` method.
+            this proposal object's :meth:`chol_info` method. For constant
+            working weights, the returned factory inherits the step-size defaults
+            of :class:`liesel.goose.IWLSKernel`; otherwise, it defaults to an
+            untuned step size of ``1.0``.
         """
 
         def init_iwls_kernel(position_keys, **kwargs) -> gs.IWLSKernel:
-            kernel_kwargs: dict[str, Any] = {
-                "da_tune_step_size": False,
-                "initial_step_size": 1.0,
-                "chol_info_fn": self.chol_info,
-            }
+            kernel_kwargs: dict[str, Any] = {"chol_info_fn": self.chol_info}
+
+            if not _uses_constant_working_weights(self.working_weights_fn):
+                kernel_kwargs["da_tune_step_size"] = False
+                kernel_kwargs["initial_step_size"] = 1.0
+
+            tune_step_size = kwargs.get("da_tune_step_size", False)
+            if tune_step_size and "initial_step_size" not in kwargs:
+                kernel_kwargs.pop("initial_step_size", None)
+
             kernel_kwargs |= kwargs
 
             return gs.IWLSKernel(position_keys, **kernel_kwargs)

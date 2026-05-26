@@ -58,6 +58,10 @@ def _expected_precision(Z, penalty, weights, smooth_scale):
     return P + jitter
 
 
+def _iwls_kernel_default_initial_step_size():
+    return gs.IWLSKernel(["coef"]).initial_step_size
+
+
 def _loc_info(penalty, scale_factored=False):
     return GaussianLocIWLSProposal(
         basis_name="B",
@@ -385,6 +389,47 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
     )
 
 
+def test_iwls_proposal_kernel_factory_tunes_step_size_for_constant_weights():
+    Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
+    proposal = IWLSProposal(
+        basis_name="B",
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=DictModel(),
+        working_weights_fn=IWLSWeights.constant(),
+    )
+
+    kernel = proposal.kernel_factory()(["coef"], fallback_chol_info=None)
+
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
+    assert kernel.fallback_chol_info is None
+    assert jnp.allclose(
+        kernel.chol_info_fn(state),
+        jnp.linalg.cholesky(_expected_precision(Z, penalty, 1.0, state["tau"])),
+    )
+
+
+def test_iwls_proposal_kernel_factory_uses_iwls_step_default_when_tuning_requested():
+    _, penalty, _ = _state(jnp.array(2.0, dtype=jnp.float32))
+    proposal = IWLSProposal(
+        basis_name="B",
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=DictModel(),
+        working_weights_fn=IWLSWeights.gaussian_scale(),
+    )
+
+    kernel = proposal.kernel_factory()(["coef"], da_tune_step_size=True)
+
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
+
+
 def test_scale_precision_matches_weighted_crossproduct():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     info = _scale_info(penalty)
@@ -414,7 +459,7 @@ def test_scale_chol_info_rejects_scale_factored():
         _scale_info(penalty, scale_factored=True)
 
 
-def test_iwls_spec_builds_untuned_kernel_with_constant_unit_weights():
+def test_iwls_spec_builds_tuned_kernel_with_constant_unit_weights():
     term, model = _term_model()
 
     spec = iwls_spec(term, fallback_chol_info=None)
@@ -425,8 +470,10 @@ def test_iwls_spec_builds_untuned_kernel_with_constant_unit_weights():
     assert spec.kernel_kwargs == {"term": term}
     assert isinstance(kernel, gs.IWLSKernel)
     assert kernel.position_keys == (term.coef.name,)
-    assert kernel.initial_step_size == pytest.approx(1.0)
-    assert kernel.da_tune_step_size is False
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info is None
     assert isinstance(proposal, IWLSProposal)
     assert not isinstance(proposal, GaussianLocIWLSProposal | GaussianScaleIWLSProposal)
@@ -452,6 +499,20 @@ def test_iwls_spec_forwards_kernel_kwargs():
     assert kernel.initial_step_size == pytest.approx(0.25)
     assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info == "chol_of_modified_info"
+
+
+def test_iwls_spec_can_disable_step_size_tuning_for_constant_weights():
+    term, _ = _term_model()
+
+    spec = iwls_spec(
+        term,
+        initial_step_size=0.75,
+        da_tune_step_size=False,
+    )
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+
+    assert kernel.initial_step_size == pytest.approx(0.75)
+    assert kernel.da_tune_step_size is False
 
 
 def test_iwls_spec_rejects_factored_terms():
@@ -507,6 +568,22 @@ def test_gaussian_iwls_spec_loc_forwards_kernel_kwargs():
     assert kernel.fallback_chol_info == "chol_of_modified_info"
 
 
+def test_gaussian_iwls_spec_loc_uses_iwls_step_default_when_tuning_requested():
+    term, _ = _term_model()
+
+    spec = gaussian_iwls_spec_loc(
+        term,
+        scale_name="obs_scale",
+        da_tune_step_size=True,
+    )
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
+
+
 def test_gaussian_iwls_spec_loc_rejects_factored_terms():
     term, _ = _term_model(factor_scale=True)
 
@@ -559,6 +636,7 @@ def test_apply_iwls_spec_assigns_structured_terms_only():
     assert isinstance(spec, gs.MCMCSpec)
     assert getattr(offset, "inference", None) is None
     assert isinstance(kernel.chol_info_fn.__self__, IWLSProposal)
+    assert kernel.da_tune_step_size is True
     assert kernel.chol_info_fn.__self__.working_weights(model.state) == pytest.approx(
         1.0
     )
