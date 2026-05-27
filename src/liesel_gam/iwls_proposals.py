@@ -17,14 +17,14 @@ import liesel.model as lsl
 from jax import Array, grad
 from jax.flatten_util import ravel_pytree
 from jax.typing import ArrayLike
-from liesel.goose.types import ModelInterface, ModelState, Position
+from liesel.goose.types import ModelState, Position
 
 from .predictor import AdditivePredictor
 from .term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
 
 logger = logging.getLogger(__name__)
 
-WorkingWeightsFn = Callable[[lsl.Model | ModelInterface, ModelState], ArrayLike]
+WorkingWeightsFn = Callable[[lsl.Model | gs.LieselInterface, ModelState], ArrayLike]
 IWLSProposalTerm = StrctTerm | RITerm | MRFTerm | StrctLinTerm
 _CONSTANT_WORKING_WEIGHTS_ATTR = "_liesel_gam_constant_working_weights"
 
@@ -83,7 +83,7 @@ class IWLSWeights:
         """
 
         def working_weights(
-            model: lsl.Model | ModelInterface,
+            model: lsl.Model | gs.LieselInterface,
             model_state: ModelState,
         ) -> Array:
             return jnp.asarray(value)
@@ -122,19 +122,19 @@ class IWLSWeights:
         """
 
         def working_weights(
-            model: lsl.Model | ModelInterface,
+            model: lsl.Model | gs.LieselInterface,
             model_state: ModelState,
         ) -> Array:
             pos = model.extract_position([eta_name], model_state)
             eta = pos[eta_name]
             flat_eta, unravel_fn = ravel_pytree(eta)
 
-            def flat_log_prob_fn(flat_eta: Array) -> Array:
+            def flat_log_lik_fn(flat_eta: Array) -> Array:
                 eta_position = Position({eta_name: unravel_fn(flat_eta)})
                 updated_state = model.update_state(eta_position, model_state)
-                return jnp.asarray(model.log_prob(updated_state))
+                return jnp.asarray(updated_state["_model_log_lik"])
 
-            flat_score = grad(flat_log_prob_fn)(flat_eta)
+            flat_score = grad(flat_log_lik_fn)(flat_eta)
             score = unravel_fn(flat_score)
             weights = jnp.square(score)
 
@@ -163,7 +163,7 @@ class IWLSWeights:
         """
 
         def working_weights(
-            model: lsl.Model | ModelInterface,
+            model: lsl.Model | gs.LieselInterface,
             model_state: ModelState,
         ) -> Array:
             pos = model.extract_position([scale_name], model_state)
@@ -185,7 +185,7 @@ class IWLSWeights:
         """
 
         def working_weights(
-            model: lsl.Model | ModelInterface,
+            model: lsl.Model | gs.LieselInterface,
             model_state: ModelState,
         ) -> Array:
             return jnp.array(2.0)
@@ -482,7 +482,7 @@ class IWLSProposal:
     basis_name: str
     smooth_scale_name: str
     penalty: ArrayLike
-    model: lsl.Model | ModelInterface
+    model: lsl.Model | gs.LieselInterface
     working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
     scale_factored: bool = field(default=False, kw_only=True)
 
@@ -699,7 +699,7 @@ class GaussianLocIWLSProposal(IWLSProposal):
         smooth_scale_name: str,
         scale_name: str,
         penalty: ArrayLike,
-        model: lsl.Model | ModelInterface,
+        model: lsl.Model | gs.LieselInterface,
         n: int,
         scale_factored: bool = False,
     ) -> None:
@@ -774,7 +774,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         smooth_name: str,
         smooth_scale_name: str,
         penalty: ArrayLike,
-        model: lsl.Model | ModelInterface,
+        model: lsl.Model | gs.LieselInterface,
         n: int,
         scale_factored: bool = False,
     ) -> None:
