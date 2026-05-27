@@ -14,10 +14,9 @@ from typing import Any, Self
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
-from jax import Array, grad
-from jax.flatten_util import ravel_pytree
+from jax import Array
 from jax.typing import ArrayLike
-from liesel.goose.types import ModelState, Position
+from liesel.goose.types import ModelState
 
 from .predictor import AdditivePredictor
 from .term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
@@ -90,60 +89,62 @@ class IWLSWeights:
 
         return _mark_constant_working_weights(working_weights)
 
-    @staticmethod
-    def score_squared(
-        eta_name: str,
-        *,
-        min_weight: float = 1e-6,
-        max_weight: float | None = None,
-    ) -> WorkingWeightsFn:
-        """
-        Return deterministic autodiff weights based on squared scores.
+    # @staticmethod
+    # def score_squared(
+    #     eta_name: str,
+    #     *,
+    #     min_weight: float = 1e-6,
+    #     max_weight: float | None = None,
+    # ) -> WorkingWeightsFn:
+    #     """
+    #     Return deterministic autodiff weights based on squared scores.
 
-        The weights are computed by differentiating the model log probability
-        with respect to the named linear predictor and squaring the resulting
-        score. This gives a positive Fisher-like proposal geometry without
-        materializing a Hessian.
+    #     The weights are computed by differentiating the model log likelihood
+    #     with respect to the named linear predictor and squaring the resulting
+    #     score. This gives a positive Fisher-like proposal geometry without
+    #     materializing a Hessian.
 
-        Parameters
-        ----------
-        eta_name
-            Name of the model variable containing the linear predictor.
-        min_weight
-            Lower clipping bound applied to the squared scores.
-        max_weight
-            Optional upper clipping bound applied to the squared scores.
+    #     Parameters
+    #     ----------
+    #     eta_name
+    #         Name of the model variable containing the linear predictor.
+    #     min_weight
+    #         Lower clipping bound applied to the squared scores.
+    #     max_weight
+    #         Optional upper clipping bound applied to the squared scores.
 
-        Returns
-        -------
-        callable
-            Function that computes scalar or observation-wise weights from a model
-            and model state.
-        """
+    #     Returns
+    #     -------
+    #     callable
+    #         Function that computes scalar or observation-wise weights from a model
+    #         and model state.
+    #     """
 
-        def working_weights(
-            model: lsl.Model | gs.LieselInterface,
-            model_state: ModelState,
-        ) -> Array:
-            pos = model.extract_position([eta_name], model_state)
-            eta = pos[eta_name]
-            flat_eta, unravel_fn = ravel_pytree(eta)
+    #     def working_weights(
+    #         model: lsl.Model | gs.LieselInterface,
+    #         model_state: ModelState,
+    #     ) -> Array:
+    #         pos = model.extract_position([eta_name], model_state)
+    #         eta = pos[eta_name]
+    #         flat_eta, unravel_fn = ravel_pytree(eta)
 
-            def flat_log_lik_fn(flat_eta: Array) -> Array:
-                eta_position = Position({eta_name: unravel_fn(flat_eta)})
-                updated_state = model.update_state(eta_position, model_state)
-                return jnp.asarray(updated_state["_model_log_lik"])
+    #         def flat_log_lik_fn(flat_eta: Array) -> Array:
+    #             eta_position = Position({eta_name: unravel_fn(flat_eta)})
+    #             updated_state = model.update_state(
+    #                 eta_position, model_state, allow_weak_vars=True
+    #             )
+    #             return jnp.asarray(updated_state["_model_log_lik"].value)
 
-            flat_score = grad(flat_log_lik_fn)(flat_eta)
-            score = unravel_fn(flat_score)
-            weights = jnp.square(score)
+    #         flat_score = grad(flat_log_lik_fn)(flat_eta)
+    #         score = unravel_fn(flat_score)
+    #         weights = jnp.square(score)
 
-            if max_weight is None:
-                return jnp.clip(weights, min=min_weight)
+    #         if max_weight is None:
+    #             return jnp.clip(weights, min=min_weight)
 
-            return jnp.clip(weights, min=min_weight, max=max_weight)
+    #         return jnp.clip(weights, min=min_weight, max=max_weight)
 
-        return working_weights
+    #     return working_weights
 
     @staticmethod
     def gaussian_loc(scale_name: str = "scale") -> WorkingWeightsFn:
