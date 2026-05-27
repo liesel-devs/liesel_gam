@@ -205,98 +205,6 @@ class GaussianIWLSWeights(IWLSWeights):
     scale = staticmethod(IWLSWeights.gaussian_scale)
 
 
-def iwls_spec(
-    term: IWLSProposalTerm,
-    working_weights_fn: WorkingWeightsFn | None = None,
-    **kwargs,
-) -> gs.MCMCSpec:
-    """
-    Create an IWLS inference specification for a structured additive term.
-
-    The returned :class:`liesel.goose.MCMCSpec` initializes an
-    :class:`liesel.goose.IWLSKernel` whose proposal precision is based on the
-    supplied working weights and on the term's structured prior penalty. If no
-    working weights are supplied, constant unit weights are used.
-
-    Parameters
-    ----------
-    term
-        Structured additive term whose coefficient variable should be sampled.
-        Scale-factored terms are currently not supported.
-    working_weights_fn
-        Function that computes scalar or observation-wise working weights from a
-        model and model state. Defaults to :meth:`IWLSWeights.constant`.
-    **kwargs
-        Additional keyword arguments forwarded to
-        :class:`liesel.goose.IWLSKernel`. The step-size defaults depend on the
-        working weights: weights created by :meth:`IWLSWeights.constant` inherit
-        the defaults of :class:`liesel.goose.IWLSKernel`; other weights use
-        ``da_tune_step_size=False`` and ``initial_step_size=1.0``. All of these
-        values can be overridden.
-
-    Returns
-    -------
-    liesel.goose.MCMCSpec
-        Inference specification for ``term.coef``.
-    """
-    _raise_if_scale_factored(term)
-    working_weights_fn = working_weights_fn or IWLSWeights.constant()
-
-    def init_iwls_kernel(position_keys, term):
-        """
-        Initialize the IWLS kernel after the term has been attached to a model.
-        """
-        _raise_if_scale_factored(term)
-        proposal = IWLSProposal.from_term(term, working_weights_fn)
-
-        return proposal.kernel_factory()(position_keys, **kwargs)
-
-    spec = gs.MCMCSpec(
-        kernel=init_iwls_kernel,
-        kernel_kwargs={"term": term},
-    )
-
-    return spec
-
-
-def apply_iwls_spec(
-    predictor: AdditivePredictor,
-    working_weights_fn: WorkingWeightsFn | None = None,
-    verbose: bool = False,
-    **kwargs,
-):
-    """
-    Assign IWLS specifications to structured predictor terms.
-
-    The function updates the ``inference`` attribute of each supported structured
-    term's coefficient variable in-place. Unsupported terms are skipped.
-
-    Parameters
-    ----------
-    predictor
-        Additive predictor whose terms should be updated.
-    working_weights_fn
-        Function that computes scalar or observation-wise working weights from a
-        model and model state. Defaults to :meth:`IWLSWeights.constant`.
-    verbose
-        If ``True``, log whether each term is updated or skipped.
-    **kwargs
-        Additional keyword arguments forwarded to :func:`iwls_spec`.
-    """
-    for term in predictor.terms.values():
-        if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
-            if verbose:
-                logger.info(f"Skipping '{term.name}', inference left unchanged.")
-            continue
-        term.coef.inference = iwls_spec(
-            term=term,
-            working_weights_fn=working_weights_fn,
-            **kwargs,
-        )
-        if verbose:
-            logger.info(f"Updating inference of '{term.name}' coefficient.")
-
-
 def gaussian_iwls_spec_loc(
     term: IWLSProposalTerm,
     scale_name: str = "scale",
@@ -509,6 +417,31 @@ class IWLSProposal:
         -------
         IWLSProposal
             Proposal object using geometry extracted from ``term``.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import liesel.model as lsl
+        >>> from liesel_gam.basis import Basis
+        >>> from liesel_gam.iwls_proposals import IWLSProposal, IWLSWeights
+        >>> from liesel_gam.term import StrctTerm
+
+        >>> x = jnp.linspace(-1.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ...     use_callback=False,
+        ... )
+        >>> scale = lsl.Var.new_param(jnp.array(1.0), name="tau")
+        >>> term = StrctTerm.f(basis, scale=scale)
+        >>> model = lsl.Model([term])
+
+        >>> proposal = IWLSProposal.from_term(term, IWLSWeights.constant())
+        >>> proposal.basis_name == term.basis.name
+        True
+        >>> proposal.chol_info(model.state).shape
+        (2, 2)
         """
         model = term.model
         if model is None:
@@ -536,6 +469,161 @@ class IWLSProposal:
             working_weights_fn=working_weights_fn,
             scale_factored=term.scale_is_factored,
         )
+
+    @staticmethod
+    def mcmc_spec(
+        term: IWLSProposalTerm,
+        working_weights_fn: WorkingWeightsFn | None = None,
+        **kwargs,
+    ) -> gs.MCMCSpec:
+        """
+        Create an IWLS inference specification for a structured additive term.
+
+        The returned :class:`liesel.goose.MCMCSpec` initializes an
+        :class:`liesel.goose.IWLSKernel` whose proposal precision is based on the
+        supplied working weights and on the term's structured prior penalty. If
+        no working weights are supplied, constant unit weights are used.
+
+        Parameters
+        ----------
+        term
+            Structured additive term whose coefficient variable should be
+            sampled. Scale-factored terms are currently not supported.
+        working_weights_fn
+            Function that computes scalar or observation-wise working weights
+            from a model and model state. Defaults to
+            :meth:`IWLSWeights.constant`.
+        **kwargs
+            Additional keyword arguments forwarded to
+            :class:`liesel.goose.IWLSKernel`. The step-size defaults depend on
+            the working weights: weights created by
+            :meth:`IWLSWeights.constant` inherit the defaults of
+            :class:`liesel.goose.IWLSKernel`; other weights use
+            ``da_tune_step_size=False`` and ``initial_step_size=1.0``. All of
+            these values can be overridden.
+
+        Returns
+        -------
+        liesel.goose.MCMCSpec
+            Inference specification for ``term.coef``.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import liesel.goose as gs
+        >>> import liesel.model as lsl
+        >>> from liesel_gam.basis import Basis
+        >>> from liesel_gam.iwls_proposals import IWLSProposal
+        >>> from liesel_gam.term import StrctTerm
+
+        >>> x = jnp.linspace(-1.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ...     use_callback=False,
+        ... )
+        >>> scale = lsl.Var.new_param(jnp.array(1.0), name="tau")
+        >>> term = StrctTerm.f(basis, scale=scale)
+        >>> model = lsl.Model([term])
+
+        >>> spec = IWLSProposal.mcmc_spec(term, fallback_chol_info=None)
+        >>> isinstance(spec, gs.MCMCSpec)
+        True
+        >>> kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+        >>> kernel.chol_info_fn(model.state).shape
+        (2, 2)
+        """
+        _raise_if_scale_factored(term)
+        working_weights_fn = working_weights_fn or IWLSWeights.constant()
+
+        def init_iwls_kernel(position_keys, term):
+            """
+            Initialize the IWLS kernel after the term has been attached to a model.
+            """
+            _raise_if_scale_factored(term)
+            proposal = IWLSProposal.from_term(term, working_weights_fn)
+
+            return proposal.kernel_factory()(position_keys, **kwargs)
+
+        spec = gs.MCMCSpec(
+            kernel=init_iwls_kernel,
+            kernel_kwargs={"term": term},
+        )
+
+        return spec
+
+    @staticmethod
+    def set_mcmc_specs(
+        predictor: AdditivePredictor,
+        working_weights_fn: WorkingWeightsFn | None = None,
+        verbose: bool = False,
+        **kwargs,
+    ) -> None:
+        """
+        Assign IWLS MCMC specifications to structured predictor terms.
+
+        The method updates the ``inference`` attribute of each supported
+        structured term's coefficient variable in-place. Unsupported terms are
+        skipped.
+
+        Parameters
+        ----------
+        predictor
+            Additive predictor whose terms should be updated.
+        working_weights_fn
+            Function that computes scalar or observation-wise working weights
+            from a model and model state. Defaults to
+            :meth:`IWLSWeights.constant`.
+        verbose
+            If ``True``, log whether each term is updated or skipped.
+        **kwargs
+            Additional keyword arguments forwarded to
+            :meth:`IWLSProposal.mcmc_spec`.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import liesel.goose as gs
+        >>> import liesel.model as lsl
+        >>> from liesel_gam.basis import Basis
+        >>> from liesel_gam.iwls_proposals import IWLSProposal
+        >>> from liesel_gam.predictor import AdditivePredictor
+        >>> from liesel_gam.term import StrctTerm
+
+        >>> x = jnp.linspace(-1.0, 1.0, 4)
+        >>> basis = Basis(
+        ...     jnp.column_stack([jnp.ones_like(x), x]),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ...     use_callback=False,
+        ... )
+        >>> scale = lsl.Var.new_param(jnp.array(1.0), name="tau")
+        >>> term = StrctTerm.f(basis, scale=scale)
+        >>> predictor = AdditivePredictor("eta", intercept=False)
+        >>> predictor += term
+
+        >>> IWLSProposal.set_mcmc_specs(predictor, fallback_chol_info=None)
+        >>> isinstance(term.coef.inference, gs.MCMCSpec)
+        True
+        >>> model = lsl.Model([predictor])
+        >>> spec = term.coef.inference
+        >>> kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+        >>> kernel.chol_info_fn(model.state).shape
+        (2, 2)
+        """
+        for term in predictor.terms.values():
+            if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+                if verbose:
+                    logger.info(f"Skipping '{term.name}', inference left unchanged.")
+                continue
+            term.coef.inference = IWLSProposal.mcmc_spec(
+                term=term,
+                working_weights_fn=working_weights_fn,
+                **kwargs,
+            )
+            if verbose:
+                logger.info(f"Updating inference of '{term.name}' coefficient.")
 
     def kernel_factory(self) -> Callable[..., gs.IWLSKernel]:
         """
@@ -801,3 +889,5 @@ IWLS = IWLSWeights
 IWLSCholInfo = IWLSProposal
 GaussianLocCholInfo = GaussianLocIWLSProposal
 GaussianScaleCholInfo = GaussianScaleIWLSProposal
+iwls_spec = IWLSProposal.mcmc_spec
+apply_iwls_spec = IWLSProposal.set_mcmc_specs

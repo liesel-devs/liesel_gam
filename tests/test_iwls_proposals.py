@@ -14,10 +14,8 @@ from liesel_gam.iwls_proposals import (
     IWLSWeights,
     apply_gaussian_iwls_spec_loc,
     apply_gaussian_iwls_spec_scale,
-    apply_iwls_spec,
     gaussian_iwls_spec_loc,
     gaussian_iwls_spec_scale,
-    iwls_spec,
 )
 from liesel_gam.predictor import AdditivePredictor
 from liesel_gam.term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
@@ -610,7 +608,7 @@ def test_scale_chol_info_rejects_scale_factored():
 def test_iwls_spec_builds_tuned_kernel_with_constant_unit_weights():
     term, model = _term_model()
 
-    spec = iwls_spec(term, fallback_chol_info=None)
+    spec = IWLSProposal.mcmc_spec(term, fallback_chol_info=None)
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
     proposal = kernel.chol_info_fn.__self__
 
@@ -636,7 +634,7 @@ def test_iwls_spec_builds_tuned_kernel_with_constant_unit_weights():
 def test_iwls_spec_forwards_kernel_kwargs():
     term, _ = _term_model()
 
-    spec = iwls_spec(
+    spec = IWLSProposal.mcmc_spec(
         term,
         initial_step_size=0.25,
         da_tune_step_size=True,
@@ -652,7 +650,7 @@ def test_iwls_spec_forwards_kernel_kwargs():
 def test_iwls_spec_can_disable_step_size_tuning_for_constant_weights():
     term, _ = _term_model()
 
-    spec = iwls_spec(
+    spec = IWLSProposal.mcmc_spec(
         term,
         initial_step_size=0.75,
         da_tune_step_size=False,
@@ -667,7 +665,7 @@ def test_iwls_spec_rejects_factored_terms():
     term, _ = _term_model(factor_scale=True)
 
     with pytest.raises(ValueError, match="scale-factored"):
-        iwls_spec(term)
+        IWLSProposal.mcmc_spec(term)
 
 
 def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
@@ -770,13 +768,13 @@ def test_gaussian_iwls_spec_scale_rejects_factored_terms():
         gaussian_iwls_spec_scale(term)
 
 
-def test_apply_iwls_spec_assigns_structured_terms_only():
+def test_set_mcmc_specs_assigns_structured_terms_only():
     term, obs_scale = _term_and_scale()
     offset = lsl.Var.new_value(jnp.ones_like(term.value), name="offset")
     predictor = AdditivePredictor("loc", intercept=False)
     predictor += term, offset
 
-    apply_iwls_spec(predictor, fallback_chol_info=None)
+    IWLSProposal.set_mcmc_specs(predictor, fallback_chol_info=None)
     model = lsl.Model([predictor, obs_scale])
     spec = term.coef.inference
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
@@ -791,13 +789,13 @@ def test_apply_iwls_spec_assigns_structured_terms_only():
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
 
 
-def test_apply_iwls_spec_rejects_factored_terms():
+def test_set_mcmc_specs_rejects_factored_terms():
     term, _ = _term_and_scale(factor_scale=True)
     predictor = AdditivePredictor("loc", intercept=False)
     predictor += term
 
     with pytest.raises(ValueError, match="scale-factored"):
-        apply_iwls_spec(predictor)
+        IWLSProposal.set_mcmc_specs(predictor)
 
 
 def test_apply_gaussian_iwls_spec_loc_assigns_structured_terms_only():
