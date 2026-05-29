@@ -11,8 +11,8 @@ dependencies = [
     "plotnine>=0.14.5"
 ]
 authors = [
-    { name = "Johannes Brachem" }, 
-    { name = "Gianmarco Callegher" }, 
+    { name = "Johannes Brachem" },
+    { name = "Gianmarco Callegher" },
     { name = "Paul Wiemann" }
 ]
 keywords = ["statistics", "machine-learning"]
