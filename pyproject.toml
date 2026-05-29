@@ -10,7 +10,11 @@ dependencies = [
     "smoothcon>=0.0.10",
     "plotnine>=0.14.5"
 ]
-authors = [{ name = "Johannes Brachem" }]
+authors = [
+    { name = "Johannes Brachem" }, 
+    { name = "Gianmarco Callegher" }, 
+    { name = "Paul Wiemann" }
+]
 keywords = ["statistics", "machine-learning"]
 classifiers = [
     "License :: OSI Approved :: MIT License",

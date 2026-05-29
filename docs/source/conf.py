@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 project = "liesel-gam"
-copyright = "2025, Liesel Developers"
+copyright = "2025-2026, Liesel Developers"
 author = "Liesel Developers"
 
 
