@@ -237,7 +237,15 @@ class TestBasis:
         basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=None)
         assert basis.penalty is None
 
-        with pytest.raises(ValueError):
+        basis.update_penalty(jnp.eye(1))
+
+        basis.update_penalty(jnp.eye(10))
+        assert jnp.allclose(basis.penalty.value, jnp.eye(10))
+
+        basis = gam.Basis(x, basis_fn=lambda x: jnp.expand_dims(x**2, 0), penalty=None)
+        assert basis.penalty is None
+
+        with pytest.raises(ValueError, match="columns, replacement"):
             basis.update_penalty(jnp.eye(1))
 
         basis.update_penalty(jnp.eye(10))
