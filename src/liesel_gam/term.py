@@ -2075,6 +2075,12 @@ class StrctTensorProdTerm(UserVar):
             term.name = names_prefix + f"{tx_name}({term.xnames})"
             term.coef.name = names_prefix + "$" + coef_name + r"_{" + term.name + r"}$"
             term.basis.name = names_prefix + basis_name + "(" + term.xnames + ")"
+            term.basis.value_node.name = (
+                names_prefix + basis_name + "(" + term.xnames + ")" + "_value_node"
+            )
+            term.basis.var_value_node.name = (
+                names_prefix + basis_name + "(" + term.xnames + ")" + "_var_value_node"
+            )
 
             interactions.append(term)
 
