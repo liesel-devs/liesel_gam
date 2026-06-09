@@ -3387,6 +3387,18 @@ class TermBuilder:
         )
         term.name = term_name
 
+        for subterms_order, subterms in term.terms_by_order.items():
+            if subterms_order == 1:
+                continue
+            for this_subterm in subterms:
+                this_subterm.basis.name = self.names.create(this_subterm.basis.name)
+                this_subterm.basis.value_node.name = self.names.create(
+                    this_subterm.basis.value_node.name
+                )
+                this_subterm.basis.var_value_node.name = self.names.create(
+                    this_subterm.basis.var_value_node.name
+                )
+
         first_order_bases = []
         for term_ in term.terms_by_order[1]:
             first_order_bases.append(term_.basis)
