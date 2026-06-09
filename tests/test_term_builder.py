@@ -749,6 +749,16 @@ class TestTPTerm:
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
+        scale_inference = gs.MCMCSpec(gs.HMCKernel)
+        ta = tb.tf(psy, psx, common_scale=scale_wb(inference=scale_inference))
+        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
+        for i in range(len(ta.scales)):
+            assert ta.scales[i].value_node[0].strong
+            assert ta.scales[i].inference is None
+            assert ta.scales[i].value_node[0].inference is scale_inference
+            if i > 0:
+                assert ta.scales[i] is ta.scales[i - 1]
+
     def test_intentional_inference(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         psy = tb.ps("y", k=10)
