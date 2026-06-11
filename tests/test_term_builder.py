@@ -68,6 +68,37 @@ class TestTermBuilder:
         sx = tb.ps("x", k=10, prefix="test.")
         assert sx.name == "test.ps(x)"
 
+        registry = gb.PandasRegistry(columb, na_action="drop")
+        tb = gb.TermBuilder(registry)
+        sx = tb.kriging("x", "y", k=10, prefix="test.")
+        assert sx.name == "test.kriging(x,y)"
+
+        registry = gb.PandasRegistry(columb, na_action="drop")
+        tb = gb.TermBuilder(registry, prefix_names_by="test.")
+        sx1 = tb.kriging("x", "y", k=10)
+        assert sx1.name == "test.kriging(x,y)"
+
+        sx2 = tb.kriging("x", "y", k=10)
+        assert sx2.name == "test.kriging(x,y)1"
+
+        lsl.Model([sx1, sx2])
+
+    def test_supply_variables(self, columb) -> None:
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        x = registry.get_numeric_obs("x")
+        y = registry.get_numeric_obs("y")
+        tb = gb.TermBuilder(registry, prefix_names_by="test.")
+
+        sx1 = tb.kriging(x, y, k=10)
+
+        assert sx1.name == "test.kriging(test.[x,y])"
+
+        sx2 = tb.kriging(x, y, k=10)
+        assert sx2.name == "test.kriging(test.[x,y]1)"
+
+        lsl.Model([sx1, sx2])
+
     def test_init_scale(self, columb) -> None:
         tb = gb.TermBuilder.from_df(columb, prefix_names_by="test.")
         sx = tb.ps("x", k=10, scale=lsl.Var(1.0))

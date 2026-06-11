@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from math import ceil
-from typing import Any, Literal, get_args
+from typing import Any, Literal, cast, get_args
 
 import formulaic as fo
 import jax
@@ -254,6 +254,49 @@ class BasisBuilder:
             raise TypeError(f"Type {type(x)} not supported for 'x'.")
 
         return x_var, x_array
+
+    def _get_matrix(
+        self, *x: str | lsl.Var, cache: bool = False
+    ) -> lsl.Calc | lsl.TransientCalc:
+        """Get a calculation node that column-stacks named or supplied variables.
+
+        All inputs must be either names of numeric registry variables or named
+        ``lsl.Var`` objects. Registry-backed matrices are cached by the registry;
+        matrices from supplied variables are created directly.
+        """
+        all_str = all([isinstance(x_, str) for x_ in x])
+        all_var = all([isinstance(x_, lsl.Var) for x_ in x])
+
+        if all_str:
+            names = cast(tuple[str, ...], x)
+            calc: lsl.Calc | lsl.TransientCalc = self.registry.get_many_numeric_obs(
+                *names, cache=cache
+            )
+            return calc
+
+        if not all_var:
+            raise ValueError(
+                f"Must supply either only variables or only names, got {x}."
+            )
+
+        vars_ = cast(tuple[lsl.Var, ...], x)
+        xname = ",".join([v.name for v in vars_])
+        xname = self.names.create(f"[{xname}]")
+
+        if not cache:
+            calc = lsl.TransientCalc(
+                lambda *args: jnp.vstack(args).T,
+                *vars_,
+                _name=xname,
+            )
+        else:
+            calc = lsl.Calc(
+                lambda *args: jnp.vstack(args).T,
+                *vars_,
+                _name=xname,
+            )
+
+        return calc
 
     def ps(
         self,
@@ -924,8 +967,8 @@ class BasisBuilder:
 
         obs_vars = {}
         for xname in x:
-            xvar: lsl.Var | lsl.TransientCalc = self._get_var_and_value(xname)[0]
-            obs_vars[xvar.name] = xvar
+            obs_var = self._get_var_and_value(xname)[0]
+            obs_vars[obs_var.name] = obs_var
 
         obs_values = {k: np.asarray(v.value) for k, v in obs_vars.items()}
         obs_names = [v.name for v in obs_vars.values()]
@@ -942,13 +985,8 @@ class BasisBuilder:
         )
 
         xname = ",".join([v.name for v in obs_vars.values()])
-
         if len(obs_vars) > 1:
-            xvar = lsl.TransientCalc(  # for memory-efficiency
-                lambda *args: jnp.vstack(args).T,
-                *list(obs_vars.values()),
-                _name=self.names.create(xname),
-            )
+            xvar: lsl.Calc | lsl.TransientCalc | lsl.Var = self._get_matrix(*x)
         else:
             xvar = obs_vars[xname]
 
