@@ -2921,10 +2921,15 @@ class TermBuilder:
         coef_name = self.names.beta(fname)
 
         if common_scale is not None and not isinstance(common_scale, float):
-            common_scale = self.init_scale(common_scale, fname)
-            _biject_and_replace_star_gibbs_with(
-                common_scale, self._get_inference(scales_inference)
-            )
+            if isinstance(common_scale, VarIGPrior):
+                common_scale = self.init_scale(common_scale, fname)
+                _biject_and_replace_star_gibbs_with(
+                    common_scale,
+                    self._get_inference(scales_inference),
+                    override_none_inference=True,
+                )
+            else:
+                common_scale = self.init_scale(common_scale, fname)
         elif common_scale is not None:
             common_scale = self.init_scale(common_scale, fname)
 
@@ -3356,10 +3361,15 @@ class TermBuilder:
         fname = term_name
 
         if common_scale is not None and not isinstance(common_scale, float):
-            common_scale = self.init_scale(common_scale, fname)
-            _biject_and_replace_star_gibbs_with(
-                common_scale, self._get_inference(scales_inference)
-            )
+            if isinstance(common_scale, VarIGPrior):
+                common_scale = self.init_scale(common_scale, fname)
+                _biject_and_replace_star_gibbs_with(
+                    common_scale,
+                    self._get_inference(scales_inference),
+                    override_none_inference=True,
+                )
+            else:
+                common_scale = self.init_scale(common_scale, fname)
         elif common_scale is not None:
             common_scale = self.init_scale(common_scale, fname)
 
@@ -3448,7 +3458,9 @@ def _find_parameter(var: lsl.Var) -> lsl.Var:
 
 
 def _biject_and_replace_star_gibbs_with(
-    var: lsl.Var, inference: InferenceTypes | None
+    var: lsl.Var,
+    inference: InferenceTypes | None,
+    override_none_inference: bool = False,
 ) -> lsl.Var:
     """
     If var is a ScaleIG, it is the square root of a variance
@@ -3457,20 +3469,24 @@ def _biject_and_replace_star_gibbs_with(
     space bijector and sets the inference to the 'inference' supplied to the function.
     """
     param = _find_parameter(var)
-    if param.inference is not None:
-        if isinstance(param.inference, gs.MCMCSpec):
-            try:
-                is_star_gibbs = param.inference.kernel.__name__ == "StarVarianceGibbs"  # type: ignore
-                if not is_star_gibbs:
-                    return var
-            except AttributeError:
-                # in this case, we assume that the inference has been set intentionally
-                # so we don't change anything
+
+    if param.inference is None and not override_none_inference:
+        return var
+
+    if isinstance(param.inference, gs.MCMCSpec):
+        try:
+            is_star_gibbs = param.inference.kernel.__name__ == "StarVarianceGibbs"  # type: ignore
+            if not is_star_gibbs:
                 return var
-        else:
+        except AttributeError:
             # in this case, we assume that the inference has been set intentionally
             # so we don't change anything
             return var
+    elif param.inference is not None:
+        # in this case, we assume that the inference has been set intentionally
+        # so we don't change anything
+        return var
+
     if param.name:
         trafo_name = "ln(" + param.name + ")"
     else:
@@ -3478,6 +3494,7 @@ def _biject_and_replace_star_gibbs_with(
     transformed = param.transform(
         bijector=tfb.Exp(), inference=inference, name=trafo_name
     )
+    transformed.update()
     if trafo_name is None:
         transformed.name = ""
     return var

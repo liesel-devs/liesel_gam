@@ -66,6 +66,7 @@ class PandasRegistry:
         self.na_action = na_action
         self.data = self._validate_data(data)
         self._var_cache: dict[str, lsl.Var] = {}
+        self._matrix_cache: dict[str, lsl.Calc | lsl.TransientCalc] = {}
         self._derived_cache: dict[str, lsl.Var] = {}
         self.prefix = prefix_names_by
 
@@ -209,6 +210,45 @@ class PandasRegistry:
             self._var_cache[name] = var
 
         return var
+
+    def get_many_numeric_obs(
+        self, *names: str, cache: bool = False
+    ) -> lsl.Calc | lsl.TransientCalc:
+        """Get a calculation node that column-stacks several numeric variables.
+
+        Args:
+            *names: Names of numeric variables to retrieve from the registry.
+            cache: If ``True``, return a persistent ``Calc`` node. If ``False``,
+                return a memory-saving ``TransientCalc`` node.
+
+        Returns:
+            A calculation node with one column per requested variable.
+
+        Raises:
+            TypeError: If any requested variable is not numeric.
+            KeyError: If any requested variable is not present in the data.
+        """
+        name = ",".join([self.prefix + name_ for name_ in names])
+        if name in self._matrix_cache:
+            return self._matrix_cache[name]
+
+        vars_ = [self.get_numeric_obs(name_) for name_ in names]
+
+        if not cache:
+            calc: lsl.Calc | lsl.TransientCalc = lsl.TransientCalc(
+                lambda *args: jnp.vstack(args).T,
+                *vars_,
+                _name=name,
+            )
+        else:
+            calc = lsl.Calc(
+                lambda *args: jnp.vstack(args).T,
+                *vars_,
+                _name=name,
+            )
+
+        self._matrix_cache[name] = calc
+        return calc
 
     def _make_derived_var(
         self, base_var: lsl.Var, transform: Callable, var_name: str | None
