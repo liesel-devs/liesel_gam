@@ -258,7 +258,8 @@ class TestSmoothTerm:
             gam.StrctTerm(basis, penalty=None, scale="test")
 
         with pytest.raises(TypeError, match="Unexpected type for scale"):
-            gam.StrctTerm(basis, penalty=None, scale=lsl.Var.new_param("test"))
+            scale = lsl.Var.new_param("test", convert=lambda x: x)
+            gam.StrctTerm(basis, penalty=None, scale=scale)
 
 
 class TestNonCentering:
