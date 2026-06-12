@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 from formulaic.errors import (
-    FactorEvaluationError,
     FormulaParsingError,
     FormulaSyntaxError,
 )
