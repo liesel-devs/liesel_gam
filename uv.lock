@@ -996,6 +996,7 @@ source = { editable = "." }
 dependencies = [
     { name = "formulaic" },
     { name = "liesel" },
+    { name = "matplotlib" },
     { name = "plotnine" },
     { name = "smoothcon" },
 ]
@@ -1022,6 +1023,7 @@ dev = [
 requires-dist = [
     { name = "formulaic", specifier = ">=1.2.1" },
     { name = "liesel", specifier = ">=0.4.2" },
+    { name = "matplotlib", specifier = "<3.11" },
     { name = "plotnine", specifier = ">=0.14.5" },
     { name = "smoothcon", specifier = ">=0.0.10" },
 ]

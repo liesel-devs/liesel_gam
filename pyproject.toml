@@ -7,10 +7,17 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "formulaic>=1.2.1",
     "liesel>=0.4.2",
+    # arviz-plots currently imports matplotlib.style.core, which is not
+    # available in matplotlib 3.11.
+    "matplotlib<3.11",
     "smoothcon>=0.0.10",
     "plotnine>=0.14.5"
 ]
-authors = [{ name = "Johannes Brachem" }]
+authors = [
+    { name = "Johannes Brachem" },
+    { name = "Gianmarco Callegher" },
+    { name = "Paul Wiemann" }
+]
 keywords = ["statistics", "machine-learning"]
 classifiers = [
     "License :: OSI Approved :: MIT License",

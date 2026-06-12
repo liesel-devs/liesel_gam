@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.bijectors as tfb
+import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.contrib import splines as spl
 from ryp import r, to_py
 
@@ -17,6 +18,41 @@ import liesel_gam.term_builder as gb
 from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
+
+
+def scale_wb(
+    value: float = 0.5,
+    scale: float = 0.5,
+    bijector: tfb.Bijector = tfb.Exp(),
+    name: str = "{x}",
+    inference: gs.MCMCSpec | None = None,
+):
+    prior = lsl.Dist(
+        tfd.Weibull,
+        concentration=jnp.asarray(0.5),
+        scale=jnp.asarray(scale),
+    )
+    scale_var = lsl.Var.new_param(jnp.asarray(value), prior, name=name)
+    return scale_var.biject(bijector, inference=inference)
+
+
+def scale_ig(
+    value: float = 0.5,
+    concentration: float = 1.0,
+    scale: float = 0.005,
+    bijector: tfb.Bijector = tfb.Exp(),
+    name: str = "{x}",
+    inference: gs.MCMCSpec | None = None,
+):
+    prior = lsl.Dist(
+        tfd.InverseGamma,
+        concentration=jnp.asarray(concentration),
+        scale=jnp.asarray(scale),
+    )
+    variance_var = lsl.Var.new_param(jnp.asarray(value), prior, name="{x}^2")
+    variance_var.biject(bijector, inference=inference)
+    scale_var = lsl.Var.new_calc(jnp.sqrt, variance_var, name=name)
+    return scale_var
 
 
 @pytest.fixture(scope="module")
@@ -67,6 +103,37 @@ class TestTermBuilder:
         tb = gb.TermBuilder(registry)
         sx = tb.ps("x", k=10, prefix="test.")
         assert sx.name == "test.ps(x)"
+
+        registry = gb.PandasRegistry(columb, na_action="drop")
+        tb = gb.TermBuilder(registry)
+        sx = tb.kriging("x", "y", k=10, prefix="test.")
+        assert sx.name == "test.kriging(x,y)"
+
+        registry = gb.PandasRegistry(columb, na_action="drop")
+        tb = gb.TermBuilder(registry, prefix_names_by="test.")
+        sx1 = tb.kriging("x", "y", k=10)
+        assert sx1.name == "test.kriging(x,y)"
+
+        sx2 = tb.kriging("x", "y", k=10)
+        assert sx2.name == "test.kriging(x,y)1"
+
+        lsl.Model([sx1, sx2])
+
+    def test_supply_variables(self, columb) -> None:
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        x = registry.get_numeric_obs("x")
+        y = registry.get_numeric_obs("y")
+        tb = gb.TermBuilder(registry, prefix_names_by="test.")
+
+        sx1 = tb.kriging(x, y, k=10)
+
+        assert sx1.name == "test.kriging(test.[x,y])"
+
+        sx2 = tb.kriging(x, y, k=10)
+        assert sx2.name == "test.kriging(test.[x,y]1)"
+
+        lsl.Model([sx1, sx2])
 
     def test_init_scale(self, columb) -> None:
         tb = gb.TermBuilder.from_df(columb, prefix_names_by="test.")
@@ -691,6 +758,7 @@ class TestTPTerm:
         psy = tb.ps("y", k=10)
         psx = tb.ps("x", k=10)
         ta = tb.tx(psy, psx, common_scale=gam.VarIGPrior(1.0, 0.005))
+
         assert ta.basis.value.shape == (49, 9 * 9)
         for i in range(len(ta.scales)):
             assert ta.scales[i].value_node[0].value_node[0].inference is not None
@@ -709,6 +777,16 @@ class TestTPTerm:
         for i in range(len(ta.scales)):
             assert ta.scales[i].strong
             assert ta.scales[i].inference is None
+            if i > 0:
+                assert ta.scales[i] is ta.scales[i - 1]
+
+        scale_inference = gs.MCMCSpec(gs.HMCKernel)
+        ta = tb.tf(psy, psx, common_scale=scale_wb(inference=scale_inference))
+        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
+        for i in range(len(ta.scales)):
+            assert ta.scales[i].value_node[0].strong
+            assert ta.scales[i].inference is None
+            assert ta.scales[i].value_node[0].inference is scale_inference
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
@@ -760,6 +838,99 @@ class TestTPTerm:
         ps = tb.ps("x", k=10)
         ta = tb.tx(mrf, ps)
         assert ta.basis.value.shape == (49, 9 * 48)
+
+    @pytest.mark.parametrize("prefix", (False, True))
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_basis_name_handling(self, columb, method, prefix):
+        tb = gb.TermBuilder.from_df(columb)
+        psx1 = tb.ps("x", k=10, prefix="l." if prefix else "")
+        psy1 = tb.ps("y", k=10, prefix="l." if prefix else "")
+        tx1 = getattr(tb, method)(psx1, psy1, prefix="l." if prefix else "")
+
+        psx2 = tb.ps("x", k=10, prefix="s." if prefix else "")
+        psy2 = tb.ps("y", k=10, prefix="s." if prefix else "")
+        tx2 = getattr(tb, method)(psx2, psy2, prefix="s." if prefix else "")
+
+        model = lsl.Model([tx1, tx2])
+        assert model is not None
+
+    @pytest.mark.parametrize("prefix", (False, True))
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_basis_name_handling_two_termbuilders(self, columb, method, prefix):
+        tb1 = gb.TermBuilder.from_df(columb, prefix_names_by="l." if prefix else "")
+        psx1 = tb1.ps("x", k=10)
+        psy1 = tb1.ps("y", k=10)
+        tx1 = getattr(tb1, method)(psx1, psy1)
+
+        tb2 = gb.TermBuilder.from_df(columb, prefix_names_by="s." if prefix else "")
+        psx2 = tb2.ps("x", k=10)
+        psy2 = tb2.ps("y", k=10)
+        tx2 = getattr(tb2, method)(psx2, psy2)
+
+        if not prefix:
+            with pytest.raises(RuntimeError, match="Duplicate node names"):
+                lsl.Model([tx1, tx2])
+        else:
+            lsl.Model([tx1, tx2])
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_wb_scale(self, columb, method):
+        tb = gb.TermBuilder.from_df(columb)
+        sy_inference = gs.MCMCSpec(gs.HMCKernel)
+        psy = tb.ps("y", k=10, scale=scale_wb(inference=sy_inference))
+        psx = tb.ps("x", k=10, scale=scale_wb())
+
+        getattr(tb, method)(psy, psx)
+
+        assert not jnp.isnan(psy.scale.value_node[0].log_prob)
+        assert not jnp.isnan(psx.scale.value_node[0].log_prob)
+
+        assert psy.scale.value_node[0].strong
+        assert psx.scale.value_node[0].strong
+
+        assert psy.scale.value_node[0].inference is sy_inference
+        assert psx.scale.value_node[0].inference is None
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_ig_scale(self, columb, method):
+        tb = gb.TermBuilder.from_df(columb)
+        sy_inference = gs.MCMCSpec(gs.HMCKernel)
+        psy = tb.ps("y", k=10, scale=scale_ig(inference=sy_inference))
+        psx = tb.ps("x", k=10, scale=scale_ig())
+
+        getattr(tb, method)(psy, psx)
+
+        yvar = psy.scale.value_node[0]
+        xvar = psx.scale.value_node[0]
+
+        assert not jnp.isnan(yvar.value_node[0].log_prob)
+        assert not jnp.isnan(xvar.value_node[0].log_prob)
+
+        assert yvar.value_node[0].strong
+        assert xvar.value_node[0].strong
+
+        assert yvar.value_node[0].inference is sy_inference
+        assert xvar.value_node[0].inference is None
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_ig_scale_gibbs(self, columb, method):
+        tb = gb.TermBuilder.from_df(columb)
+        psy = tb.ps("y", k=10)
+        psx = tb.ps("x", k=10)
+
+        getattr(tb, method)(psy, psx)
+
+        yvar = psy.scale.value_node[0]
+        xvar = psx.scale.value_node[0]
+
+        assert not jnp.isnan(yvar.value_node[0].log_prob)
+        assert not jnp.isnan(xvar.value_node[0].log_prob)
+
+        assert yvar.value_node[0].strong
+        assert xvar.value_node[0].strong
+
+        assert yvar.value_node[0].inference.kernel is gs.HMCKernel
+        assert xvar.value_node[0].inference.kernel is gs.HMCKernel
 
 
 class TestHasStarGibbs:
