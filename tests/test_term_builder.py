@@ -3,19 +3,19 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-import liesel_gam as gam
-import liesel_gam.term_builder as gb
+import liesel.goose as gs
+import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
-from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
+from liesel.contrib import splines as spl
 from ryp import r, to_py
 
-import liesel.goose as gs
-import liesel.model as lsl
-from liesel.contrib import splines as spl
+import liesel_gam as gam
+import liesel_gam.term_builder as gb
+from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
 
