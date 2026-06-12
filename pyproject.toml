@@ -7,6 +7,9 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "formulaic>=1.2.1",
     "liesel>=0.4.2",
+    # arviz-plots currently imports matplotlib.style.core, which is not
+    # available in matplotlib 3.11.
+    "matplotlib<3.11",
     "smoothcon>=0.0.10",
     "plotnine>=0.14.5"
 ]
