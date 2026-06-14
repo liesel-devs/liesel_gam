@@ -22,8 +22,8 @@ class AdditivePredictor(UserVar):
 
     The untransformed additive sum is available as :attr:`linear_predictor`. The
     predictor's own value is the result of applying ``inv_link`` to this linear
-    predictor. The linear predictor is a calculation node, not a term, and is not
-    included in :attr:`terms`.
+    predictor. The linear predictor is a variable, not a term, and is not included in
+    :attr:`terms`.
 
     Parameters
     ----------
@@ -42,9 +42,9 @@ class AdditivePredictor(UserVar):
         If this name contains the placeholder ``{subscript}``, it will be filled with
         the predictor name to create a unique intercept name for this predictor.
     linear_predictor_name
-        Name of the linear predictor calculation node. If this name contains the
-        placeholder ``{subscript}``, it will be filled with the predictor name to
-        create a unique linear predictor name for this predictor.
+        Name of the linear predictor variable. If this name contains the placeholder
+        ``{subscript}``, it will be filled with the predictor name to create a unique
+        linear predictor name for this predictor.
 
     Examples
     --------
@@ -158,10 +158,9 @@ class AdditivePredictor(UserVar):
         else:
             intercept_ = 0.0
 
-        self._linear_predictor = lsl.Calc(
-            _sum,
-            intercept=intercept_,
-            _name=linear_predictor_name.format(subscript="_{" + name_cleaned + "}"),
+        self._linear_predictor = lsl.Var(
+            lsl.Calc(_sum, intercept=intercept_),
+            name=linear_predictor_name.format(subscript="_{" + name_cleaned + "}"),
         )
 
         super().__init__(lsl.Calc(inv_link, self._linear_predictor), name=name)
@@ -170,18 +169,18 @@ class AdditivePredictor(UserVar):
         """Dictionary of terms in this predictor."""
 
     @property
-    def linear_predictor(self) -> lsl.Calc:
+    def linear_predictor(self) -> lsl.Var:
         """Untransformed additive predictor on the link scale."""
         return self._linear_predictor
 
     @property
     def intercept(self) -> lsl.Var | lsl.Node:
         """This term's intercept."""
-        return self.linear_predictor["intercept"]
+        return self.linear_predictor.value_node["intercept"]
 
     @intercept.setter
     def intercept(self, value: lsl.Var | lsl.Node):
-        self.linear_predictor["intercept"] = value
+        self.linear_predictor.value_node["intercept"] = value
 
     def update(self) -> Self:
         self.linear_predictor.update()
@@ -214,7 +213,7 @@ class AdditivePredictor(UserVar):
         if term.name in self.terms:
             raise RuntimeError(f"{self} already contains a term of name {term.name}.")
 
-        self.linear_predictor.add_inputs(term)
+        self.linear_predictor.value_node.add_inputs(term)
         self.terms[term.name] = term
         self.update()
 

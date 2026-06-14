@@ -117,13 +117,15 @@ class TestPredictor:
 
         assert pred.linear_predictor.name == "eta_custom_{loc}"
 
-    def test_linear_predictor_is_model_node_not_var(self) -> None:
+    def test_linear_predictor_is_model_var(self) -> None:
         pred = gam.AdditivePredictor("loc")
         model = lsl.Model([pred])
 
-        assert pred.linear_predictor.name in model.nodes
-        assert pred.linear_predictor.name not in model.vars
+        assert pred.linear_predictor.value_node.name in model.nodes
+        assert pred.linear_predictor.var_value_node.name in model.nodes
+        assert pred.linear_predictor.name in model.vars
         assert pred.name in model.vars
+        assert pred.linear_predictor.weak
 
     def test_access_term(self) -> None:
         pred = gam.AdditivePredictor("loc")
