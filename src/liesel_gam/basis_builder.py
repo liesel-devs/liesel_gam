@@ -1454,7 +1454,9 @@ class BasisBuilder:
             fo.ModelSpec(formula, output="pandas")
             .get_model_matrix(self.data, context=context)
             .columns
-        )[1:]
+        )
+        if not include_intercept:
+            column_names = column_names[1:]
 
         required = sorted(str(var) for var in spec.required_variables)
         df_subset = self.data.loc[:, required]
