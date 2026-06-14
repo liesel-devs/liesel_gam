@@ -419,6 +419,55 @@ def test_iwls_weights_score_squared_preserves_scalar_eta_shape():
     assert actual == pytest.approx(0.25)
 
 
+def test_iwls_weights_score_squared_supports_weak_linear_predictor():
+    eta = jnp.array([-1.0, 0.25, 1.5], dtype=jnp.float32)
+    y = jnp.array([0.5, -0.75, 2.0], dtype=eta.dtype)
+    scale = jnp.array(2.0, dtype=eta.dtype)
+
+    loc = AdditivePredictor("loc", intercept=False)
+    loc += lsl.Var.new_value(eta, name="offset")
+    scale_var = lsl.Var.new_param(scale, name="scale")
+    y_var = lsl.Var.new_obs(
+        y,
+        lsl.Dist(tfd.Normal, loc=loc, scale=scale_var),
+        name="y",
+    )
+    model = lsl.Model([y_var])
+    expected_score = (y - eta) / scale**2
+    expected = jnp.clip(jnp.square(expected_score), min=1e-6)
+
+    actual = IWLSWeights.score_squared(loc.linear_predictor.name)(model, model.state)
+
+    assert actual.shape == eta.shape
+    assert jnp.allclose(actual, expected)
+
+
+def test_iwls_weights_score_squared_supports_weak_linear_predictor_interface():
+    eta = jnp.array([-1.0, 0.25, 1.5], dtype=jnp.float32)
+    y = jnp.array([0.5, -0.75, 2.0], dtype=eta.dtype)
+    scale = jnp.array(2.0, dtype=eta.dtype)
+
+    loc = AdditivePredictor("loc", intercept=False)
+    loc += lsl.Var.new_value(eta, name="offset")
+    scale_var = lsl.Var.new_param(scale, name="scale")
+    y_var = lsl.Var.new_obs(
+        y,
+        lsl.Dist(tfd.Normal, loc=loc, scale=scale_var),
+        name="y",
+    )
+    model = lsl.Model([y_var])
+    interface = gs.LieselInterface(model)
+    expected_score = (y - eta) / scale**2
+    expected = jnp.clip(jnp.square(expected_score), min=1e-6)
+
+    actual = IWLSWeights.score_squared(loc.linear_predictor.name)(
+        interface, model.state
+    )
+
+    assert actual.shape == eta.shape
+    assert jnp.allclose(actual, expected)
+
+
 def test_iwls_proposal_precision_uses_score_squared_weights():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     model, state, values = _gaussian_eta_liesel_state(
@@ -759,8 +808,10 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
 
     assert isinstance(kernel, gs.IWLSKernel)
     assert kernel.position_keys == ("coef",)
-    assert kernel.initial_step_size == pytest.approx(1.0)
-    assert kernel.da_tune_step_size is False
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info is None
     assert kernel.chol_info_fn.__self__ is proposal
     assert jnp.allclose(
@@ -769,7 +820,7 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
     )
 
 
-def test_iwls_proposal_kernel_factory_tunes_step_size_for_constant_weights():
+def test_iwls_proposal_kernel_factory_uses_iwls_defaults_for_constant_weights():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     proposal = IWLSProposal(
         basis=Z,
@@ -911,7 +962,7 @@ def test_iwls_spec_rejects_anisotropic_terms():
         IWLSProposal.mcmc_spec(term)
 
 
-def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
+def test_gaussian_iwls_spec_loc_builds_tuned_kernel_with_custom_chol_info():
     term, model = _term_model()
 
     spec = gaussian_iwls_spec_loc(
@@ -926,8 +977,10 @@ def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
     assert spec.kernel_kwargs == {"term": term}
     assert isinstance(kernel, gs.IWLSKernel)
     assert kernel.position_keys == (term.coef.name,)
-    assert kernel.initial_step_size == pytest.approx(1.0)
-    assert kernel.da_tune_step_size is False
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info is None
     assert isinstance(proposal, GaussianLocIWLSProposal)
     assert proposal.basis_name == term.basis.name
@@ -987,7 +1040,7 @@ def test_gaussian_iwls_spec_loc_rejects_anisotropic_terms():
         gaussian_iwls_spec_loc(term, scale_name="obs_scale")
 
 
-def test_gaussian_iwls_spec_scale_builds_untuned_kernel_with_custom_chol_info():
+def test_gaussian_iwls_spec_scale_builds_tuned_kernel_with_custom_chol_info():
     term, model = _term_model()
 
     spec = gaussian_iwls_spec_scale(term, fallback_chol_info=None)
@@ -998,8 +1051,10 @@ def test_gaussian_iwls_spec_scale_builds_untuned_kernel_with_custom_chol_info():
     assert spec.kernel_kwargs == {"term": term}
     assert isinstance(kernel, gs.IWLSKernel)
     assert kernel.position_keys == (term.coef.name,)
-    assert kernel.initial_step_size == pytest.approx(1.0)
-    assert kernel.da_tune_step_size is False
+    assert kernel.initial_step_size == pytest.approx(
+        _iwls_kernel_default_initial_step_size()
+    )
+    assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info is None
     assert isinstance(proposal, GaussianScaleIWLSProposal)
     assert proposal.basis_name == term.basis.name

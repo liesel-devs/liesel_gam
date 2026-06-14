@@ -45,24 +45,6 @@ _IWLS_PROPOSAL_TERM_TYPES = (
     StrctLinTerm,
 )
 _IWLS_ANISOTROPIC_TERM_TYPES = (StrctInteractionTerm, StrctTensorProdTerm)
-_CONSTANT_WORKING_WEIGHTS_ATTR = "_liesel_gam_constant_working_weights"
-
-
-def _mark_constant_working_weights(
-    working_weights_fn: WorkingWeightsFn,
-) -> WorkingWeightsFn:
-    """
-    Mark a working-weights function as coming from IWLSWeights.constant.
-    """
-    setattr(working_weights_fn, _CONSTANT_WORKING_WEIGHTS_ATTR, True)
-    return working_weights_fn
-
-
-def _uses_constant_working_weights(working_weights_fn: WorkingWeightsFn) -> bool:
-    """
-    Check whether a working-weights function comes from IWLSWeights.constant.
-    """
-    return bool(getattr(working_weights_fn, _CONSTANT_WORKING_WEIGHTS_ATTR, False))
 
 
 def _raise_if_scale_factored(term: IWLSProposalTerm) -> None:
@@ -121,6 +103,24 @@ def _static_basis_for_term(term: IWLSProposalTerm) -> Array:
     return jnp.asarray(term.basis.value)
 
 
+def _update_state_allowing_weak_vars(
+    model: lsl.Model | gs.LieselInterface,
+    position: Position,
+    model_state: ModelState,
+) -> ModelState:
+    """
+    Update a model state while allowing weak variable targets.
+    """
+    if isinstance(model, lsl.Model):
+        return model.update_state(position, model_state, allow_weak_vars=True)
+
+    return cast(Any, model)._model.update_state(
+        position,
+        model_state,
+        allow_weak_vars=True,
+    )
+
+
 def _penalty_for_term(term: IWLSProposalTerm, *, nbases: int, dtype) -> Array:
     """
     Return the structured prior penalty used by the term.
@@ -166,7 +166,7 @@ class IWLSWeights:
         ) -> Array:
             return jnp.asarray(value)
 
-        return _mark_constant_working_weights(working_weights)
+        return working_weights
 
     @staticmethod
     def score_squared(
@@ -186,7 +186,9 @@ class IWLSWeights:
         Parameters
         ----------
         eta_name
-            Name of the model variable containing the linear predictor.
+            Name of the model variable containing the linear predictor. Weak
+            variables, such as :attr:`.AdditivePredictor.linear_predictor`, are
+            supported.
         min_weight
             Lower clipping bound applied to the squared scores.
         max_weight
@@ -209,7 +211,9 @@ class IWLSWeights:
 
             def flat_log_lik_fn(flat_eta: Array) -> Array:
                 eta_position = Position({eta_name: unravel_fn(flat_eta)})
-                updated_state = model.update_state(eta_position, model_state)
+                updated_state = _update_state_allowing_weak_vars(
+                    model, eta_position, model_state
+                )
                 return jnp.asarray(updated_state["_model_log_lik"].value)
 
             flat_score = grad(flat_log_lik_fn)(flat_eta)
@@ -306,8 +310,9 @@ def gaussian_iwls_spec_loc(
         Name of the model variable containing the Gaussian observation scale.
     **kwargs
         Additional keyword arguments forwarded to
-        :class:`liesel.goose.IWLSKernel`. These values override the defaults
-        ``da_tune_step_size=False`` and ``initial_step_size=1.0``.
+        :class:`liesel.goose.IWLSKernel`. The returned factory inherits the
+        step-size defaults of :class:`liesel.goose.IWLSKernel` unless these
+        values are overridden.
 
     Returns
     -------
@@ -356,8 +361,9 @@ def gaussian_iwls_spec_scale(
         supported.
     **kwargs
         Additional keyword arguments forwarded to
-        :class:`liesel.goose.IWLSKernel`. These values override the defaults
-        ``da_tune_step_size=False`` and ``initial_step_size=1.0``.
+        :class:`liesel.goose.IWLSKernel`. The returned factory inherits the
+        step-size defaults of :class:`liesel.goose.IWLSKernel` unless these
+        values are overridden.
 
     Returns
     -------
@@ -600,12 +606,9 @@ class IWLSProposal:
             :meth:`IWLSWeights.constant`.
         **kwargs
             Additional keyword arguments forwarded to
-            :class:`liesel.goose.IWLSKernel`. The step-size defaults depend on
-            the working weights: weights created by
-            :meth:`IWLSWeights.constant` inherit the defaults of
-            :class:`liesel.goose.IWLSKernel`; other weights use
-            ``da_tune_step_size=False`` and ``initial_step_size=1.0``. All of
-            these values can be overridden.
+            :class:`liesel.goose.IWLSKernel`. The returned factory inherits the
+            step-size defaults of :class:`liesel.goose.IWLSKernel` unless these
+            values are overridden.
 
         Returns
         -------
@@ -743,22 +746,13 @@ class IWLSProposal:
         callable
             Function that takes ``position_keys`` and keyword arguments for
             :class:`liesel.goose.IWLSKernel`, and returns an IWLS kernel using
-            this proposal object's :meth:`chol_info` method. For constant
-            working weights, the returned factory inherits the step-size defaults
-            of :class:`liesel.goose.IWLSKernel`; otherwise, it defaults to an
-            untuned step size of ``1.0``.
+            this proposal object's :meth:`chol_info` method. The returned
+            factory inherits the step-size defaults of
+            :class:`liesel.goose.IWLSKernel` unless they are overridden.
         """
 
         def init_iwls_kernel(position_keys, **kwargs) -> gs.IWLSKernel:
             kernel_kwargs: dict[str, Any] = {"chol_info_fn": self.chol_info}
-
-            if not _uses_constant_working_weights(self.working_weights_fn):
-                kernel_kwargs["da_tune_step_size"] = False
-                kernel_kwargs["initial_step_size"] = 1.0
-
-            tune_step_size = kwargs.get("da_tune_step_size", False)
-            if tune_step_size and "initial_step_size" not in kwargs:
-                kernel_kwargs.pop("initial_step_size", None)
 
             kernel_kwargs |= kwargs
 
