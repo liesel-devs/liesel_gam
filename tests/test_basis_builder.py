@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import pytest
 from formulaic.errors import (
-    FactorEvaluationError,
     FormulaParsingError,
     FormulaSyntaxError,
 )
@@ -347,8 +346,11 @@ class TestFoBasisTransforms:
         assert jnp.allclose(basis.value[:, 1], x_float)
 
     def test_lookup_q(self, bases) -> None:
-        with pytest.raises(FactorEvaluationError):
-            bases.lin("y + Q('with space')", xname="X")
+        basis = bases.lin("y + Q('with space')", xname="X")
+        basis.x.all_input_nodes()
+        vars_ = [nd.var for nd in basis.x.inputs]
+        assert vars_[0].name == "with space"
+        assert vars_[1].name == "y"
 
     def test_center(self, bases) -> None:
         data = make_test_df(perturb=False)

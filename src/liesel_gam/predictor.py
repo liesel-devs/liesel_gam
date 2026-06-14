@@ -50,7 +50,7 @@ class AdditivePredictor(UserVar):
     sum of the values of its inputs.
     >>> loc += lsl.Var.new_value(1.0, name="s(x)")
     >>> loc.value
-    1.0
+    Array(1., dtype=float32, weak_type=True)
 
     The input terms can be accessed:
 
@@ -71,7 +71,7 @@ class AdditivePredictor(UserVar):
     >>> loc.terms
     {'s(x)': Var(name="s(x)"), 's(x2)': Var(name="s(x2)")}
     >>> loc.value
-    3.5
+    Array(3.5, dtype=float32, weak_type=True)
 
     Using an inverse link function:
 
@@ -101,7 +101,7 @@ class AdditivePredictor(UserVar):
     >>> loc.intercept
     Var(name="b0")
     >>> loc.value
-    3.0
+    Array(3., dtype=float32, weak_type=True)
     >>> loc.intercept.dist_node
     Dist(name="b0_log_prob")
 
