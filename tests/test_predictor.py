@@ -77,3 +77,35 @@ class TestPredictor:
 
         pred = gam.AdditivePredictor("loc", intercept=False)
         assert isinstance(pred.intercept, lsl.Value)
+
+    def test_repr_default_intercept(self) -> None:
+        pred = gam.AdditivePredictor("loc")
+        assert (
+            repr(pred)
+            == "AdditivePredictor(name='loc', 0 terms, "
+            "intercept='$\\\\beta_{0,loc}$')"
+        )
+
+    def test_repr_custom_intercept(self) -> None:
+        intercept = lsl.Var.new_param(
+            value=1.0,
+            distribution=None,
+            name="b0",
+        )
+        pred = gam.AdditivePredictor("loc", intercept=intercept)
+        assert repr(pred) == "AdditivePredictor(name='loc', 0 terms, intercept='b0')"
+
+    def test_repr_disabled_intercept(self) -> None:
+        pred = gam.AdditivePredictor("loc", intercept=False)
+        assert repr(pred) == "AdditivePredictor(name='loc', 0 terms, intercept=False)"
+
+    def test_repr_term_count_excludes_intercept(self) -> None:
+        pred = gam.AdditivePredictor("loc")
+        pred += term1, term2
+
+        assert len(pred.terms) == 2
+        assert (
+            repr(pred)
+            == "AdditivePredictor(name='loc', 2 terms, "
+            "intercept='$\\\\beta_{0,loc}$')"
+        )

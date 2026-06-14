@@ -217,4 +217,12 @@ class AdditivePredictor(UserVar):
         return self.terms[name]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.name=}, {len(self.terms)} terms)"
+        if isinstance(self.intercept, lsl.Var):
+            intercept = repr(self.intercept.name)
+        else:
+            intercept = "False"
+
+        return (
+            f"{type(self).__name__}(name={self.name!r}, {len(self.terms)} terms, "
+            f"intercept={intercept})"
+        )
