@@ -443,6 +443,7 @@ class TermBuilder:
         context: dict[str, Any] | None = None,
         prefix: str = "",
         name: str | None = None,
+        include_intercept: bool = False,
     ) -> LinTerm:
         """
         Linear term.
@@ -470,6 +471,8 @@ class TermBuilder:
         name
             Manually defined name of the term. If a prefix is specified, the prefix
             will be added to this name.
+        include_intercept
+            Whether to include an intercept column in the design matrix.
 
         See Also
         --------
@@ -551,8 +554,6 @@ class TermBuilder:
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
 
-        include_intercept = False
-
         basis = self.bases.lin(
             formula,
             xname="",
@@ -589,6 +590,7 @@ class TermBuilder:
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
+        include_intercept: bool = False,
     ) -> StrctLinTerm:
         """
         Linear term with an identity penalty matrix, leading to a ridge prior.
@@ -632,6 +634,8 @@ class TermBuilder:
         name
             Manually defined name of the term. If a prefix is specified, the prefix
             will be added to this name.
+        include_intercept
+            Whether to include an intercept column in the design matrix.
 
         See Also
         --------
@@ -687,8 +691,6 @@ class TermBuilder:
         .. _formulaic_categorical: https://matthew.wardrop.casa/formulaic/latest/guides/contrasts/#contrast-codings
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
-        include_intercept = False
-
         basis = self.bases.lin(
             formula,
             xname="",
