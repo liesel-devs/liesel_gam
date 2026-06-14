@@ -360,86 +360,87 @@ def test_iwls_proposal_precision_uses_static_basis_matrix():
     assert jnp.allclose(info.precision(changed_state), expected, rtol=1e-6, atol=1e-6)
 
 
-# def test_iwls_weights_score_squared_matches_gaussian_location_score_squared():
-#     model, state, values = _gaussian_eta_liesel_state()
-#     expected_score = (values["y"] - values["eta"]) / values["scale"] ** 2
-#     expected = jnp.clip(jnp.square(expected_score), min=1e-6)
+def test_iwls_weights_score_squared_matches_gaussian_location_score_squared():
+    model, state, values = _gaussian_eta_liesel_state()
+    expected_score = (values["y"] - values["eta"]) / values["scale"] ** 2
+    expected = jnp.clip(jnp.square(expected_score), min=1e-6)
 
-#     actual = IWLSWeights.score_squared("eta")(model, state)
+    actual = IWLSWeights.score_squared("eta")(model, state)
 
-#     assert actual.shape == values["eta"].shape
-#     assert jnp.allclose(actual, expected)
-
-
-# def test_iwls_weights_score_squared_matches_nonlinear_log_lik_score_squared():
-#     model, state, values = _squared_eta_liesel_state()
-#     expected_score = (
-#         2.0 * values["eta"] * (values["y"] - values["eta"] ** 2) / values["scale"]**2
-#     )
-#     expected = jnp.square(expected_score)
-
-#     actual = IWLSWeights.score_squared("eta", min_weight=0.0)(model, state)
-
-#     assert jnp.allclose(actual, expected)
+    assert actual.shape == values["eta"].shape
+    assert jnp.allclose(actual, expected)
 
 
-# def test_iwls_weights_score_squared_clips_zero_scores_to_min_weight():
-#     model, state, values = _gaussian_eta_liesel_state(
-#         eta=jnp.array([1.0, 2.0, 3.0]),
-#         y=jnp.array([1.0, 2.0, 3.0]),
-#     )
+def test_iwls_weights_score_squared_matches_nonlinear_log_lik_score_squared():
+    model, state, values = _squared_eta_liesel_state()
+    expected_score = (
+        2.0 * values["eta"] * (values["y"] - values["eta"] ** 2) / values["scale"] ** 2
+    )
+    expected = jnp.square(expected_score)
 
-#     actual = IWLSWeights.score_squared("eta", min_weight=0.25)(model, state)
+    actual = IWLSWeights.score_squared("eta", min_weight=0.0)(model, state)
 
-#     assert jnp.allclose(actual, jnp.full_like(values["eta"], 0.25))
-
-
-# def test_iwls_weights_score_squared_clips_large_scores_to_max_weight():
-#     model, state, values = _gaussian_eta_liesel_state(
-#         eta=jnp.array([0.0, 1.0, 2.0]),
-#         y=jnp.array([10.0, -10.0, 20.0]),
-#         scale=1.0,
-#     )
-
-#     actual = IWLSWeights.score_squared("eta", max_weight=2.5)(model, state)
-
-#     assert jnp.allclose(actual, jnp.full_like(values["eta"], 2.5))
+    assert jnp.allclose(actual, expected)
 
 
-# def test_iwls_weights_score_squared_preserves_scalar_eta_shape():
-#     model, state, values = _gaussian_eta_liesel_state(
-#         eta=jnp.array(1.0),
-#         y=jnp.array(3.0),
-#         scale=2.0,
-#     )
+def test_iwls_weights_score_squared_clips_zero_scores_to_min_weight():
+    model, state, values = _gaussian_eta_liesel_state(
+        eta=jnp.array([1.0, 2.0, 3.0]),
+        y=jnp.array([1.0, 2.0, 3.0]),
+    )
 
-#     actual = IWLSWeights.score_squared("eta")(model, state)
+    actual = IWLSWeights.score_squared("eta", min_weight=0.25)(model, state)
 
-#     assert actual.shape == ()
-#     assert actual == pytest.approx(0.25)
+    assert jnp.allclose(actual, jnp.full_like(values["eta"], 0.25))
 
 
-# def test_iwls_proposal_precision_uses_score_squared_weights():
-#     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
-#     model, state, values = _gaussian_eta_liesel_state(
-#         eta=jnp.array([-1.0, 0.25, 1.5], dtype=Z.dtype),
-#         y=jnp.array([0.5, -0.75, 2.0], dtype=Z.dtype),
-#         scale=2.0,
-#         basis=Z,
-#         smooth_scale=state["tau"],
-#     )
-#     info = IWLSProposal(
-#         basis_name="B",
-#         smooth_scale_name="tau",
-#         penalty=penalty,
-#         model=model,
-#         working_weights_fn=IWLSWeights.score_squared("eta"),
-#     )
-#     expected_score = (values["y"] - values["eta"]) / values["scale"] ** 2
-#     expected_weights = jnp.clip(jnp.square(expected_score), min=1e-6)
-#     expected = _expected_precision(Z, penalty, expected_weights, values["tau"])
+def test_iwls_weights_score_squared_clips_large_scores_to_max_weight():
+    model, state, values = _gaussian_eta_liesel_state(
+        eta=jnp.array([0.0, 1.0, 2.0]),
+        y=jnp.array([10.0, -10.0, 20.0]),
+        scale=1.0,
+    )
 
-#     assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
+    actual = IWLSWeights.score_squared("eta", max_weight=2.5)(model, state)
+
+    assert jnp.allclose(actual, jnp.full_like(values["eta"], 2.5))
+
+
+def test_iwls_weights_score_squared_preserves_scalar_eta_shape():
+    model, state, values = _gaussian_eta_liesel_state(
+        eta=jnp.array(1.0),
+        y=jnp.array(3.0),
+        scale=2.0,
+    )
+
+    actual = IWLSWeights.score_squared("eta")(model, state)
+
+    assert actual.shape == ()
+    assert actual == pytest.approx(0.25)
+
+
+def test_iwls_proposal_precision_uses_score_squared_weights():
+    Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
+    model, state, values = _gaussian_eta_liesel_state(
+        eta=jnp.array([-1.0, 0.25, 1.5], dtype=Z.dtype),
+        y=jnp.array([0.5, -0.75, 2.0], dtype=Z.dtype),
+        scale=2.0,
+        basis=Z,
+        smooth_scale=state["tau"],
+    )
+    info = IWLSProposal(
+        basis=Z,
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=model,
+        working_weights_fn=IWLSWeights.score_squared("eta"),
+        basis_name="B",
+    )
+    expected_score = (values["y"] - values["eta"]) / values["scale"] ** 2
+    expected_weights = jnp.clip(jnp.square(expected_score), min=1e-6)
+    expected = _expected_precision(Z, penalty, expected_weights, values["tau"])
+
+    assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
 
 
 def test_gaussian_iwls_weights_backwards_compatible_loc_alias():
