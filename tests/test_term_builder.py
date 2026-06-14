@@ -187,6 +187,39 @@ class TestLinTerm:
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(3.0)
 
+    def test_lin_include_intercept(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        term = tb.lin("x + y")
+        term_with_intercept = tb.lin("x + y", include_intercept=True)
+
+        basis = np.asarray(term.basis.value)
+        basis_with_intercept = np.asarray(term_with_intercept.basis.value)
+
+        assert basis_with_intercept.shape[-1] == basis.shape[-1] + 1
+        assert term_with_intercept.column_names == ["Intercept", "x", "y"]
+        assert np.any(np.all(np.isclose(basis_with_intercept, 1.0), axis=0))
+
+    def test_slin_include_intercept(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        term = tb.slin("x + y")
+        term_with_intercept = tb.slin("x + y", include_intercept=True)
+
+        basis = np.asarray(term.basis.value)
+        basis_with_intercept = np.asarray(term_with_intercept.basis.value)
+
+        assert basis_with_intercept.shape[-1] == basis.shape[-1] + 1
+        assert term_with_intercept.column_names == ["Intercept", "x", "y"]
+        assert (
+            term_with_intercept.coef.value.shape[-1] == basis_with_intercept.shape[-1]
+        )
+        assert term_with_intercept.basis.penalty.value.shape == (
+            basis_with_intercept.shape[-1],
+            basis_with_intercept.shape[-1],
+        )
+        assert np.any(np.all(np.isclose(basis_with_intercept, 1.0), axis=0))
+
     def test_name(self, columb):
         tb = gam.TermBuilder.from_df(columb)
 
