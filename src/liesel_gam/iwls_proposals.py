@@ -19,12 +19,19 @@ from jax.typing import ArrayLike
 from liesel.goose.types import ModelState
 
 from .predictor import AdditivePredictor
-from .term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
+from .term import IndexingTerm, MRFTerm, RITerm, StrctLinTerm, StrctTerm
 
 logger = logging.getLogger(__name__)
 
 WorkingWeightsFn = Callable[[lsl.Model | gs.LieselInterface, ModelState], ArrayLike]
-IWLSProposalTerm = StrctTerm | RITerm | MRFTerm | StrctLinTerm
+IWLSProposalTerm = StrctTerm | IndexingTerm | RITerm | MRFTerm | StrctLinTerm
+_IWLS_PROPOSAL_TERM_TYPES = (
+    StrctTerm,
+    IndexingTerm,
+    RITerm,
+    MRFTerm,
+    StrctLinTerm,
+)
 _CONSTANT_WORKING_WEIGHTS_ATTR = "_liesel_gam_constant_working_weights"
 
 
@@ -54,6 +61,30 @@ def _raise_if_scale_factored(term: IWLSProposalTerm) -> None:
             "IWLS proposal specs do not currently support scale-factored terms, "
             f"got {term}."
         )
+
+
+def _static_basis_for_term(term: IWLSProposalTerm) -> Array:
+    """
+    Return the static basis matrix to use in IWLS proposal calculations.
+    """
+    if isinstance(term, IndexingTerm):
+        return jnp.asarray(term.init_full_basis().value)
+
+    return jnp.asarray(term.basis.value)
+
+
+def _penalty_for_term(term: IWLSProposalTerm, *, nbases: int, dtype) -> Array:
+    """
+    Return the structured prior penalty used by the term.
+
+    Terms without an explicit penalty use an independent normal coefficient prior,
+    which corresponds to an identity penalty in the IWLS precision.
+    """
+    penalty = getattr(term, "_penalty", None)
+    if penalty is None:
+        return jnp.eye(nbases, dtype=dtype)
+
+    return jnp.asarray(penalty.value, dtype=dtype)
 
 
 class IWLSWeights:
@@ -323,7 +354,7 @@ def apply_gaussian_iwls_spec_loc(
         Additional keyword arguments forwarded to :func:`gaussian_iwls_spec_loc`.
     """
     for term in predictor.terms.values():
-        if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+        if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
             if verbose:
                 logger.info(f"Skipping '{term.name}', inference left unchanged.")
             continue
@@ -355,7 +386,7 @@ def apply_gaussian_iwls_spec_scale(
         Additional keyword arguments forwarded to :func:`gaussian_iwls_spec_scale`.
     """
     for term in predictor.terms.values():
-        if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+        if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
             if verbose:
                 logger.info(f"Skipping '{term.name}', inference left unchanged.")
             continue
@@ -371,8 +402,12 @@ class IWLSProposal:
 
     Parameters
     ----------
+    basis
+        Static basis matrix for the structured term. Dynamic basis matrices are not
+        supported.
     basis_name
-        Name of the basis matrix variable for the structured term.
+        Name of the basis matrix variable for the structured term, retained as
+        metadata for compatibility.
     smooth_scale_name
         Name of the smoothing scale variable used in the coefficient prior.
     penalty
@@ -388,11 +423,12 @@ class IWLSProposal:
         currently unsupported and raises an error if set to ``True``.
     """
 
-    basis_name: str
+    basis: ArrayLike = field(repr=False)
     smooth_scale_name: str
-    penalty: ArrayLike
+    penalty: ArrayLike = field(repr=False)
     model: lsl.Model | gs.LieselInterface
     working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
+    basis_name: str = field(default="", kw_only=True)
     scale_factored: bool = field(default=False, kw_only=True)
 
     @classmethod
@@ -450,9 +486,6 @@ class IWLSProposal:
         if term.scale is None:
             raise ValueError(f"The term {term} must have a smoothing scale.")
 
-        if term.basis.penalty is None:
-            raise ValueError(f"The term {term} must have a penalty matrix.")
-
         basis_name = term.basis.name
         if not basis_name:
             raise ValueError(f"The basis of term {term} must be named.")
@@ -461,12 +494,15 @@ class IWLSProposal:
         if not smooth_scale_name:
             raise ValueError(f"The smoothing scale of term {term} must be named.")
 
+        basis = _static_basis_for_term(term)
+
         return cls(
-            basis_name=basis_name,
+            basis=basis,
             smooth_scale_name=smooth_scale_name,
-            penalty=term.basis.penalty.value,
+            penalty=_penalty_for_term(term, nbases=basis.shape[-1], dtype=basis.dtype),
             model=model,
             working_weights_fn=working_weights_fn,
+            basis_name=basis_name,
             scale_factored=term.scale_is_factored,
         )
 
@@ -613,7 +649,7 @@ class IWLSProposal:
         (2, 2)
         """
         for term in predictor.terms.values():
-            if not isinstance(term, StrctTerm | RITerm | MRFTerm | StrctLinTerm):
+            if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
                 if verbose:
                     logger.info(f"Skipping '{term.name}', inference left unchanged.")
                 continue
@@ -661,6 +697,30 @@ class IWLSProposal:
         """
         Validate that the Cholesky helper can handle the term parameterization.
         """
+        basis = jnp.asarray(self.basis)
+        if basis.ndim != 2:
+            raise ValueError(
+                "IWLS proposals require a static 2-D basis matrix, "
+                f"got shape {basis.shape}."
+            )
+        if not jnp.issubdtype(basis.dtype, jnp.floating):
+            basis = basis.astype(jnp.float32)
+
+        penalty = jnp.asarray(self.penalty, dtype=basis.dtype)
+        if penalty.ndim != 2 or penalty.shape[0] != penalty.shape[1]:
+            raise ValueError(
+                "IWLS proposals require a square penalty matrix, "
+                f"got shape {penalty.shape}."
+            )
+        if penalty.shape[-1] != basis.shape[-1]:
+            raise ValueError(
+                "The penalty matrix dimension must match the basis columns, "
+                f"got {penalty.shape[-1]} and {basis.shape[-1]}."
+            )
+
+        self.basis = basis
+        self.penalty = penalty
+
         if self.scale_factored:
             raise ValueError(
                 "IWLS proposals do not currently support scale-factored proposal "
@@ -701,10 +761,8 @@ class IWLSProposal:
         jax.Array
             Positive-definite proposal precision matrix.
         """
-        pos = self.model.extract_position(
-            [self.basis_name, self.smooth_scale_name], model_state
-        )
-        Z = pos[self.basis_name]
+        pos = self.model.extract_position([self.smooth_scale_name], model_state)
+        Z = jnp.asarray(self.basis)
         scale = pos[self.smooth_scale_name]
 
         # Weights: support scalar or vector without materializing a diagonal.
@@ -734,8 +792,11 @@ class GaussianLocIWLSProposal(IWLSProposal):
 
     Parameters
     ----------
+    basis
+        Static basis matrix for the structured term.
     basis_name
-        Name of the basis matrix variable for the structured term.
+        Name of the basis matrix variable for the structured term, retained as
+        metadata for compatibility.
     smooth_name
         Name of the structured term.
     smooth_scale_name
@@ -771,25 +832,27 @@ class GaussianLocIWLSProposal(IWLSProposal):
         working_weights_fn = IWLSWeights.gaussian_loc(scale_name=scale_name)
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
-            basis_name=base.basis_name,
+            basis=base.basis,
             smooth_name=term.name,
             smooth_scale_name=base.smooth_scale_name,
             scale_name=scale_name,
             penalty=base.penalty,
             model=base.model,
             n=term.value.shape[0],
+            basis_name=base.basis_name,
             scale_factored=base.scale_factored,
         )
 
     def __init__(
         self,
-        basis_name: str,
+        basis: ArrayLike,
         smooth_name: str,
         smooth_scale_name: str,
         scale_name: str,
         penalty: ArrayLike,
         model: lsl.Model | gs.LieselInterface,
         n: int,
+        basis_name: str = "",
         scale_factored: bool = False,
     ) -> None:
         """
@@ -797,11 +860,12 @@ class GaussianLocIWLSProposal(IWLSProposal):
         """
         working_weights_fn = IWLSWeights.gaussian_loc(scale_name=scale_name)
         super().__init__(
-            basis_name=basis_name,
+            basis=basis,
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
             working_weights_fn=working_weights_fn,
+            basis_name=basis_name,
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name
@@ -816,8 +880,11 @@ class GaussianScaleIWLSProposal(IWLSProposal):
 
     Parameters
     ----------
+    basis
+        Static basis matrix for the structured term.
     basis_name
-        Name of the basis matrix variable for the structured term.
+        Name of the basis matrix variable for the structured term, retained as
+        metadata for compatibility.
     smooth_name
         Name of the structured term.
     smooth_scale_name
@@ -848,23 +915,25 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         working_weights_fn = IWLSWeights.gaussian_scale()
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
-            basis_name=base.basis_name,
+            basis=base.basis,
             smooth_name=term.name,
             smooth_scale_name=base.smooth_scale_name,
             penalty=base.penalty,
             model=base.model,
             n=term.value.shape[0],
+            basis_name=base.basis_name,
             scale_factored=base.scale_factored,
         )
 
     def __init__(
         self,
-        basis_name: str,
+        basis: ArrayLike,
         smooth_name: str,
         smooth_scale_name: str,
         penalty: ArrayLike,
         model: lsl.Model | gs.LieselInterface,
         n: int,
+        basis_name: str = "",
         scale_factored: bool = False,
     ) -> None:
         """
@@ -872,11 +941,12 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         """
         working_weights_fn = IWLSWeights.gaussian_scale()
         super().__init__(
-            basis_name=basis_name,
+            basis=basis,
             smooth_scale_name=smooth_scale_name,
             penalty=penalty,
             model=model,
             working_weights_fn=working_weights_fn,
+            basis_name=basis_name,
             scale_factored=scale_factored,
         )
         self.smooth_name = smooth_name

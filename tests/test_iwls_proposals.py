@@ -18,7 +18,7 @@ from liesel_gam.iwls_proposals import (
     gaussian_iwls_spec_scale,
 )
 from liesel_gam.predictor import AdditivePredictor
-from liesel_gam.term import MRFTerm, RITerm, StrctLinTerm, StrctTerm
+from liesel_gam.term import IndexingTerm, MRFTerm, RITerm, StrctLinTerm, StrctTerm
 
 
 class DictModel:
@@ -127,26 +127,30 @@ def _iwls_kernel_default_initial_step_size():
 
 
 def _loc_info(penalty, scale_factored=False):
+    Z, _, _ = _state(jnp.array(2.0, dtype=jnp.float32))
     return GaussianLocIWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_name="f(x)",
         smooth_scale_name="tau",
         scale_name="obs_scale",
         penalty=penalty,
         model=DictModel(),
         n=3,
+        basis_name="B",
         scale_factored=scale_factored,
     )
 
 
 def _scale_info(penalty, scale_factored=False):
+    Z, _, _ = _state(jnp.array(2.0, dtype=jnp.float32))
     return GaussianScaleIWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_name="f(x)",
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         n=3,
+        basis_name="B",
         scale_factored=scale_factored,
     )
 
@@ -259,11 +263,12 @@ def test_iwls_weights_constant_accepts_observation_wise_weights():
 def test_iwls_proposal_precision_uses_constant_unit_weights():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     info = IWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         working_weights_fn=IWLSWeights.constant(),
+        basis_name="B",
     )
 
     expected = _expected_precision(
@@ -274,6 +279,23 @@ def test_iwls_proposal_precision_uses_constant_unit_weights():
     )
 
     assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
+
+
+def test_iwls_proposal_precision_uses_static_basis_matrix():
+    Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
+    changed_state = state | {"B": 10.0 * Z}
+    info = IWLSProposal(
+        basis=Z,
+        smooth_scale_name="tau",
+        penalty=penalty,
+        model=DictModel(),
+        working_weights_fn=IWLSWeights.constant(),
+        basis_name="B",
+    )
+
+    expected = _expected_precision(Z, penalty, 1.0, state["tau"])
+
+    assert jnp.allclose(info.precision(changed_state), expected, rtol=1e-6, atol=1e-6)
 
 
 # def test_iwls_weights_score_squared_matches_gaussian_location_score_squared():
@@ -452,11 +474,12 @@ def test_iwls_proposal_uses_supplied_working_weights_function():
 
     state = state | {"custom_weights": weights}
     info = IWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         working_weights_fn=working_weights,
+        basis_name="B",
     )
 
     expected = _expected_precision(Z, penalty, weights, state["tau"])
@@ -470,12 +493,50 @@ def test_iwls_proposal_from_term_extracts_geometry_from_supported_terms(term):
     model = _model_for_term(term)
 
     proposal = IWLSProposal.from_term(term, IWLSWeights.gaussian_scale())
+    expected_basis = (
+        term.init_full_basis().value
+        if isinstance(term, IndexingTerm)
+        else term.basis.value
+    )
+    term_penalty = getattr(term, "_penalty", None)
+    expected_penalty = (
+        term_penalty.value
+        if term_penalty is not None
+        else jnp.eye(term.nbases, dtype=proposal.basis.dtype)
+    )
 
     assert proposal.basis_name == term.basis.name
+    assert jnp.allclose(proposal.basis, expected_basis)
     assert proposal.smooth_scale_name == term.scale.name
-    assert proposal.penalty is term.basis.penalty.value
+    assert jnp.allclose(proposal.penalty, expected_penalty)
     assert proposal.model is model
     assert proposal.scale_factored is False
+
+
+def test_iwls_proposal_mcmc_spec_supports_indexing_term_subclasses():
+    class CustomIndexingTerm(IndexingTerm):
+        pass
+
+    group = jnp.array([0, 2, 1, 2, 0])
+    basis = Basis(group, xname="custom_group", penalty=None, use_callback=False)
+    scale = lsl.Var.new_param(jnp.array(1.5), name="tau_custom_index")
+    term = CustomIndexingTerm(
+        basis,
+        penalty=None,
+        scale=scale,
+        name="custom_index",
+    )
+    model = lsl.Model([term])
+    spec = IWLSProposal.mcmc_spec(term, fallback_chol_info=None)
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+    proposal = kernel.chol_info_fn.__self__
+    expected_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
+
+    assert isinstance(proposal, IWLSProposal)
+    assert proposal.basis_name == term.basis.name
+    assert jnp.allclose(proposal.basis, expected_basis)
+    assert jnp.allclose(proposal.penalty, jnp.eye(term.nclusters))
+    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
 
 
 def test_iwls_proposal_from_term_rejects_terms_without_model():
@@ -492,6 +553,7 @@ def test_gaussian_iwls_proposals_can_be_constructed_from_term():
     scale_proposal = GaussianScaleIWLSProposal.from_term(term)
 
     assert loc_proposal.basis_name == term.basis.name
+    assert jnp.allclose(loc_proposal.basis, term.basis.value)
     assert loc_proposal.smooth_name == term.name
     assert loc_proposal.smooth_scale_name == term.scale.name
     assert loc_proposal.scale_name == "obs_scale"
@@ -499,6 +561,7 @@ def test_gaussian_iwls_proposals_can_be_constructed_from_term():
     assert loc_proposal.n == term.value.shape[0]
 
     assert scale_proposal.basis_name == term.basis.name
+    assert jnp.allclose(scale_proposal.basis, term.basis.value)
     assert scale_proposal.smooth_name == term.name
     assert scale_proposal.smooth_scale_name == term.scale.name
     assert scale_proposal.model is model
@@ -514,11 +577,12 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
 
     state = state | {"custom_weights": weights}
     proposal = IWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         working_weights_fn=working_weights,
+        basis_name="B",
     )
     kernel_factory = proposal.kernel_factory()
     kernel = kernel_factory(["coef"], fallback_chol_info=None)
@@ -538,11 +602,12 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
 def test_iwls_proposal_kernel_factory_tunes_step_size_for_constant_weights():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     proposal = IWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         working_weights_fn=IWLSWeights.constant(),
+        basis_name="B",
     )
 
     kernel = proposal.kernel_factory()(["coef"], fallback_chol_info=None)
@@ -559,13 +624,14 @@ def test_iwls_proposal_kernel_factory_tunes_step_size_for_constant_weights():
 
 
 def test_iwls_proposal_kernel_factory_uses_iwls_step_default_when_tuning_requested():
-    _, penalty, _ = _state(jnp.array(2.0, dtype=jnp.float32))
+    Z, penalty, _ = _state(jnp.array(2.0, dtype=jnp.float32))
     proposal = IWLSProposal(
-        basis_name="B",
+        basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
         model=DictModel(),
         working_weights_fn=IWLSWeights.gaussian_scale(),
+        basis_name="B",
     )
 
     kernel = proposal.kernel_factory()(["coef"], da_tune_step_size=True)
