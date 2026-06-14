@@ -20,14 +20,19 @@ class AdditivePredictor(UserVar):
     This is a special variable that allows you to add other Liesel varibales using the
     ``+=`` syntax (see examples).
 
+    The untransformed additive sum is available as :attr:`linear_predictor`. The
+    predictor's own value is the result of applying ``inv_link`` to this linear
+    predictor. The linear predictor is a variable, not a term, and is not included in
+    :attr:`terms`.
+
     Parameters
     ----------
     name
         Name of the predictor variable.
     inv_link
         Inverse link function. If supplied, variables are added on the *link* level,
-        and the predictor variable's value will be ``inv_link(sum(*inputs))``, where
-        ``*inputs`` refers to the additive terms in this predictor.
+        and the predictor variable's value will be the inverse link function applied
+        to :attr:`linear_predictor`.
     intercept
         Whether this predictor should be initialized with an intercept. You can supply
         booleans, or a :class:`liesel.model.Var`. In the latter case, this var is
@@ -36,6 +41,10 @@ class AdditivePredictor(UserVar):
         Name of the automatically created intercept variable (if ``intercept=True``).
         If this name contains the placeholder ``{subscript}``, it will be filled with
         the predictor name to create a unique intercept name for this predictor.
+    linear_predictor_name
+        Name of the linear predictor variable. If this name contains the placeholder
+        ``{subscript}``, it will be filled with the predictor name to create a unique
+        linear predictor name for this predictor.
 
     Examples
     --------
@@ -84,6 +93,8 @@ class AdditivePredictor(UserVar):
     {'s(x)': Var(name="s(x)")}
     >>> scale.intercept
     Var(name="$\\beta_{0,scale}$")
+    >>> scale.linear_predictor.value
+    Array(1., dtype=float32, weak_type=True)
     >>> scale.value
     Array(2.7182817, dtype=float32, weak_type=True)
 
@@ -123,6 +134,7 @@ class AdditivePredictor(UserVar):
         inv_link: Callable[[Array], Array] | None = None,
         intercept: bool | lsl.Var = True,
         intercept_name: str = "$\\beta{subscript}$",
+        linear_predictor_name: str = "$\\eta{subscript}$",
     ) -> None:
         if inv_link is None:
 
@@ -131,11 +143,10 @@ class AdditivePredictor(UserVar):
 
         def _sum(*args, intercept, **kwargs):
             # the + 0. implicitly ensures correct dtype also for empty predictors
-            return inv_link(sum(args) + sum(kwargs.values()) + 0.0 + intercept)
+            return sum(args) + sum(kwargs.values()) + 0.0 + intercept
 
+        name_cleaned = name.replace("$", "")
         if intercept and not isinstance(intercept, lsl.Var):
-            name_cleaned = name.replace("$", "")
-
             intercept_: lsl.Var | float = lsl.Var.new_param(
                 name=intercept_name.format(subscript="_{0," + name_cleaned + "}"),
                 value=0.0,
@@ -147,21 +158,32 @@ class AdditivePredictor(UserVar):
         else:
             intercept_ = 0.0
 
-        super().__init__(lsl.Calc(_sum, intercept=intercept_), name=name)
+        self._linear_predictor = lsl.Var(
+            lsl.Calc(_sum, intercept=intercept_),
+            name=linear_predictor_name.format(subscript="_{" + name_cleaned + "}"),
+        )
+
+        super().__init__(lsl.Calc(inv_link, self._linear_predictor), name=name)
         self.update()
         self.terms: dict[str, term_types] = {}
         """Dictionary of terms in this predictor."""
 
     @property
+    def linear_predictor(self) -> lsl.Var:
+        """Untransformed additive predictor on the link scale."""
+        return self._linear_predictor
+
+    @property
     def intercept(self) -> lsl.Var | lsl.Node:
         """This term's intercept."""
-        return self.value_node["intercept"]
+        return self.linear_predictor.value_node["intercept"]
 
     @intercept.setter
     def intercept(self, value: lsl.Var | lsl.Node):
-        self.value_node["intercept"] = value
+        self.linear_predictor.value_node["intercept"] = value
 
     def update(self) -> Self:
+        self.linear_predictor.update()
         return cast(Self, super().update())
 
     def __iadd__(self, other: term_types | Sequence[term_types]) -> Self:
@@ -191,7 +213,7 @@ class AdditivePredictor(UserVar):
         if term.name in self.terms:
             raise RuntimeError(f"{self} already contains a term of name {term.name}.")
 
-        self.value_node.add_inputs(term)
+        self.linear_predictor.value_node.add_inputs(term)
         self.terms[term.name] = term
         self.update()
 
@@ -217,4 +239,12 @@ class AdditivePredictor(UserVar):
         return self.terms[name]
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.name=}, {len(self.terms)} terms)"
+        if isinstance(self.intercept, lsl.Var):
+            intercept = repr(self.intercept.name)
+        else:
+            intercept = "False"
+
+        return (
+            f"{type(self).__name__}(name={self.name!r}, {len(self.terms)} terms, "
+            f"intercept={intercept})"
+        )
