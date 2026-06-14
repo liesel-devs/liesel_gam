@@ -3,13 +3,14 @@ IWLS proposal specifications for additive predictors.
 
 The helpers in this module construct :class:`liesel.goose.MCMCSpec` objects
 that use :class:`liesel.goose.IWLSKernel` with a custom Cholesky factor for
-structured additive terms.
+structured additive terms with isotropic penalties. Anisotropic tensor-product
+penalties are not supported yet.
 """
 
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Self
+from typing import Any, Self, cast
 
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -19,12 +20,22 @@ from jax.typing import ArrayLike
 from liesel.goose.types import ModelState
 
 from .predictor import AdditivePredictor
-from .term import IndexingTerm, MRFTerm, RITerm, StrctLinTerm, StrctTerm
+from .term import (
+    IndexingTerm,
+    MRFTerm,
+    RITerm,
+    StrctInteractionTerm,
+    StrctLinTerm,
+    StrctTensorProdTerm,
+    StrctTerm,
+)
 
 logger = logging.getLogger(__name__)
 
 WorkingWeightsFn = Callable[[lsl.Model | gs.LieselInterface, ModelState], ArrayLike]
 IWLSProposalTerm = StrctTerm | IndexingTerm | RITerm | MRFTerm | StrctLinTerm
+IWLSAnisotropicTerm = StrctInteractionTerm | StrctTensorProdTerm
+IWLSProposalInputTerm = IWLSProposalTerm | IWLSAnisotropicTerm
 _IWLS_PROPOSAL_TERM_TYPES = (
     StrctTerm,
     IndexingTerm,
@@ -32,6 +43,7 @@ _IWLS_PROPOSAL_TERM_TYPES = (
     MRFTerm,
     StrctLinTerm,
 )
+_IWLS_ANISOTROPIC_TERM_TYPES = (StrctInteractionTerm, StrctTensorProdTerm)
 _CONSTANT_WORKING_WEIGHTS_ATTR = "_liesel_gam_constant_working_weights"
 
 
@@ -61,6 +73,41 @@ def _raise_if_scale_factored(term: IWLSProposalTerm) -> None:
             "IWLS proposal specs do not currently support scale-factored terms, "
             f"got {term}."
         )
+
+
+def _raise_if_anisotropic_term(term: Any) -> None:
+    """
+    Raise an error if a term uses an anisotropic penalty structure.
+    """
+    if isinstance(term, _IWLS_ANISOTROPIC_TERM_TYPES):
+        raise NotImplementedError(
+            "IWLS proposals currently support only isotropic penalties with one "
+            "penalty matrix and one smoothing scale. Anisotropic tensor-product "
+            f"terms are not supported yet, got {term}."
+        )
+
+
+def _ensure_isotropic_term(term: IWLSProposalInputTerm) -> IWLSProposalTerm:
+    """
+    Return ``term`` after rejecting currently unsupported anisotropic terms.
+    """
+    _raise_if_anisotropic_term(term)
+    return cast(IWLSProposalTerm, term)
+
+
+def _skip_anisotropic_term(term: Any, *, verbose: bool) -> bool:
+    """
+    Return whether a bulk helper should skip an anisotropic term.
+    """
+    if not isinstance(term, _IWLS_ANISOTROPIC_TERM_TYPES):
+        return False
+
+    if verbose:
+        logger.info(
+            f"Skipping '{term.name}', anisotropic IWLS not supported, "
+            "inference left unchanged."
+        )
+    return True
 
 
 def _static_basis_for_term(term: IWLSProposalTerm) -> Array:
@@ -237,7 +284,7 @@ class GaussianIWLSWeights(IWLSWeights):
 
 
 def gaussian_iwls_spec_loc(
-    term: IWLSProposalTerm,
+    term: IWLSProposalInputTerm,
     scale_name: str = "scale",
     **kwargs,
 ) -> gs.MCMCSpec:
@@ -246,14 +293,16 @@ def gaussian_iwls_spec_loc(
 
     The returned :class:`liesel.goose.MCMCSpec` initializes an
     :class:`liesel.goose.IWLSKernel` whose proposal precision is based on the
-    Gaussian location working weights ``1 / scale**2`` and on the term's
-    structured prior penalty.
+    Gaussian location working weights ``1 / scale**2`` and on the term's single
+    isotropic structured prior penalty.
 
     Parameters
     ----------
     term
         Structured additive term whose coefficient variable should be sampled.
-        Scale-factored terms are currently not supported.
+        The term must have one penalty matrix and one smoothing scale.
+        Scale-factored and anisotropic tensor-product terms are currently not
+        supported.
     scale_name
         Name of the model variable containing the Gaussian observation scale.
     **kwargs
@@ -266,12 +315,14 @@ def gaussian_iwls_spec_loc(
     liesel.goose.MCMCSpec
         Inference specification for ``term.coef``.
     """
+    term = _ensure_isotropic_term(term)
     _raise_if_scale_factored(term)
 
     def init_iwls_kernel(position_keys, term):
         """
         Initialize the IWLS kernel after the term has been attached to a model.
         """
+        term = _ensure_isotropic_term(term)
         _raise_if_scale_factored(term)
         proposal = GaussianLocIWLSProposal.from_term(term, scale_name=scale_name)
 
@@ -286,7 +337,7 @@ def gaussian_iwls_spec_loc(
 
 
 def gaussian_iwls_spec_scale(
-    term: IWLSProposalTerm,
+    term: IWLSProposalInputTerm,
     **kwargs,
 ) -> gs.MCMCSpec:
     """
@@ -294,13 +345,16 @@ def gaussian_iwls_spec_scale(
 
     The returned :class:`liesel.goose.MCMCSpec` initializes an
     :class:`liesel.goose.IWLSKernel` whose proposal precision uses the constant
-    Gaussian scale working weight ``2`` and the term's structured prior penalty.
+    Gaussian scale working weight ``2`` and the term's single isotropic structured
+    prior penalty.
 
     Parameters
     ----------
     term
         Structured additive term whose coefficient variable should be sampled.
-        Scale-factored terms are currently not supported.
+        The term must have one penalty matrix and one smoothing scale.
+        Scale-factored and anisotropic tensor-product terms are currently not
+        supported.
     **kwargs
         Additional keyword arguments forwarded to
         :class:`liesel.goose.IWLSKernel`. These values override the defaults
@@ -311,12 +365,14 @@ def gaussian_iwls_spec_scale(
     liesel.goose.MCMCSpec
         Inference specification for ``term.coef``.
     """
+    term = _ensure_isotropic_term(term)
     _raise_if_scale_factored(term)
 
     def init_iwls_kernel(position_keys, term):
         """
         Initialize the IWLS kernel after the term has been attached to a model.
         """
+        term = _ensure_isotropic_term(term)
         _raise_if_scale_factored(term)
         proposal = GaussianScaleIWLSProposal.from_term(term)
 
@@ -354,6 +410,8 @@ def apply_gaussian_iwls_spec_loc(
         Additional keyword arguments forwarded to :func:`gaussian_iwls_spec_loc`.
     """
     for term in predictor.terms.values():
+        if _skip_anisotropic_term(term, verbose=verbose):
+            continue
         if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
             if verbose:
                 logger.info(f"Skipping '{term.name}', inference left unchanged.")
@@ -386,6 +444,8 @@ def apply_gaussian_iwls_spec_scale(
         Additional keyword arguments forwarded to :func:`gaussian_iwls_spec_scale`.
     """
     for term in predictor.terms.values():
+        if _skip_anisotropic_term(term, verbose=verbose):
+            continue
         if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
             if verbose:
                 logger.info(f"Skipping '{term.name}', inference left unchanged.")
@@ -398,7 +458,11 @@ def apply_gaussian_iwls_spec_scale(
 @dataclass
 class IWLSProposal:
     """
-    Compute IWLS proposal geometry from working weights.
+    Compute isotropic IWLS proposal geometry from working weights.
+
+    The proposal precision is built from one static basis matrix, one penalty
+    matrix, and one smoothing scale. Anisotropic tensor-product penalties are not
+    supported yet.
 
     Parameters
     ----------
@@ -409,9 +473,10 @@ class IWLSProposal:
         Name of the basis matrix variable for the structured term, retained as
         metadata for compatibility.
     smooth_scale_name
-        Name of the smoothing scale variable used in the coefficient prior.
+        Name of the single smoothing scale variable used in the coefficient
+        prior. The penalty contribution is ``penalty / tau**2``.
     penalty
-        Penalty matrix of the structured coefficient prior.
+        Single isotropic penalty matrix of the structured coefficient prior.
     model
         Liesel model or model interface used to extract variables from model
         states.
@@ -434,17 +499,18 @@ class IWLSProposal:
     @classmethod
     def from_term(
         cls,
-        term: IWLSProposalTerm,
+        term: IWLSProposalInputTerm,
         working_weights_fn: WorkingWeightsFn,
     ) -> Self:
         """
-        Construct an IWLS proposal from a structured term.
+        Construct an isotropic IWLS proposal from a structured term.
 
         Parameters
         ----------
         term
-            Structured term whose basis, smoothing scale, penalty, and model
-            should define the proposal geometry.
+            Structured term whose basis, single smoothing scale, penalty, and
+            model should define the proposal geometry. Anisotropic tensor-product
+            terms are currently not supported.
         working_weights_fn
             Function that computes scalar or observation-wise working weights
             from a model and model state.
@@ -479,6 +545,7 @@ class IWLSProposal:
         >>> proposal.chol_info(model.state).shape
         (2, 2)
         """
+        term = _ensure_isotropic_term(term)
         model = term.model
         if model is None:
             raise ValueError(f"The term {term} must be attached to a model.")
@@ -508,7 +575,7 @@ class IWLSProposal:
 
     @staticmethod
     def mcmc_spec(
-        term: IWLSProposalTerm,
+        term: IWLSProposalInputTerm,
         working_weights_fn: WorkingWeightsFn | None = None,
         **kwargs,
     ) -> gs.MCMCSpec:
@@ -517,14 +584,17 @@ class IWLSProposal:
 
         The returned :class:`liesel.goose.MCMCSpec` initializes an
         :class:`liesel.goose.IWLSKernel` whose proposal precision is based on the
-        supplied working weights and on the term's structured prior penalty. If
-        no working weights are supplied, constant unit weights are used.
+        supplied working weights and on the term's single isotropic structured
+        prior penalty. If no working weights are supplied, constant unit weights
+        are used.
 
         Parameters
         ----------
         term
             Structured additive term whose coefficient variable should be
-            sampled. Scale-factored terms are currently not supported.
+            sampled. The term must have one penalty matrix and one smoothing
+            scale. Scale-factored and anisotropic tensor-product terms are
+            currently not supported.
         working_weights_fn
             Function that computes scalar or observation-wise working weights
             from a model and model state. Defaults to
@@ -570,6 +640,7 @@ class IWLSProposal:
         >>> kernel.chol_info_fn(model.state).shape
         (2, 2)
         """
+        term = _ensure_isotropic_term(term)
         _raise_if_scale_factored(term)
         working_weights_fn = working_weights_fn or IWLSWeights.constant()
 
@@ -577,6 +648,7 @@ class IWLSProposal:
             """
             Initialize the IWLS kernel after the term has been attached to a model.
             """
+            term = _ensure_isotropic_term(term)
             _raise_if_scale_factored(term)
             proposal = IWLSProposal.from_term(term, working_weights_fn)
 
@@ -649,6 +721,8 @@ class IWLSProposal:
         (2, 2)
         """
         for term in predictor.terms.values():
+            if _skip_anisotropic_term(term, verbose=verbose):
+                continue
             if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
                 if verbose:
                     logger.info(f"Skipping '{term.name}', inference left unchanged.")
@@ -747,9 +821,9 @@ class IWLSProposal:
         """
         Compute the IWLS proposal precision matrix.
 
-        The precision is ``Z.T @ W @ Z + penalty / tau**2`` plus a small
-        diagonal jitter, where ``Z`` is the basis matrix, ``W`` contains the
-        working weights, and ``tau`` is the smoothing scale.
+        The isotropic precision is ``Z.T @ W @ Z + penalty / tau**2`` plus a
+        small diagonal jitter, where ``Z`` is the basis matrix, ``W`` contains
+        the working weights, and ``tau`` is the single smoothing scale.
 
         Parameters
         ----------
@@ -822,12 +896,12 @@ class GaussianLocIWLSProposal(IWLSProposal):
     @classmethod
     def from_term(  # type: ignore[override]
         cls,
-        term: IWLSProposalTerm,
+        term: IWLSProposalInputTerm,
         *,
         scale_name: str,
     ) -> Self:
         """
-        Construct a Gaussian location IWLS proposal from a structured term.
+        Construct a Gaussian location IWLS proposal from an isotropic structured term.
         """
         working_weights_fn = IWLSWeights.gaussian_loc(scale_name=scale_name)
         base = IWLSProposal.from_term(term, working_weights_fn)
@@ -907,10 +981,10 @@ class GaussianScaleIWLSProposal(IWLSProposal):
     @classmethod
     def from_term(  # type: ignore[override]
         cls,
-        term: IWLSProposalTerm,
+        term: IWLSProposalInputTerm,
     ) -> Self:
         """
-        Construct a Gaussian scale IWLS proposal from a structured term.
+        Construct a Gaussian scale IWLS proposal from an isotropic structured term.
         """
         working_weights_fn = IWLSWeights.gaussian_scale()
         base = IWLSProposal.from_term(term, working_weights_fn)

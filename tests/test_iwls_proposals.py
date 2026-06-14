@@ -1,3 +1,5 @@
+import logging
+
 import jax
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -19,7 +21,14 @@ from liesel_gam.iwls_proposals import (
     gaussian_iwls_spec_scale,
 )
 from liesel_gam.predictor import AdditivePredictor
-from liesel_gam.term import IndexingTerm, MRFTerm, RITerm, StrctLinTerm, StrctTerm
+from liesel_gam.term import (
+    IndexingTerm,
+    MRFTerm,
+    RITerm,
+    StrctInteractionTerm,
+    StrctLinTerm,
+    StrctTerm,
+)
 
 
 class DictModel:
@@ -208,6 +217,32 @@ def _indexing_term_and_model():
     )
     model = lsl.Model([term, obs_scale])
     return term, model, group, penalty
+
+
+def _interaction_term():
+    x = jnp.linspace(-1.0, 1.0, 5)
+    y = jnp.linspace(0.0, 2.0, 5)
+    basis_x = Basis(
+        jnp.column_stack([jnp.ones_like(x), x]),
+        xname="x_interaction",
+        penalty=jnp.eye(2),
+        use_callback=False,
+    )
+    basis_y = Basis(
+        jnp.column_stack([jnp.ones_like(y), y]),
+        xname="y_interaction",
+        penalty=jnp.eye(2),
+        use_callback=False,
+    )
+    term_x = StrctTerm.f(
+        basis_x,
+        scale=lsl.Var.new_param(jnp.array(1.0), name="tau_interaction_x"),
+    )
+    term_y = StrctTerm.f(
+        basis_y,
+        scale=lsl.Var.new_param(jnp.array(1.5), name="tau_interaction_y"),
+    )
+    return StrctInteractionTerm(term_x, term_y, name="interaction")
 
 
 def _structured_term_class_examples():
@@ -673,6 +708,13 @@ def test_iwls_proposal_from_term_rejects_terms_without_model():
         IWLSProposal.from_term(term, IWLSWeights.gaussian_scale())
 
 
+def test_iwls_proposal_from_term_rejects_anisotropic_terms():
+    term = _interaction_term()
+
+    with pytest.raises(NotImplementedError, match="isotropic penalties"):
+        IWLSProposal.from_term(term, IWLSWeights.constant())
+
+
 def test_gaussian_iwls_proposals_can_be_constructed_from_term():
     term, model = _term_model()
 
@@ -861,6 +903,13 @@ def test_iwls_spec_rejects_factored_terms():
         IWLSProposal.mcmc_spec(term)
 
 
+def test_iwls_spec_rejects_anisotropic_terms():
+    term = _interaction_term()
+
+    with pytest.raises(NotImplementedError, match="isotropic penalties"):
+        IWLSProposal.mcmc_spec(term)
+
+
 def test_gaussian_iwls_spec_loc_builds_untuned_kernel_with_custom_chol_info():
     term, model = _term_model()
 
@@ -930,6 +979,13 @@ def test_gaussian_iwls_spec_loc_rejects_factored_terms():
         gaussian_iwls_spec_loc(term, scale_name="obs_scale")
 
 
+def test_gaussian_iwls_spec_loc_rejects_anisotropic_terms():
+    term = _interaction_term()
+
+    with pytest.raises(NotImplementedError, match="isotropic penalties"):
+        gaussian_iwls_spec_loc(term, scale_name="obs_scale")
+
+
 def test_gaussian_iwls_spec_scale_builds_untuned_kernel_with_custom_chol_info():
     term, model = _term_model()
 
@@ -961,6 +1017,13 @@ def test_gaussian_iwls_spec_scale_rejects_factored_terms():
         gaussian_iwls_spec_scale(term)
 
 
+def test_gaussian_iwls_spec_scale_rejects_anisotropic_terms():
+    term = _interaction_term()
+
+    with pytest.raises(NotImplementedError, match="isotropic penalties"):
+        gaussian_iwls_spec_scale(term)
+
+
 def test_set_mcmc_specs_assigns_structured_terms_only():
     term, obs_scale = _term_and_scale()
     offset = lsl.Var.new_value(jnp.ones_like(term.value), name="offset")
@@ -980,6 +1043,19 @@ def test_set_mcmc_specs_assigns_structured_terms_only():
         1.0
     )
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+
+
+def test_set_mcmc_specs_skips_anisotropic_terms_with_verbose_log(caplog):
+    term = _interaction_term()
+    predictor = AdditivePredictor("loc", intercept=False)
+    predictor += term
+
+    with caplog.at_level(logging.INFO, logger="liesel_gam.iwls_proposals"):
+        IWLSProposal.set_mcmc_specs(predictor, verbose=True)
+
+    assert term.coef.inference is None
+    assert "anisotropic IWLS not supported" in caplog.text
+    assert "inference left unchanged" in caplog.text
 
 
 def test_set_mcmc_specs_rejects_factored_terms():
@@ -1012,6 +1088,20 @@ def test_apply_gaussian_iwls_spec_loc_assigns_structured_terms_only():
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
 
 
+def test_apply_gaussian_iwls_spec_loc_skips_anisotropic_terms():
+    term = _interaction_term()
+    predictor = AdditivePredictor("loc", intercept=False)
+    predictor += term
+
+    apply_gaussian_iwls_spec_loc(
+        predictor,
+        scale_name="obs_scale",
+        fallback_chol_info=None,
+    )
+
+    assert term.coef.inference is None
+
+
 def test_apply_gaussian_iwls_spec_loc_rejects_factored_terms():
     term, _ = _term_and_scale(factor_scale=True)
     predictor = AdditivePredictor("loc", intercept=False)
@@ -1036,6 +1126,16 @@ def test_apply_gaussian_iwls_spec_scale_assigns_structured_terms_only():
     assert getattr(offset, "inference", None) is None
     assert isinstance(kernel.chol_info_fn.__self__, GaussianScaleIWLSProposal)
     assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+
+
+def test_apply_gaussian_iwls_spec_scale_skips_anisotropic_terms():
+    term = _interaction_term()
+    predictor = AdditivePredictor("scale", intercept=False)
+    predictor += term
+
+    apply_gaussian_iwls_spec_scale(predictor, fallback_chol_info=None)
+
+    assert term.coef.inference is None
 
 
 def test_apply_gaussian_iwls_spec_scale_rejects_factored_terms():
