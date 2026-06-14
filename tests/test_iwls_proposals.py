@@ -6,6 +6,7 @@ import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 
 from liesel_gam.basis import Basis
+from liesel_gam.category_mapping import CategoryMapping
 from liesel_gam.iwls_proposals import (
     GaussianIWLSWeights,
     GaussianLocIWLSProposal,
@@ -181,6 +182,32 @@ def _model_for_term(term):
     obs_scale = lsl.Var.new_param(jnp.array(2.0), name="obs_scale")
     model = lsl.Model([term, obs_scale])
     return model
+
+
+def _indexing_term_and_model():
+    group = jnp.array([0, 2, 1, 2, 0])
+    basis = Basis(group, xname="index_group", penalty=None, use_callback=False)
+    penalty = jnp.array(
+        [
+            [1.5, 0.2, 0.0],
+            [0.2, 2.0, 0.1],
+            [0.0, 0.1, 1.2],
+        ],
+        dtype=jnp.float32,
+    )
+    scale = lsl.Var.new_param(jnp.array(1.25, dtype=penalty.dtype), name="tau_index")
+    term = IndexingTerm(
+        basis,
+        penalty=penalty,
+        scale=scale,
+        name="index_term",
+    )
+    obs_scale = lsl.Var.new_param(
+        jnp.array([1.0, 1.5, 2.0, 2.5, 3.0], dtype=penalty.dtype),
+        name="obs_scale",
+    )
+    model = lsl.Model([term, obs_scale])
+    return term, model, group, penalty
 
 
 def _structured_term_class_examples():
@@ -537,6 +564,106 @@ def test_iwls_proposal_mcmc_spec_supports_indexing_term_subclasses():
     assert jnp.allclose(proposal.basis, expected_basis)
     assert jnp.allclose(proposal.penalty, jnp.eye(term.nclusters))
     assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
+
+
+def test_iwls_proposal_precision_matches_explicit_one_hot_for_indexing_term():
+    term, model, group, penalty = _indexing_term_and_model()
+    weights = jnp.array([0.5, 1.5, 2.0, 0.75, 1.25], dtype=penalty.dtype)
+
+    proposal = IWLSProposal.from_term(term, IWLSWeights.constant(weights))
+    explicit_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
+    expected = _expected_precision(
+        explicit_basis,
+        penalty,
+        weights,
+        term.scale.value,
+    )
+
+    assert jnp.allclose(proposal.basis, explicit_basis)
+    assert jnp.allclose(proposal.precision(model.state), expected)
+    assert jnp.allclose(
+        proposal.chol_info(model.state),
+        jnp.linalg.cholesky(expected),
+    )
+
+
+def test_gaussian_iwls_proposals_can_be_constructed_from_indexing_term():
+    term, model, group, penalty = _indexing_term_and_model()
+    explicit_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
+
+    loc_proposal = GaussianLocIWLSProposal.from_term(term, scale_name="obs_scale")
+    scale_proposal = GaussianScaleIWLSProposal.from_term(term)
+
+    assert loc_proposal.basis_name == term.basis.name
+    assert jnp.allclose(loc_proposal.basis, explicit_basis)
+    assert jnp.allclose(loc_proposal.penalty, penalty)
+    assert loc_proposal.model is model
+    assert loc_proposal.chol_info(model.state).shape == (term.nclusters, term.nclusters)
+
+    assert scale_proposal.basis_name == term.basis.name
+    assert jnp.allclose(scale_proposal.basis, explicit_basis)
+    assert jnp.allclose(scale_proposal.penalty, penalty)
+    assert scale_proposal.model is model
+    assert scale_proposal.chol_info(model.state).shape == (
+        term.nclusters,
+        term.nclusters,
+    )
+
+
+def test_gaussian_iwls_loc_spec_supports_indexing_term():
+    term, model, group, _ = _indexing_term_and_model()
+    explicit_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
+
+    spec = gaussian_iwls_spec_loc(
+        term,
+        scale_name="obs_scale",
+        fallback_chol_info=None,
+    )
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+    proposal = kernel.chol_info_fn.__self__
+
+    assert isinstance(proposal, GaussianLocIWLSProposal)
+    assert jnp.allclose(proposal.basis, explicit_basis)
+    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
+
+
+def test_gaussian_iwls_scale_spec_supports_indexing_term():
+    term, model, group, _ = _indexing_term_and_model()
+    explicit_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
+
+    spec = gaussian_iwls_spec_scale(term, fallback_chol_info=None)
+    kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+    proposal = kernel.chol_info_fn.__self__
+
+    assert isinstance(proposal, GaussianScaleIWLSProposal)
+    assert jnp.allclose(proposal.basis, explicit_basis)
+    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
+
+
+def test_iwls_proposal_supports_riterm_with_unobserved_clusters():
+    group = jnp.array([0, 1, 0, 1])
+    basis = Basis(group, xname="ri_group", penalty=None, use_callback=False)
+    scale = lsl.Var.new_param(jnp.array(1.5, dtype=jnp.float32), name="tau_ri_full")
+    term = RITerm(basis, penalty=None, scale=scale, name="ri_full")
+    term.mapping = CategoryMapping({"a": 0, "b": 1, "c": 2})
+    term.labels = ["a", "b", "c"]
+    term.coef.value = jnp.zeros(term.nclusters)
+
+    model = lsl.Model([term])
+    proposal = IWLSProposal.from_term(term, IWLSWeights.constant())
+    explicit_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
+    expected = _expected_precision(
+        explicit_basis,
+        jnp.eye(term.nclusters),
+        1.0,
+        scale.value,
+    )
+
+    assert term.nclusters == 3
+    assert proposal.basis.shape == (group.size, term.nclusters)
+    assert jnp.allclose(proposal.basis, explicit_basis)
+    assert jnp.allclose(proposal.penalty, jnp.eye(term.nclusters))
+    assert jnp.allclose(proposal.precision(model.state), expected)
 
 
 def test_iwls_proposal_from_term_rejects_terms_without_model():
