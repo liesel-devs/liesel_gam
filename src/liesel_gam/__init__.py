@@ -80,12 +80,29 @@ def _is_r_46(version: str) -> bool:
     return re.match(r"^4\.6(?:\.|$)", version) is not None
 
 
-def _warn_if_r_46(to_py: Callable[..., object]) -> None:
+def _uses_r_46_pandas_workaround(pd: object) -> bool:
+    """
+    Return whether a pandas option workaround for the R 4.6 issue is active.
+    """
+    options = getattr(pd, "options", None)
+    mode = getattr(options, "mode", None)
+    future = getattr(options, "future", None)
+
+    return (
+        getattr(mode, "string_storage", None) == "python"
+        or getattr(future, "infer_string", None) is False
+    )
+
+
+def _warn_if_r_46(to_py: Callable[..., object], pd: object) -> None:
     """
     Warn about a known R 4.6 / ryp / pandas string-column issue.
     """
     version = _get_r_version(to_py)
     if version is None or not _is_r_46(version):
+        return
+
+    if _uses_r_46_pandas_workaround(pd):
         return
 
     warnings.warn(
@@ -108,7 +125,7 @@ if not on_rtd:
     try:
         to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
         r("rm('___test___')")
-        _warn_if_r_46(to_py)
+        _warn_if_r_46(to_py, pd)
     except ImportError as e:
         raise ImportError(
             "Testing communication between R and Python failed. "
