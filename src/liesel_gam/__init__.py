@@ -1,4 +1,7 @@
 import os
+import re
+import warnings
+from collections.abc import Callable
 
 from . import experimental as experimental
 from . import io as io
@@ -51,15 +54,78 @@ from .var import ScaleIG as ScaleIG
 from .var import UserVar as UserVar
 from .var import VarIGPrior as VarIGPrior
 
+_R_46_PANDAS_ISSUE_URL = "https://github.com/liesel-devs/liesel_gam/issues/67"
+
+
+def _get_r_version(to_py: Callable[..., object]) -> str | None:
+    """
+    Return ryp's active R version string, if it can be queried.
+    """
+    try:
+        version = to_py("as.character(getRversion())", squeeze=True)
+    except Exception:
+        return None
+
+    version = str(version).strip()
+    if not version:
+        return None
+
+    return version.split()[0]
+
+
+def _is_r_46(version: str) -> bool:
+    """
+    Return whether an R version string identifies an R 4.6 release.
+    """
+    return re.match(r"^4\.6(?:\.|$)", version) is not None
+
+
+def _uses_r_46_pandas_workaround(pd: object) -> bool:
+    """
+    Return whether a pandas option workaround for the R 4.6 issue is active.
+    """
+    options = getattr(pd, "options", None)
+    mode = getattr(options, "mode", None)
+    future = getattr(options, "future", None)
+
+    return (
+        getattr(mode, "string_storage", None) == "python"
+        or getattr(future, "infer_string", None) is False
+    )
+
+
+def _warn_if_r_46(to_py: Callable[..., object], pd: object) -> None:
+    """
+    Warn about a known R 4.6 / ryp / pandas string-column issue.
+    """
+    version = _get_r_version(to_py)
+    if version is None or not _is_r_46(version):
+        return
+
+    if _uses_r_46_pandas_workaround(pd):
+        return
+
+    warnings.warn(
+        "Liesel-GAM detected R "
+        f"{version}. R 4.6 may trigger a known ryp/Arrow/pandas issue that can "
+        "corrupt pandas string column labels after R-to-Python conversion, "
+        "including in workflows that call pandas.read_csv(). See "
+        f"{_R_46_PANDAS_ISSUE_URL} for details and temporary workarounds.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+
+
 on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
 # safeguard because R is not installed in the readthedocs build environment
 if not on_rtd:
     import pandas as pd
-    from ryp import r, to_r
+    from ryp import r, to_py, to_r
 
     try:
         to_r(pd.DataFrame({"a": [1.0, 2.0]}), "___test___")
         r("rm('___test___')")
+        _warn_if_r_46(to_py, pd)
     except ImportError as e:
         raise ImportError(
             "Testing communication between R and Python failed. "
