@@ -35,7 +35,7 @@ def test_value_and_prior_parameters_have_no_defaults(function, parameter) -> Non
 
 def test_scale_wb_places_prior_on_variance() -> None:
     inference = gs.MCMCSpec(gs.HMCKernel)
-    scale = gam.scale_wb(0.25, 2.0, name="tau", inference=inference)
+    scale = gam.scale_wb(0.5, 2.0, name="tau", inference=inference)
     variance, bijected = _variance_and_bijected(scale)
     assert bijected.dist_node is not None
     prior = bijected.dist_node.init_dist()
@@ -53,7 +53,7 @@ def test_scale_wb_places_prior_on_variance() -> None:
 
 
 def test_scale_ig_places_prior_on_variance() -> None:
-    scale = gam.scale_ig(0.25, 3.0, 0.1, name="tau")
+    scale = gam.scale_ig(0.5, 3.0, 0.1, name="tau")
     variance, bijected = _variance_and_bijected(scale)
     assert bijected.dist_node is not None
     prior = bijected.dist_node.init_dist()
@@ -72,9 +72,9 @@ def test_scale_ig_places_prior_on_variance() -> None:
 @pytest.mark.parametrize("function", (gam.scale_wb, gam.scale_ig))
 def test_scale_can_be_used_in_model(function) -> None:
     if function is gam.scale_wb:
-        scale = function(0.25, 2.0, name="tau")
+        scale = function(0.5, 2.0, name="tau")
     else:
-        scale = function(0.25, 3.0, 0.1, name="tau")
+        scale = function(0.5, 3.0, 0.1, name="tau")
 
     model = lsl.Model([scale])
 
@@ -84,9 +84,20 @@ def test_scale_can_be_used_in_model(function) -> None:
 
 
 def test_empty_scale_name_keeps_variance_unnamed() -> None:
-    scale = gam.scale_wb(0.25, 2.0, name="")
+    scale = gam.scale_wb(0.5, 2.0, name="")
     variance, bijected = _variance_and_bijected(scale)
 
     assert not scale.name
     assert not variance.name
     assert not bijected.name
+
+
+@pytest.mark.parametrize("value", (0.0, -0.5))
+@pytest.mark.parametrize("function", (gam.scale_wb, gam.scale_ig))
+def test_scale_value_must_be_positive(function, value) -> None:
+    if function is gam.scale_wb:
+        with pytest.raises(ValueError, match="positive"):
+            function(value, 2.0)
+    else:
+        with pytest.raises(ValueError, match="positive"):
+            function(value, 3.0, 0.1)

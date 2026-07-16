@@ -23,8 +23,12 @@ def _scale_from_variance(
     name: str,
     inference: InferenceTypes,
 ) -> lsl.Var:
+    scale_value = jnp.asarray(value)
+    if not bool(jnp.all(scale_value > 0.0)):
+        raise ValueError("The initial scale value must be positive.")
+
     variance = lsl.Var.new_param(
-        jnp.asarray(value),
+        jnp.square(scale_value),
         prior,
         name=_variance_name(name),
     )
@@ -56,7 +60,8 @@ def scale_wb(
     Parameters
     ----------
     value
-        Initial value of the variance :math:`\tau^2`.
+        Initial value of the scale :math:`\tau`. The variance is initialized to
+        ``value**2``. Must be positive.
     scale
         Scale parameter :math:`\lambda` of the Weibull distribution. For a
         scale-dependent prior, this value should be calibrated to the scale of the
@@ -112,7 +117,8 @@ def scale_ig(
     Parameters
     ----------
     value
-        Initial value of the variance :math:`\tau^2`.
+        Initial value of the scale :math:`\tau`. The variance is initialized to
+        ``value**2``. Must be positive.
     concentration
         Concentration parameter :math:`a` of the inverse gamma distribution.
     scale
