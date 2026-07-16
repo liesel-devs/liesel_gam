@@ -16,6 +16,7 @@ from liesel_gam.category_mapping import CategoryMapping
 
 from .basis import Basis, is_diagonal
 from .dist import MultivariateNormalSingular, MultivariateNormalStructured
+from .mv_utils import as_penalty_value, as_reparam_value, reconstruct_dimension
 from .var import ScaleIG, UserVar, VarIGPrior, _append_name
 
 InferenceTypes = Any
@@ -2224,23 +2225,38 @@ class MultivariateStrctTerm(UserVar):
     def __init__(
         self,
         *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
-        dimension_penalties: Sequence[Array],
+        dimension_penalties: Sequence[Array | lsl.Value],
         dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
         basis_name: str | None = None,
         _update_on_init: bool = True,
     ):
+        if not marginals:
+            raise ValueError("At least one marginal term is required.")
         StrctInteractionTerm._validate_marginals(marginals)
 
-        dimension_scale_vars = []
+        if not dimension_penalties:
+            raise ValueError("dimension_penalties must contain at least one matrix.")
+
+        dimension_penalty_values = [
+            as_penalty_value(penalty) for penalty in dimension_penalties
+        ]
+        dimension_penalty_arrays = [
+            jnp.asarray(penalty.value) for penalty in dimension_penalty_values
+        ]
+
+        dimension_scale_vars: list[lsl.Var] = []
         for s in dimension_scales:
             if s is None:
                 raise TypeError("No entries of dimension_scales may be None.")
-            dimension_scale_vars.append(_init_scale_ig(s, validate_scalar=True))
+            scale_var = _init_scale_ig(s, validate_scalar=True)
+            assert scale_var is not None
+            dimension_scale_vars.append(scale_var)
 
-        if not len(dimension_penalties) == len(dimension_scale_vars):
+        if not len(dimension_penalty_arrays) == len(dimension_scale_vars):
             raise ValueError(
                 "dimension_penalties and dimension_scales must have the same length."
             )
@@ -2266,9 +2282,14 @@ class MultivariateStrctTerm(UserVar):
         basis = lsl.Var.new_calc(rowwise_kron, *bases_marginals, name=basis_name)
         nbases = jnp.shape(basis.value)[-1]
 
-        ndim = prod([p.shape[-1] for p in dimension_penalties])
+        latent_ndim = prod([p.shape[-1] for p in dimension_penalty_arrays])
+        dimension_reparam_value = as_reparam_value(
+            dimension_reparam,
+            latent_ndim=latent_ndim,
+            name=_append_name(name, "_dimension_reparam"),
+        )
 
-        penalties = list(penalties_marginals) + list(dimension_penalties)
+        penalties = list(penalties_marginals) + dimension_penalty_arrays
         scales = list(scales_marginals) + list(dimension_scale_vars)
 
         mvnds = MultivariateNormalStructured.get_locscale_constructor(
@@ -2278,11 +2299,13 @@ class MultivariateStrctTerm(UserVar):
         scales_var = lsl.Calc(lambda *x: jnp.stack(x, axis=-1), *scales)
 
         prior = lsl.Dist(
-            distribution=mvnds, loc=jnp.zeros(nbases * ndim), scales=scales_var
+            distribution=mvnds,
+            loc=jnp.zeros(nbases * latent_ndim),
+            scales=scales_var,
         )
 
         coef = lsl.Var.new_param(
-            jnp.zeros(nbases * ndim),
+            jnp.zeros(nbases * latent_ndim),
             distribution=prior,
             inference=inference,
             name=coef_name,
@@ -2294,22 +2317,44 @@ class MultivariateStrctTerm(UserVar):
         self.marginal_bases = bases_marginals
 
         self.marginal_penalties = penalties_marginals
-        self.dimension_penalties = dimension_penalties
+        self.dimension_penalties = dimension_penalty_arrays
+        self.dimension_penalty_values = dimension_penalty_values
+        self.dimension_penalty = (
+            dimension_penalty_values[0]
+            if len(dimension_penalty_values) == 1
+            else None
+        )
 
         self.marginal_scales = scales_marginals
-        self.dimension_scales = dimension_scales
+        self.dimension_scales = dimension_scale_vars
+        self.dimension_scale = (
+            dimension_scale_vars[0] if len(dimension_scale_vars) == 1 else None
+        )
 
         self.scale = scales_var
 
         self.nbases = nbases
-        self.ndim = ndim
+        self.latent_ndim = latent_ndim
+        self.ndim = int(dimension_reparam_value.value.shape[0])
+        self.dimension_reparam = dimension_reparam_value
 
         self.coef = coef
 
-        calc = lsl.Calc(
-            lambda basis, coef: jnp.dot(basis, jnp.reshape(coef, (nbases, ndim))),
+        latent = lsl.Var.new_calc(
+            lambda basis, coef: jnp.dot(
+                basis, jnp.reshape(coef, (nbases, latent_ndim))
+            ),
             basis=basis,
             coef=self.coef,
+            name=_append_name(name, "_latent"),
+            _update_on_init=_update_on_init,
+        )
+        self.latent = latent
+
+        calc = lsl.Calc(
+            reconstruct_dimension,
+            latent=latent,
+            reparam=dimension_reparam_value,
             _update_on_init=_update_on_init,
         )
 
@@ -2330,6 +2375,7 @@ class MultivariateStrctTerm(UserVar):
         *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
         dimension_penalties: Sequence[Array],
         dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
         fname: str = "F",
         inference: InferenceTypes = None,
         basis_name: str | None = None,
@@ -2346,6 +2392,7 @@ class MultivariateStrctTerm(UserVar):
             *marginals,
             dimension_penalties=dimension_penalties,
             dimension_scales=dimension_scales,
+            dimension_reparam=dimension_reparam,
             inference=inference,
             coef_name=coef_name,
             name=name,
@@ -2356,13 +2403,20 @@ class MultivariateStrctTerm(UserVar):
         return term
 
 
+class MultivariateStrctLinTerm(MultivariateStrctTerm, LinMixin):
+    """Multivariate structured linear term retaining formula metadata."""
+
+    pass
+
+
 class MultivariateTPTerm(UserVar):
     def __init__(
         self,
         *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
-        dimension_penalties: Sequence[Array],
+        dimension_penalties: Sequence[Array | lsl.Value],
         dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
         order: Sequence[int] | None = None,
         inference: InferenceTypes = None,
         names_prefix: str = "",
@@ -2373,6 +2427,8 @@ class MultivariateTPTerm(UserVar):
         group_terms_by_order: bool = False,
         _update_on_init: bool = True,
     ):
+        if not marginals:
+            raise ValueError("At least one marginal term is required.")
         for term__ in marginals:
             if term__.scale is None:
                 raise ValueError(
@@ -2384,11 +2440,40 @@ class MultivariateTPTerm(UserVar):
         for i in range(1, (nmargins + 1)):
             terms_combinations += list(combinations(marginals, i))
 
-        self.order = order if order is not None else tuple(range(1, len(marginals) + 1))
+        self.order = (
+            tuple(order)
+            if order is not None
+            else tuple(range(1, len(marginals) + 1))
+        )
+        if not self.order:
+            raise ValueError("order must contain at least one interaction order.")
+        if len(set(self.order)) != len(self.order) or any(
+            not isinstance(o, int) or not 1 <= o <= nmargins for o in self.order
+        ):
+            raise ValueError(
+                f"order must contain unique integers between 1 and {nmargins}."
+            )
 
         self.terms_by_order: dict[int, list[MultivariateStrctTerm]] = {}
 
         scale_ = _init_scale_ig(common_scale) if common_scale is not None else None
+        if common_scale is not None:
+            assert isinstance(scale_, lsl.Var)
+            for term_ in marginals:
+                term_.replace_scale(scale_)
+
+        dimension_scale_vars: list[lsl.Var] = []
+        for scale in dimension_scales:
+            if scale is None:
+                raise TypeError("No entries of dimension_scales may be None.")
+            scale_var = _init_scale_ig(scale, validate_scalar=True)
+            assert scale_var is not None
+            dimension_scale_vars.append(scale_var)
+
+        if len(dimension_penalties) != len(dimension_scale_vars):
+            raise ValueError(
+                "dimension_penalties and dimension_scales must have the same length."
+            )
 
         interactions = []
         for term_marginals in terms_combinations:
@@ -2399,7 +2484,8 @@ class MultivariateTPTerm(UserVar):
             term = MultivariateStrctTerm(
                 *term_marginals,
                 dimension_penalties=dimension_penalties,
-                dimension_scales=dimension_scales,
+                dimension_scales=dimension_scale_vars,
+                dimension_reparam=dimension_reparam,
                 inference=inference,
                 _update_on_init=_update_on_init,
             )
@@ -2407,6 +2493,11 @@ class MultivariateTPTerm(UserVar):
             term.name = names_prefix + f"{tx_name}({term.xnames})"
             term.coef.name = names_prefix + "$" + coef_name + r"_{" + term.name + r"}$"
             term.basis.name = names_prefix + basis_name + "(" + term.xnames + ")"
+            term.basis.value_node.name = term.basis.name + "_value_node"
+            term.basis.var_value_node.name = term.basis.name + "_var_value_node"
+            term.latent.name = _append_name(term.name, "_latent")
+            term.latent.value_node.name = term.latent.name + "_value_node"
+            term.latent.var_value_node.name = term.latent.name + "_var_value_node"
 
             interactions.append(term)
 
@@ -2422,11 +2513,6 @@ class MultivariateTPTerm(UserVar):
                     f"of order {o} found."
                 )
 
-        if common_scale is not None:
-            assert scale_ is not None
-            for term_ in marginals:
-                term_.replace_scale(scale_)
-
         self.marginals = marginals
         self._terms_list = interactions
         self.marginal_terms = marginals
@@ -2436,6 +2522,14 @@ class MultivariateTPTerm(UserVar):
             self.marginal_bases
         )
         self.dimension_penalties = dimension_penalties
+        self.dimension_scales = dimension_scale_vars
+        self.dimension_scale = (
+            dimension_scale_vars[0] if len(dimension_scale_vars) == 1 else None
+        )
+        self.dimension_reparam = interactions[0].dimension_reparam
+        self.dimension_penalty = interactions[0].dimension_penalty
+        self.latent_ndim = interactions[0].latent_ndim
+        self.ndim = interactions[0].ndim
 
         self.xnames = ",".join(list(self.input_obs))
 
@@ -2449,6 +2543,15 @@ class MultivariateTPTerm(UserVar):
                     name=names_prefix + f"${tf_name}^{{({o})}}({self.xnames})$",
                 )
 
+        latent = lsl.Var.new_calc(
+            lambda *args: sum(args),
+            *[term.latent for term in self._terms_list],
+            name=names_prefix + f"{tf_name}({self.xnames})_latent",
+            _update_on_init=_update_on_init,
+        )
+        self.latent = latent
+
+        if group_terms_by_order:
             calc = lsl.Calc(
                 lambda *args: sum(args),
                 *list(self.term_groups.values()),
@@ -2456,8 +2559,9 @@ class MultivariateTPTerm(UserVar):
             )
         else:
             calc = lsl.Calc(
-                lambda *args: sum(args),
-                *self._terms_list,
+                reconstruct_dimension,
+                latent=latent,
+                reparam=self.dimension_reparam,
                 _update_on_init=_update_on_init,
             )
 

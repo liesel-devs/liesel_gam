@@ -18,6 +18,10 @@ from .dist import MultivariateNormalStructured as MultivariateNormalStructured
 from .dist import StructuredPenaltyOperator as StructuredPenaltyOperator
 from .kernel import init_star_ig_gibbs as init_star_ig_gibbs
 from .kernel import star_ig_gibbs as star_ig_gibbs
+from .mv_predictor import MultivariateEffect as MultivariateEffect
+from .mv_predictor import MultivariateIntercept as MultivariateIntercept
+from .mv_predictor import MVAdditivePredictor as MVAdditivePredictor
+from .mv_term_builder import MVTermBuilder as MVTermBuilder
 from .names import NameManager as NameManager
 from .plots import plot_1d_smooth as plot_1d_smooth
 from .plots import plot_1d_smooth_clustered as plot_1d_smooth_clustered
@@ -40,6 +44,7 @@ from .term import IndexingTerm as IndexingTerm
 from .term import LinMixin as LinMixin
 from .term import LinTerm as LinTerm
 from .term import MRFTerm as MRFTerm
+from .term import MultivariateStrctLinTerm as MultivariateStrctLinTerm
 from .term import MultivariateStrctTerm as MultivariateStrctTerm
 from .term import MultivariateTPTerm as MultivariateTPTerm
 from .term import RITerm as RITerm

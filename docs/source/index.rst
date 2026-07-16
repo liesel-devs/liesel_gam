@@ -91,7 +91,9 @@ High-level API
     :nosignatures:
 
     ~liesel_gam.AdditivePredictor
+    ~liesel_gam.MVAdditivePredictor
     ~liesel_gam.TermBuilder
+    ~liesel_gam.MVTermBuilder
     ~liesel_gam.BasisBuilder
 
 Plots
@@ -151,6 +153,11 @@ Terms and Variables
     ~liesel_gam.StrctTerm
     ~liesel_gam.StrctInteractionTerm
     ~liesel_gam.StrctTensorProdTerm
+    ~liesel_gam.MultivariateStrctTerm
+    ~liesel_gam.MultivariateStrctLinTerm
+    ~liesel_gam.MultivariateTPTerm
+    ~liesel_gam.MultivariateIntercept
+    ~liesel_gam.MultivariateEffect
     ~liesel_gam.LinTerm
     ~liesel_gam.StrctLinTerm
     ~liesel_gam.LinMixin
