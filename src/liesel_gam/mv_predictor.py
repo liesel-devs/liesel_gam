@@ -6,6 +6,7 @@ from typing import Any, Literal, Self, cast
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
+import numpy as np
 
 from .constraint import LinearConstraintEVD
 from .mv_utils import (
@@ -19,6 +20,7 @@ from .term import mvn_structured_prior
 from .var import ScaleIG, UserVar, VarIGPrior, _append_name
 
 Array = Any
+Integer = int | np.integer[Any]
 
 term_types = lsl.Var
 
@@ -489,36 +491,41 @@ class MVAdditivePredictor(UserVar):
         return f"{type(self).__name__}({self.name=}, {len(self.terms)} terms)"
 
     @staticmethod
-    def _validate_ndim(ndim: int) -> None:
-        if not isinstance(ndim, int) or ndim < 1:
+    def _validate_ndim(ndim: Integer) -> int:
+        if not isinstance(ndim, (int, np.integer)) or ndim < 1:
             raise ValueError(f"ndim must be a positive integer, got {ndim!r}.")
+        return int(ndim)
 
     @classmethod
     def from_random_walk(
         cls,
         name: str,
-        ndim: int,
+        ndim: Integer,
         order: int = 1,
         **kwargs,
     ) -> Self:
         """Construct a predictor with a random-walk cross penalty."""
-        cls._validate_ndim(ndim)
-        if not isinstance(order, int) or not 0 < order < ndim:
+        ndim_int = cls._validate_ndim(ndim)
+        if not isinstance(order, int) or not 0 < order < ndim_int:
             raise ValueError(
                 f"order must be an integer between 1 and ndim-1, got {order!r}."
             )
-        differences = jnp.diff(jnp.eye(ndim), n=order, axis=0)
+        differences = jnp.diff(jnp.eye(ndim_int), n=order, axis=0)
         penalty = differences.T @ differences
         return cls(name=name, dimension_penalty=penalty, **kwargs)
 
     @classmethod
-    def from_identity(cls, name: str, ndim: int, **kwargs) -> Self:
+    def from_identity(cls, name: str, ndim: Integer, **kwargs) -> Self:
         """Construct a predictor with an identity cross penalty."""
-        cls._validate_ndim(ndim)
-        return cls(name=name, dimension_penalty=jnp.eye(ndim), **kwargs)
+        ndim_int = cls._validate_ndim(ndim)
+        return cls(name=name, dimension_penalty=jnp.eye(ndim_int), **kwargs)
 
     @classmethod
-    def from_no_penalty(cls, name: str, ndim: int, **kwargs) -> Self:
+    def from_no_penalty(cls, name: str, ndim: Integer, **kwargs) -> Self:
         """Construct a predictor with no cross-dimensional penalty."""
-        cls._validate_ndim(ndim)
-        return cls(name=name, dimension_penalty=jnp.zeros((ndim, ndim)), **kwargs)
+        ndim_int = cls._validate_ndim(ndim)
+        return cls(
+            name=name,
+            dimension_penalty=jnp.zeros((ndim_int, ndim_int)),
+            **kwargs,
+        )

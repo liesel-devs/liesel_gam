@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
+import numpy as np
 import pytest
 
 import liesel_gam as gam
@@ -36,6 +37,13 @@ class TestMVAdditivePredictor:
 
         scaled = gam.MVAdditivePredictor.from_random_walk("scaled", ndim=4)
         assert jnp.linalg.norm(scaled.penalty.value, ord=jnp.inf) == pytest.approx(1.0)
+
+    def test_constructor_accepts_numpy_integer_dimension(self) -> None:
+        predictor = gam.MVAdditivePredictor.from_random_walk(
+            "delta", ndim=np.int64(4)
+        )
+
+        assert predictor.ndim == 4
 
     def test_identity_and_no_penalty_constructors(self) -> None:
         identity = gam.MVAdditivePredictor.from_identity("identity", ndim=3)
