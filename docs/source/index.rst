@@ -143,7 +143,7 @@ Bases
 
 
 Terms and Variables
-***************
+*******************
 
 .. autosummary::
     :toctree: generated
@@ -166,6 +166,8 @@ Terms and Variables
     ~liesel_gam.MRFTerm
     ~liesel_gam.BasisDot
     ~liesel_gam.ScaleIG
+    ~liesel_gam.scale_ig
+    ~liesel_gam.scale_wb
     ~liesel_gam.UserVar
 
 

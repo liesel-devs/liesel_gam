@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import tensorflow_probability.substrates.jax.bijectors as tfb
-import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.contrib import splines as spl
 from ryp import r, to_py
 
@@ -18,41 +17,6 @@ import liesel_gam.term_builder as gb
 from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
-
-
-def scale_wb(
-    value: float = 0.5,
-    scale: float = 0.5,
-    bijector: tfb.Bijector = tfb.Exp(),
-    name: str = "{x}",
-    inference: gs.MCMCSpec | None = None,
-):
-    prior = lsl.Dist(
-        tfd.Weibull,
-        concentration=jnp.asarray(0.5),
-        scale=jnp.asarray(scale),
-    )
-    scale_var = lsl.Var.new_param(jnp.asarray(value), prior, name=name)
-    return scale_var.biject(bijector, inference=inference)
-
-
-def scale_ig(
-    value: float = 0.5,
-    concentration: float = 1.0,
-    scale: float = 0.005,
-    bijector: tfb.Bijector = tfb.Exp(),
-    name: str = "{x}",
-    inference: gs.MCMCSpec | None = None,
-):
-    prior = lsl.Dist(
-        tfd.InverseGamma,
-        concentration=jnp.asarray(concentration),
-        scale=jnp.asarray(scale),
-    )
-    variance_var = lsl.Var.new_param(jnp.asarray(value), prior, name="{x}^2")
-    variance_var.biject(bijector, inference=inference)
-    scale_var = lsl.Var.new_calc(jnp.sqrt, variance_var, name=name)
-    return scale_var
 
 
 @pytest.fixture(scope="module")
@@ -750,12 +714,14 @@ class TestTPTerm:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         scale_inference = gs.MCMCSpec(gs.HMCKernel)
-        ta = tb.tf(psy, psx, common_scale=scale_wb(inference=scale_inference))
+        scale = gam.scale_wb(0.5, 0.5, inference=scale_inference)
+        ta = tb.tf(psy, psx, common_scale=scale)
         assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
         for i in range(len(ta.scales)):
-            assert ta.scales[i].value_node[0].strong
+            variance = ta.scales[i].value_node[0]
+            assert variance.value_node[0].strong
             assert ta.scales[i].inference is None
-            assert ta.scales[i].value_node[0].inference is scale_inference
+            assert variance.value_node[0].inference is scale_inference
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
@@ -812,26 +778,31 @@ class TestTPTerm:
     def test_wb_scale(self, columb, method):
         tb = gb.TermBuilder.from_df(columb)
         sy_inference = gs.MCMCSpec(gs.HMCKernel)
-        psy = tb.ps("y", k=10, scale=scale_wb(inference=sy_inference))
-        psx = tb.ps("x", k=10, scale=scale_wb())
+        psy = tb.ps("y", k=10, scale=gam.scale_wb(0.5, 0.5, inference=sy_inference))
+        psx = tb.ps("x", k=10, scale=gam.scale_wb(0.5, 0.5))
 
         getattr(tb, method)(psy, psx)
 
-        assert not jnp.isnan(psy.scale.value_node[0].log_prob)
-        assert not jnp.isnan(psx.scale.value_node[0].log_prob)
+        yvar = psy.scale.value_node[0]
+        xvar = psx.scale.value_node[0]
 
-        assert psy.scale.value_node[0].strong
-        assert psx.scale.value_node[0].strong
+        assert not jnp.isnan(yvar.value_node[0].log_prob)
+        assert not jnp.isnan(xvar.value_node[0].log_prob)
 
-        assert psy.scale.value_node[0].inference is sy_inference
-        assert psx.scale.value_node[0].inference is None
+        assert yvar.value_node[0].strong
+        assert xvar.value_node[0].strong
+
+        assert yvar.value_node[0].inference is sy_inference
+        assert xvar.value_node[0].inference is None
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
     def test_ig_scale(self, columb, method):
         tb = gb.TermBuilder.from_df(columb)
         sy_inference = gs.MCMCSpec(gs.HMCKernel)
-        psy = tb.ps("y", k=10, scale=scale_ig(inference=sy_inference))
-        psx = tb.ps("x", k=10, scale=scale_ig())
+        psy = tb.ps(
+            "y", k=10, scale=gam.scale_ig(0.5, 1.0, 0.005, inference=sy_inference)
+        )
+        psx = tb.ps("x", k=10, scale=gam.scale_ig(0.5, 1.0, 0.005))
 
         getattr(tb, method)(psy, psx)
 
