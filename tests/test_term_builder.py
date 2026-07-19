@@ -68,6 +68,37 @@ class TestTermBuilder:
         sx = tb.ps("x", k=10, prefix="test.")
         assert sx.name == "test.ps(x)"
 
+        registry = gb.PandasRegistry(columb, na_action="drop")
+        tb = gb.TermBuilder(registry)
+        sx = tb.kriging("x", "y", k=10, prefix="test.")
+        assert sx.name == "test.kriging(x,y)"
+
+        registry = gb.PandasRegistry(columb, na_action="drop")
+        tb = gb.TermBuilder(registry, prefix_names_by="test.")
+        sx1 = tb.kriging("x", "y", k=10)
+        assert sx1.name == "test.kriging(x,y)"
+
+        sx2 = tb.kriging("x", "y", k=10)
+        assert sx2.name == "test.kriging(x,y)1"
+
+        lsl.Model([sx1, sx2])
+
+    def test_supply_variables(self, columb) -> None:
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        x = registry.get_numeric_obs("x")
+        y = registry.get_numeric_obs("y")
+        tb = gb.TermBuilder(registry, prefix_names_by="test.")
+
+        sx1 = tb.kriging(x, y, k=10)
+
+        assert sx1.name == "test.kriging(test.[x,y])"
+
+        sx2 = tb.kriging(x, y, k=10)
+        assert sx2.name == "test.kriging(test.[x,y]1)"
+
+        lsl.Model([sx1, sx2])
+
     def test_init_scale(self, columb) -> None:
         tb = gb.TermBuilder.from_df(columb, prefix_names_by="test.")
         sx = tb.ps("x", k=10, scale=lsl.Var(1.0))
@@ -119,6 +150,39 @@ class TestLinTerm:
         term = tb.slin("x + y", scale=3.0)
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(3.0)
+
+    def test_lin_include_intercept(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        term = tb.lin("x + y")
+        term_with_intercept = tb.lin("x + y", include_intercept=True)
+
+        basis = np.asarray(term.basis.value)
+        basis_with_intercept = np.asarray(term_with_intercept.basis.value)
+
+        assert basis_with_intercept.shape[-1] == basis.shape[-1] + 1
+        assert term_with_intercept.column_names == ["Intercept", "x", "y"]
+        assert np.any(np.all(np.isclose(basis_with_intercept, 1.0), axis=0))
+
+    def test_slin_include_intercept(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        term = tb.slin("x + y")
+        term_with_intercept = tb.slin("x + y", include_intercept=True)
+
+        basis = np.asarray(term.basis.value)
+        basis_with_intercept = np.asarray(term_with_intercept.basis.value)
+
+        assert basis_with_intercept.shape[-1] == basis.shape[-1] + 1
+        assert term_with_intercept.column_names == ["Intercept", "x", "y"]
+        assert (
+            term_with_intercept.coef.value.shape[-1] == basis_with_intercept.shape[-1]
+        )
+        assert term_with_intercept.basis.penalty.value.shape == (
+            basis_with_intercept.shape[-1],
+            basis_with_intercept.shape[-1],
+        )
+        assert np.any(np.all(np.isclose(basis_with_intercept, 1.0), axis=0))
 
     def test_name(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -773,6 +837,40 @@ class TestTPTerm:
         ps = tb.ps("x", k=10)
         ta = tb.tx(mrf, ps)
         assert ta.basis.value.shape == (49, 9 * 48)
+
+    @pytest.mark.parametrize("prefix", (False, True))
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_basis_name_handling(self, columb, method, prefix):
+        tb = gb.TermBuilder.from_df(columb)
+        psx1 = tb.ps("x", k=10, prefix="l." if prefix else "")
+        psy1 = tb.ps("y", k=10, prefix="l." if prefix else "")
+        tx1 = getattr(tb, method)(psx1, psy1, prefix="l." if prefix else "")
+
+        psx2 = tb.ps("x", k=10, prefix="s." if prefix else "")
+        psy2 = tb.ps("y", k=10, prefix="s." if prefix else "")
+        tx2 = getattr(tb, method)(psx2, psy2, prefix="s." if prefix else "")
+
+        model = lsl.Model([tx1, tx2])
+        assert model is not None
+
+    @pytest.mark.parametrize("prefix", (False, True))
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_basis_name_handling_two_termbuilders(self, columb, method, prefix):
+        tb1 = gb.TermBuilder.from_df(columb, prefix_names_by="l." if prefix else "")
+        psx1 = tb1.ps("x", k=10)
+        psy1 = tb1.ps("y", k=10)
+        tx1 = getattr(tb1, method)(psx1, psy1)
+
+        tb2 = gb.TermBuilder.from_df(columb, prefix_names_by="s." if prefix else "")
+        psx2 = tb2.ps("x", k=10)
+        psy2 = tb2.ps("y", k=10)
+        tx2 = getattr(tb2, method)(psx2, psy2)
+
+        if not prefix:
+            with pytest.raises(RuntimeError, match="Duplicate node names"):
+                lsl.Model([tx1, tx2])
+        else:
+            lsl.Model([tx1, tx2])
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
     def test_wb_scale(self, columb, method):
