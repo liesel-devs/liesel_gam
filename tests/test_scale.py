@@ -18,6 +18,16 @@ def _variance_and_bijected(scale: lsl.Var) -> tuple[lsl.Var, lsl.Var]:
     return variance, bijected
 
 
+def _base_prior(scale: lsl.Var) -> tfd.Distribution:
+    _, bijected = _variance_and_bijected(scale)
+    assert bijected.dist_node is not None
+    prior = bijected.dist_node.init_dist()
+    assert isinstance(prior, tfd.TransformedDistribution)
+    assert isinstance(prior.distribution, tfd.Independent)
+    assert prior.distribution.reinterpreted_batch_ndims == 0
+    return prior.distribution.distribution
+
+
 @pytest.mark.parametrize(
     ("function", "parameter"),
     (
@@ -45,9 +55,10 @@ def test_scale_wb_places_prior_on_variance() -> None:
     assert variance.value == pytest.approx(0.25)
     assert variance.name == "tau^2"
     assert isinstance(prior, tfd.TransformedDistribution)
-    assert isinstance(prior.distribution, tfd.Weibull)
-    assert prior.distribution.concentration == pytest.approx(0.5)
-    assert prior.distribution.scale == pytest.approx(2.0)
+    base_prior = _base_prior(scale)
+    assert isinstance(base_prior, tfd.Weibull)
+    assert base_prior.concentration == pytest.approx(0.5)
+    assert base_prior.scale == pytest.approx(2.0)
     assert bijected.value == pytest.approx(jnp.log(0.25))
     assert bijected.inference is inference
 
@@ -63,10 +74,35 @@ def test_scale_ig_places_prior_on_variance() -> None:
     assert variance.value == pytest.approx(0.25)
     assert variance.name == "tau^2"
     assert isinstance(prior, tfd.TransformedDistribution)
-    assert isinstance(prior.distribution, tfd.InverseGamma)
-    assert prior.distribution.concentration == pytest.approx(3.0)
-    assert prior.distribution.scale == pytest.approx(0.1)
+    base_prior = _base_prior(scale)
+    assert isinstance(base_prior, tfd.InverseGamma)
+    assert base_prior.concentration == pytest.approx(3.0)
+    assert base_prior.scale == pytest.approx(0.1)
     assert bijected.value == pytest.approx(jnp.log(0.25))
+
+
+@pytest.mark.parametrize(
+    ("scale_var", "unconstrained_value"),
+    (
+        (gam.scale_wb(0.5, 0.05, name="tau"), jnp.float32(2.8017025)),
+        (gam.scale_ig(0.5, 3.0, 0.1, name="tau"), jnp.float32(-20.0)),
+    ),
+)
+def test_transformed_scale_prior_log_prob_is_stable(
+    scale_var: lsl.Var,
+    unconstrained_value,
+) -> None:
+    variance, bijected = _variance_and_bijected(scale_var)
+    assert bijected.dist_node is not None
+    transformed_prior = bijected.dist_node.init_dist()
+    base_prior = _base_prior(scale_var)
+
+    actual = transformed_prior.log_prob(unconstrained_value)
+    variance_value = jnp.exp(unconstrained_value)
+    expected = base_prior.log_prob(variance_value) + unconstrained_value
+
+    assert jnp.isfinite(expected)
+    assert actual == pytest.approx(expected)
 
 
 @pytest.mark.parametrize("function", (gam.scale_wb, gam.scale_ig))

@@ -10,6 +10,29 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 InferenceTypes = Any
 
 
+def _independent_scalar(
+    distribution: tfd.Distribution,
+) -> tfd.Independent:
+    """Wrap a scalar distribution without changing its batch or event shape.
+
+    The wrapper prevents an outer ``TransformedDistribution`` from recursively
+    using the base distribution's transformed local-measure implementation. In
+    particular, that path can make ``Weibull`` log probabilities spuriously
+    evaluate to ``-inf`` in float32 when its inverse CDF rounds to one.
+    """
+    return tfd.Independent(distribution, reinterpreted_batch_ndims=0)
+
+
+def _weibull(concentration, scale) -> tfd.Independent:
+    return _independent_scalar(tfd.Weibull(concentration=concentration, scale=scale))
+
+
+def _inverse_gamma(concentration, scale) -> tfd.Independent:
+    return _independent_scalar(
+        tfd.InverseGamma(concentration=concentration, scale=scale)
+    )
+
+
 def _variance_name(scale_name: str) -> str:
     if not scale_name:
         return ""
@@ -86,7 +109,7 @@ def scale_wb(
     1071--1106. https://doi.org/10.1214/15-BA983
     """
     prior = lsl.Dist(
-        tfd.Weibull,
+        _weibull,
         concentration=jnp.asarray(0.5),
         scale=jnp.asarray(scale),
     )
@@ -137,7 +160,7 @@ def scale_ig(
     Scale variable :math:`\tau`.
     """
     prior = lsl.Dist(
-        tfd.InverseGamma,
+        _inverse_gamma,
         concentration=jnp.asarray(concentration),
         scale=jnp.asarray(scale),
     )
