@@ -17,6 +17,7 @@ import liesel.goose as gs
 import liesel.model as lsl
 from jax import Array, grad
 from jax.flatten_util import ravel_pytree
+from jax.scipy.special import polygamma
 from jax.typing import ArrayLike
 from liesel.goose.types import ModelState, Position
 
@@ -274,6 +275,92 @@ class IWLSWeights:
 
         return working_weights
 
+    @staticmethod
+    def two_piece_student_t_loc(
+        df_name: str = "df",
+        scale_name: str = "scale",
+    ) -> WorkingWeightsFn:
+        """Return Fisher weights for ``TwoPieceStudentT`` location terms.
+
+        The location predictor is mapped directly to ``loc``. The named ``df``
+        and ``scale`` variables are the positive parameters passed to TFP.
+        """
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name, scale_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            scale = jnp.asarray(pos[scale_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            scale = jnp.clip(scale, min=eps)
+            return (df + 1.0) / ((df + 3.0) * jnp.square(scale))
+
+        return working_weights
+
+    @staticmethod
+    def two_piece_student_t_scale(df_name: str = "df") -> WorkingWeightsFn:
+        """Return Fisher weights for ``TwoPieceStudentT`` log-scale terms."""
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            return 2.0 * df / (df + 3.0)
+
+        return working_weights
+
+    @staticmethod
+    def two_piece_student_t_df(df_name: str = "df") -> WorkingWeightsFn:
+        """Return Fisher weights for ``TwoPieceStudentT`` log-df terms."""
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            weight = (
+                jnp.square(df)
+                / 4.0
+                * (polygamma(1, df / 2.0) - polygamma(1, (df + 1.0) / 2.0))
+                + df / (2.0 * (df + 3.0))
+                - df / (df + 1.0)
+            )
+            return jnp.clip(weight, min=jnp.finfo(df.dtype).eps)
+
+        return working_weights
+
+    @staticmethod
+    def two_piece_student_t_skewness(
+        df_name: str = "df",
+        skewness_name: str = "skewness",
+    ) -> WorkingWeightsFn:
+        """Return Fisher weights for ``TwoPieceStudentT`` log-skewness terms."""
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name, skewness_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            skewness = jnp.asarray(pos[skewness_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            skewness = jnp.clip(skewness, min=eps)
+            skew_info = 4.0 / jnp.square(skewness + 1.0 / skewness)
+            return 2.0 * df / (df + 3.0) + skew_info
+
+        return working_weights
+
 
 class GaussianIWLSWeights(IWLSWeights):
     """
@@ -284,6 +371,23 @@ class GaussianIWLSWeights(IWLSWeights):
 
     loc = staticmethod(IWLSWeights.gaussian_loc)
     scale = staticmethod(IWLSWeights.gaussian_scale)
+
+
+class TwoPieceStudentTIWLSWeights(IWLSWeights):
+    """Working-weight factories for TFP's ``TwoPieceStudentT`` distribution.
+
+    ``scale``, ``df``, and ``skewness`` target their logarithms; ``loc`` uses an
+    identity link. These links map directly to TFP's positive parameters. For
+    ``nu=df``, ``sigma=scale``, and ``gamma=skewness``, the weights are
+    ``(nu+1) / ((nu+3)*sigma**2)``, ``2*nu/(nu+3)``, the ordinary Student-t
+    log-df weight, and ``2*nu/(nu+3) + 4/(gamma + 1/gamma)**2``. The first three
+    are skewness-independent under TFP's two-piece normalization.
+    """
+
+    loc = staticmethod(IWLSWeights.two_piece_student_t_loc)
+    scale = staticmethod(IWLSWeights.two_piece_student_t_scale)
+    df = staticmethod(IWLSWeights.two_piece_student_t_df)
+    skewness = staticmethod(IWLSWeights.two_piece_student_t_skewness)
 
 
 def gaussian_iwls_spec_loc(
@@ -458,6 +562,170 @@ def apply_gaussian_iwls_spec_scale(
         term.coef.inference = gaussian_iwls_spec_scale(term=term, **kwargs)
         if verbose:
             logger.info(f"Updating inference of '{term.name}' coefficient.")
+
+
+def _two_piece_student_t_iwls_spec(
+    term: IWLSProposalInputTerm,
+    proposal_type,
+    proposal_kwargs: dict[str, str],
+    kernel_kwargs: dict[str, Any],
+) -> gs.MCMCSpec:
+    """Build a ``TwoPieceStudentT`` IWLS specification."""
+    term = _ensure_isotropic_term(term)
+    _raise_if_scale_factored(term)
+
+    def init_iwls_kernel(position_keys, term):
+        term = _ensure_isotropic_term(term)
+        _raise_if_scale_factored(term)
+        proposal = proposal_type.from_term(term, **proposal_kwargs)
+        return proposal.kernel_factory()(position_keys, **kernel_kwargs)
+
+    return gs.MCMCSpec(kernel=init_iwls_kernel, kernel_kwargs={"term": term})
+
+
+def two_piece_student_t_iwls_spec_loc(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    scale_name: str = "scale",
+    **kwargs,
+) -> gs.MCMCSpec:
+    """Create an IWLS specification for a ``TwoPieceStudentT`` location term."""
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTLocIWLSProposal,
+        {"df_name": df_name, "scale_name": scale_name},
+        kwargs,
+    )
+
+
+def two_piece_student_t_iwls_spec_scale(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    **kwargs,
+) -> gs.MCMCSpec:
+    """Create an IWLS specification for a log-scale predictor term."""
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTScaleIWLSProposal,
+        {"df_name": df_name},
+        kwargs,
+    )
+
+
+def two_piece_student_t_iwls_spec_df(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    **kwargs,
+) -> gs.MCMCSpec:
+    """Create an IWLS specification for a log-df predictor term."""
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTDfIWLSProposal,
+        {"df_name": df_name},
+        kwargs,
+    )
+
+
+def two_piece_student_t_iwls_spec_skewness(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    skewness_name: str = "skewness",
+    **kwargs,
+) -> gs.MCMCSpec:
+    """Create an IWLS specification for a log-skewness predictor term."""
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTSkewnessIWLSProposal,
+        {"df_name": df_name, "skewness_name": skewness_name},
+        kwargs,
+    )
+
+
+def _apply_two_piece_student_t_iwls_spec(
+    predictor: AdditivePredictor,
+    spec_fn: Callable[..., gs.MCMCSpec],
+    verbose: bool,
+    **kwargs,
+) -> None:
+    """Assign one kind of ``TwoPieceStudentT`` IWLS specification."""
+    for term in predictor.terms.values():
+        if _skip_anisotropic_term(term, verbose=verbose):
+            continue
+        if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
+            if verbose:
+                logger.info(f"Skipping '{term.name}', inference left unchanged.")
+            continue
+        term.coef.inference = spec_fn(term=term, **kwargs)
+        if verbose:
+            logger.info(f"Updating inference of '{term.name}' coefficient.")
+
+
+def apply_two_piece_student_t_iwls_spec_loc(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    scale_name: str = "scale",
+    verbose: bool = False,
+    **kwargs,
+) -> None:
+    """Assign location IWLS specs to supported structured predictor terms."""
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_loc,
+        verbose,
+        df_name=df_name,
+        scale_name=scale_name,
+        **kwargs,
+    )
+
+
+def apply_two_piece_student_t_iwls_spec_scale(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    verbose: bool = False,
+    **kwargs,
+) -> None:
+    """Assign log-scale IWLS specs to supported structured predictor terms."""
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_scale,
+        verbose,
+        df_name=df_name,
+        **kwargs,
+    )
+
+
+def apply_two_piece_student_t_iwls_spec_df(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    verbose: bool = False,
+    **kwargs,
+) -> None:
+    """Assign log-df IWLS specs to supported structured predictor terms."""
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_df,
+        verbose,
+        df_name=df_name,
+        **kwargs,
+    )
+
+
+def apply_two_piece_student_t_iwls_spec_skewness(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    skewness_name: str = "skewness",
+    verbose: bool = False,
+    **kwargs,
+) -> None:
+    """Assign log-skewness IWLS specs to structured predictor terms."""
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_skewness,
+        verbose,
+        df_name=df_name,
+        skewness_name=skewness_name,
+        **kwargs,
+    )
 
 
 @dataclass
@@ -1020,11 +1288,139 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         self.n = n
 
 
+@dataclass(init=False)
+class TwoPieceStudentTIWLSProposal(IWLSProposal):
+    """Base IWLS proposal for TFP's ``TwoPieceStudentT`` parameters.
+
+    Subclasses use diagonal expected Fisher information for one of ``loc``,
+    ``log(scale)``, ``log(df)``, or ``log(skewness)``. The three logarithmic
+    predictors must be exponentiated before being passed to TFP.
+    """
+
+    parameter = ""
+    smooth_name: str
+    df_name: str
+    scale_name: str
+    skewness_name: str
+    n: int
+
+    @classmethod
+    def _working_weights(
+        cls,
+        *,
+        df_name: str,
+        scale_name: str,
+        skewness_name: str,
+    ) -> WorkingWeightsFn:
+        if cls.parameter == "loc":
+            return IWLSWeights.two_piece_student_t_loc(df_name, scale_name)
+        if cls.parameter == "scale":
+            return IWLSWeights.two_piece_student_t_scale(df_name)
+        if cls.parameter == "df":
+            return IWLSWeights.two_piece_student_t_df(df_name)
+        if cls.parameter == "skewness":
+            return IWLSWeights.two_piece_student_t_skewness(df_name, skewness_name)
+        raise ValueError(f"Unknown TwoPieceStudentT parameter {cls.parameter!r}.")
+
+    @classmethod
+    def from_term(  # type: ignore[override]
+        cls,
+        term: IWLSProposalInputTerm,
+        *,
+        df_name: str = "df",
+        scale_name: str = "scale",
+        skewness_name: str = "skewness",
+    ) -> Self:
+        """Construct a parameter-specific proposal from a structured term."""
+        working_weights_fn = cls._working_weights(
+            df_name=df_name,
+            scale_name=scale_name,
+            skewness_name=skewness_name,
+        )
+        base = IWLSProposal.from_term(term, working_weights_fn)
+        return cls(
+            basis=base.basis,
+            smooth_name=term.name,
+            smooth_scale_name=base.smooth_scale_name,
+            df_name=df_name,
+            scale_name=scale_name,
+            skewness_name=skewness_name,
+            penalty=base.penalty,
+            model=base.model,
+            n=term.value.shape[0],
+            basis_name=base.basis_name,
+            scale_factored=base.scale_factored,
+        )
+
+    def __init__(
+        self,
+        basis: ArrayLike,
+        smooth_name: str,
+        smooth_scale_name: str,
+        df_name: str,
+        scale_name: str,
+        skewness_name: str,
+        penalty: ArrayLike,
+        model: lsl.Model | gs.LieselInterface,
+        n: int,
+        basis_name: str = "",
+        scale_factored: bool = False,
+    ) -> None:
+        """Initialize a parameter-specific proposal."""
+        working_weights_fn = type(self)._working_weights(
+            df_name=df_name,
+            scale_name=scale_name,
+            skewness_name=skewness_name,
+        )
+        super().__init__(
+            basis=basis,
+            smooth_scale_name=smooth_scale_name,
+            penalty=penalty,
+            model=model,
+            working_weights_fn=working_weights_fn,
+            basis_name=basis_name,
+            scale_factored=scale_factored,
+        )
+        self.smooth_name = smooth_name
+        self.df_name = df_name
+        self.scale_name = scale_name
+        self.skewness_name = skewness_name
+        self.n = n
+
+
+class TwoPieceStudentTLocIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """IWLS proposal for the identity-linked TFP ``loc`` parameter."""
+
+    parameter = "loc"
+
+
+class TwoPieceStudentTScaleIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """IWLS proposal for a log-linked TFP ``scale`` parameter."""
+
+    parameter = "scale"
+
+
+class TwoPieceStudentTDfIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """IWLS proposal for a log-linked TFP ``df`` parameter."""
+
+    parameter = "df"
+
+
+class TwoPieceStudentTSkewnessIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """IWLS proposal for a log-linked TFP ``skewness`` parameter."""
+
+    parameter = "skewness"
+
+
 # Backward-compatible aliases for the original Cholesky-focused names.
 GaussianIWLS = GaussianIWLSWeights
 IWLS = IWLSWeights
 IWLSCholInfo = IWLSProposal
 GaussianLocCholInfo = GaussianLocIWLSProposal
 GaussianScaleCholInfo = GaussianScaleIWLSProposal
+TwoPieceStudentTLocCholInfo = TwoPieceStudentTLocIWLSProposal
+TwoPieceStudentTScaleCholInfo = TwoPieceStudentTScaleIWLSProposal
+TwoPieceStudentTDfCholInfo = TwoPieceStudentTDfIWLSProposal
+TwoPieceStudentTSkewnessCholInfo = TwoPieceStudentTSkewnessIWLSProposal
 iwls_spec = IWLSProposal.mcmc_spec
 apply_iwls_spec = IWLSProposal.set_mcmc_specs
