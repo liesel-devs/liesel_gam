@@ -1,5 +1,6 @@
 import inspect
 
+import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
@@ -174,9 +175,7 @@ class TestMVTermBuilder:
 
     def test_ps_convenience_method(self) -> None:
         builder = gam.MVTermBuilder.from_df(_data(), jnp.eye(3))
-        term = builder.ps(
-            "x", k=5, scale=1.0, dimension_scale=1.0
-        )
+        term = builder.ps("x", k=5, scale=1.0, dimension_scale=1.0)
 
         assert term.latent.value.shape == (12, 3)
         assert term.value.shape == (12, 3)
@@ -196,24 +195,31 @@ class TestMVTermBuilder:
     def test_tx_accepts_scalar_and_multivariate_marginals(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
-        builder = gam.MVTermBuilder.from_term_builder(
-            scalar_builder, jnp.eye(3)
-        )
+        builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
         scalar = _scalar_term(scalar_builder, "x")
         multivariate = _mv_term(builder, "z", dimension_scale=1.0)
 
         term = builder.tx(scalar, multivariate, dimension_scale=1.0)
+        assert isinstance(term, gam.MultivariateStrctInteractionTerm)
         assert len(term.marginal_terms) == 2
+        assert not hasattr(term, "basis")
         assert term.latent.value.shape == (12, 3)
         assert term.value.shape == (12, 3)
+        coef = jnp.linspace(-1.0, 1.0, term.coef.value.size)
+        explicit_basis = jax.vmap(jnp.kron)(
+            scalar.basis.value, multivariate.marginal_bases[0].value
+        )
+        term.coef.value = coef
+        term.latent.update()
+        term.update()
+        expected_latent = explicit_basis @ coef.reshape(term.nbases, term.latent_ndim)
+        assert jnp.allclose(term.latent.value, expected_latent, atol=1e-5)
         lsl.Model([term])
 
     def test_tf_accepts_mixed_marginals_and_builds_unique_graph(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
-        builder = gam.MVTermBuilder.from_term_builder(
-            scalar_builder, jnp.eye(3)
-        )
+        builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
 
         scalar = _scalar_term(scalar_builder, "x")
         multivariate = _mv_term(builder, "z", dimension_scale=1.0)
@@ -230,6 +236,8 @@ class TestMVTermBuilder:
 
         assert sorted(tf1.terms_by_order) == [1, 2]
         assert len(tf1._terms_list) == 3
+        assert all(hasattr(term, "basis") for term in tf1.terms_by_order[1])
+        assert all(not hasattr(term, "basis") for term in tf1.terms_by_order[2])
         assert tf1.latent.value.shape == (12, 3)
         assert tf1.value.shape == (12, 3)
         lsl.Model([tf1, tf2])
@@ -237,9 +245,7 @@ class TestMVTermBuilder:
     def test_tf_groups_terms_by_order(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
-        builder = gam.MVTermBuilder.from_term_builder(
-            scalar_builder, jnp.eye(3)
-        )
+        builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
         term = builder.tf(
             (sx := _scalar_term(scalar_builder, "x")),
             (sz := _scalar_term(scalar_builder, "z")),
@@ -260,9 +266,7 @@ class TestMVTermBuilder:
     def test_tensor_rejects_incompatible_multivariate_marginal(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
-        identity = gam.MVTermBuilder.from_term_builder(
-            scalar_builder, jnp.eye(3)
-        )
+        identity = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
         random_walk = gam.MVTermBuilder.from_term_builder(
             scalar_builder,
             jnp.diff(jnp.eye(3), axis=0).T @ jnp.diff(jnp.eye(3), axis=0),
@@ -275,9 +279,7 @@ class TestMVTermBuilder:
     def test_tensor_input_validation(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
-        builder = gam.MVTermBuilder.from_term_builder(
-            scalar_builder, jnp.eye(3)
-        )
+        builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
         scalar = _scalar_term(scalar_builder, "x")
 
         with pytest.raises(ValueError, match="At least one tensor marginal"):
@@ -320,13 +322,9 @@ class TestMVTermBuilder:
     def test_random_slope_and_varying_coefficient(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
-        builder = gam.MVTermBuilder.from_term_builder(
-            scalar_builder, jnp.eye(3)
-        )
+        builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
 
-        random_slope = builder.rs(
-            "x", "group", scale=1.0, dimension_scale=1.0
-        )
+        random_slope = builder.rs("x", "group", scale=1.0, dimension_scale=1.0)
         varying = builder.vc(
             "x", _scalar_term(scalar_builder, "z"), dimension_scale=1.0
         )

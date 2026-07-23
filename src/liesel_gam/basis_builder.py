@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping, Sequence
 from math import ceil
 from typing import Any, Literal, cast, get_args
@@ -42,6 +43,8 @@ BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp", "gp"]
 
 
 logger = logging.getLogger(__name__)
+
+_QUOTED_FORMULA_VARIABLE = re.compile(r"""\bQ\(\s*(['"])(.*?)\1\s*\)""")
 
 
 def _validate_bs(bs):
@@ -1458,7 +1461,11 @@ class BasisBuilder:
         if not include_intercept:
             column_names = column_names[1:]
 
-        required = sorted(str(var) for var in spec.required_variables)
+        required_variables = {str(var) for var in spec.required_variables}
+        required_variables.update(
+            match.group(2) for match in _QUOTED_FORMULA_VARIABLE.finditer(formula)
+        )
+        required = sorted(required_variables)
         df_subset = self.data.loc[:, required]
         df_colnames = df_subset.columns
 

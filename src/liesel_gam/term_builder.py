@@ -2919,7 +2919,6 @@ class TermBuilder:
         fname = self.names.create(prefix + f"{_fname}(" + inputs + ")")
         term_name = prefix + name if name is not None else fname
         fname = term_name
-        basis_name = self.names.create("B(" + inputs + ")")
         coef_name = self.names.beta(fname)
 
         if common_scale is not None and not isinstance(common_scale, float):
@@ -2942,7 +2941,6 @@ class TermBuilder:
             inference=self._get_inference(inference),
             coef_name=coef_name,
             include_main_effects=include_main_effects,
-            basis_name=basis_name,
         )
 
         if not common_scale:
@@ -3381,7 +3379,6 @@ class TermBuilder:
             order=order,
             inference=self._get_inference(inference),
             coef_name=r"\beta",
-            basis_name="B",
             tx_name="tx",
             tf_name="tf",
             names_prefix=prefix,
@@ -3389,20 +3386,9 @@ class TermBuilder:
         )
         term.name = term_name
 
-        for subterms_order, subterms in term.terms_by_order.items():
-            if subterms_order == 1:
-                continue
-            for this_subterm in subterms:
-                this_subterm.basis.name = self.names.create(this_subterm.basis.name)
-                this_subterm.basis.value_node.name = self.names.create(
-                    this_subterm.basis.value_node.name
-                )
-                this_subterm.basis.var_value_node.name = self.names.create(
-                    this_subterm.basis.var_value_node.name
-                )
-
         first_order_bases = []
         for term_ in term.terms_by_order[1]:
+            assert isinstance(term_, StrctTerm)
             first_order_bases.append(term_.basis)
 
         for i in term.order:

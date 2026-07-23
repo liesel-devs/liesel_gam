@@ -47,6 +47,9 @@ from .term import IndexingTerm as IndexingTerm
 from .term import LinMixin as LinMixin
 from .term import LinTerm as LinTerm
 from .term import MRFTerm as MRFTerm
+from .term import (
+    MultivariateStrctInteractionTerm as MultivariateStrctInteractionTerm,
+)
 from .term import MultivariateStrctLinTerm as MultivariateStrctLinTerm
 from .term import MultivariateStrctTerm as MultivariateStrctTerm
 from .term import MultivariateTPTerm as MultivariateTPTerm

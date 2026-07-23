@@ -23,6 +23,7 @@ from .mv_utils import (
 from .registry import PandasRegistry
 from .term import (
     LinMixin,
+    MultivariateStrctInteractionTerm,
     MultivariateStrctLinTerm,
     MultivariateStrctTerm,
     MultivariateTPTerm,
@@ -87,14 +88,11 @@ class MVTermBuilder:
         registry: PandasRegistry,
         dimension_penalty: ArrayLike | lsl.Value,
         prefix_names_by: str = "",
-        default_inference: InferenceTypes | None = gs.MCMCSpec(
-            gs.IWLSKernel.untuned
-        ),
-        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(
+        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_dimension_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(
             1.0, 0.005
         ),
-        default_dimension_scale_fn: Callable[[], lsl.Var]
-        | VarIGPrior = VarIGPrior(1.0, 0.005),
         default_scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
         scale_penalty: bool = True,
     ) -> None:
@@ -147,8 +145,9 @@ class MVTermBuilder:
         cls,
         term_builder: TermBuilder,
         dimension_penalty: ArrayLike | lsl.Value,
-        default_dimension_scale_fn: Callable[[], lsl.Var]
-        | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_dimension_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(
+            1.0, 0.005
+        ),
         default_scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
         scale_penalty: bool = True,
     ) -> Self:
@@ -170,8 +169,9 @@ class MVTermBuilder:
         cls,
         predictor: MVAdditivePredictor,
         term_builder: TermBuilder,
-        default_dimension_scale_fn: Callable[[], lsl.Var]
-        | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_dimension_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(
+            1.0, 0.005
+        ),
         default_scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
     ) -> Self:
         """Initialize from a potentially constrained predictor and a term builder."""
@@ -193,14 +193,11 @@ class MVTermBuilder:
         data: pd.DataFrame,
         dimension_penalty: ArrayLike | lsl.Value,
         prefix_names_by: str = "",
-        default_inference: InferenceTypes | None = gs.MCMCSpec(
-            gs.IWLSKernel.untuned
-        ),
-        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(
+        default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_dimension_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(
             1.0, 0.005
         ),
-        default_dimension_scale_fn: Callable[[], lsl.Var]
-        | VarIGPrior = VarIGPrior(1.0, 0.005),
         default_scales_inference: InferenceTypes | None = gs.MCMCSpec(gs.HMCKernel),
         scale_penalty: bool = True,
     ) -> Self:
@@ -363,9 +360,7 @@ class MVTermBuilder:
         self._prepare_scale(scale, resolved_scales_inference)
 
         input_names = ",".join(
-            StrctInteractionTerm._input_obs(
-                StrctInteractionTerm._get_bases([marginal])
-            )
+            StrctInteractionTerm._input_obs(StrctInteractionTerm._get_bases([marginal]))
         )
         basis_name = self.names.create(f"BMV({input_names})")
         coef_name = self.names.param("\\gamma", marginal.name)
@@ -584,7 +579,7 @@ class MVTermBuilder:
         scales_inference: InferenceTypes | None | Literal["default"] = "default",
         prefix: str = "",
         name: str | None = None,
-    ) -> MultivariateStrctTerm:
+    ) -> MultivariateStrctInteractionTerm:
         scalar_marginals = self._extract_marginals(marginals)
         input_names = ",".join(
             StrctInteractionTerm._input_obs(
@@ -606,7 +601,7 @@ class MVTermBuilder:
         dimension_scale_var = self.init_dimension_scale(dimension_scale, term_name)
         self._prepare_scale(dimension_scale_var, resolved_scales_inference)
 
-        term = MultivariateStrctTerm(
+        term = MultivariateStrctInteractionTerm(
             *scalar_marginals,
             dimension_penalties=[self.dimension_penalty],
             dimension_scales=[dimension_scale_var],
@@ -614,7 +609,6 @@ class MVTermBuilder:
             name=term_name,
             inference=self._get_inference(inference),
             coef_name=self.names.param("\\gamma", term_name),
-            basis_name=self.names.create(f"BMV({input_names})"),
         )
         if is_zero_penalty(self.dimension_penalty):
             term.dimension_scale = None
@@ -662,7 +656,6 @@ class MVTermBuilder:
             tx_name="tx",
             tf_name="tf",
             coef_name=r"\gamma",
-            basis_name="BMV",
             group_terms_by_order=group_terms_by_order,
         )
         term.name = term_name
@@ -674,17 +667,18 @@ class MVTermBuilder:
             term.latent.name + "_var_value_node"
         )
 
-        for subterms in term.terms_by_order.values():
+        for order_, subterms in term.terms_by_order.items():
             for subterm in subterms:
                 subterm.name = self.names.create(prefix + f"tx({subterm.xnames})")
                 subterm.coef.name = self.names.param("\\gamma", subterm.name)
-                subterm.basis.name = self.names.create(f"BMV({subterm.xnames})")
-                subterm.basis.value_node.name = self.names.create(
-                    subterm.basis.name + "_value_node"
-                )
-                subterm.basis.var_value_node.name = self.names.create(
-                    subterm.basis.name + "_var_value_node"
-                )
+                if order_ == 1:
+                    subterm.basis.name = self.names.create(f"BMV({subterm.xnames})")
+                    subterm.basis.value_node.name = self.names.create(
+                        subterm.basis.name + "_value_node"
+                    )
+                    subterm.basis.var_value_node.name = self.names.create(
+                        subterm.basis.name + "_var_value_node"
+                    )
                 subterm.latent.name = self.names.create(
                     _append_if_named(subterm.name, "_latent")
                 )

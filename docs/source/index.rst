@@ -154,6 +154,7 @@ Terms and Variables
     ~liesel_gam.StrctInteractionTerm
     ~liesel_gam.StrctTensorProdTerm
     ~liesel_gam.MultivariateStrctTerm
+    ~liesel_gam.MultivariateStrctInteractionTerm
     ~liesel_gam.MultivariateStrctLinTerm
     ~liesel_gam.MultivariateTPTerm
     ~liesel_gam.MultivariateIntercept
