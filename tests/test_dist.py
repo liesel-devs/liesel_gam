@@ -592,8 +592,10 @@ class TestMultivariateNormalStructuredSingular:
         eigenvalues2 = jax.vmap(jnp.linalg.eigvalsh)(K2)
 
         K_tau2 = jax.vmap(
-            lambda tau21, tau22, K1, K2: tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
-            + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2),
+            lambda tau21, tau22, K1, K2: (
+                tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
+                + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2)
+            ),
             (0, 0, 0, 0),
         )(tau21, tau22, K1, K2)
 
