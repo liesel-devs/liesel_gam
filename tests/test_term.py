@@ -19,13 +19,6 @@ def _as_interaction(
     return term
 
 
-def _as_interaction(
-    term: gam.StrctTerm | gam.StrctInteractionTerm,
-) -> gam.StrctInteractionTerm:
-    assert isinstance(term, gam.StrctInteractionTerm)
-    return term
-
-
 @pytest.fixture(scope="module")
 def columb():
     return columb_to_pandas()
@@ -841,8 +834,8 @@ class TestTensorProdTerm:
         ta = gam.StrctTensorProdTerm(s1, s2, s3)
 
         for term in ta.terms_by_order[1]:
-            assert isinstance(term.basis, gam.Basis)
-            assert term.basis.name == f"B({term.basis.x.name})"
+            assert isinstance(term.basis, gam.Basis)  # type: ignore
+            assert term.basis.name == f"B({term.basis.x.name})"  # type: ignore
 
         for i in [2, 3]:
             for term in ta.terms_by_order[i]:
@@ -957,10 +950,10 @@ class TestMultivariateTPTerm:
 
         assert s2d.value.shape == (49, 2)
 
-        dist = s2d.coef.dist_node.init_dist()
-        K = dist._op.materialize_penalty()
+        dist = s2d.coef.dist_node.init_dist()  # type: ignore
+        K = dist._op.materialize_penalty()  # type: ignore
 
-        Kmarginal = jnp.kron(s.basis.penalty.value, jnp.eye(2)) + jnp.kron(
+        Kmarginal = jnp.kron(s.basis.penalty.value, jnp.eye(2)) + jnp.kron(  # type: ignore
             jnp.eye(2), jnp.eye(s.nbases)
         )
 

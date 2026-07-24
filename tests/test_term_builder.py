@@ -17,6 +17,7 @@ import liesel_gam.term_builder as gb
 from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
+from .r_data import columb_to_pandas
 
 
 @pytest.fixture(scope="module")
@@ -831,10 +832,10 @@ class TestTPTerm:
         ta = tb.tf(psy, psx, common_scale=scale)
         assert ta.terms_by_order[2][0].nbases == 9 * 9
         for i in range(len(ta.scales)):
-            variance = ta.scales[i].value_node[0]
-            assert variance.value_node[0].strong
-            assert ta.scales[i].inference is None
-            assert variance.value_node[0].inference is scale_inference
+            variance = ta.scales[i].value_node[0]  # type: ignore
+            assert variance.value_node[0].strong  # type: ignore
+            assert ta.scales[i].inference is None  # type: ignore
+            assert variance.value_node[0].inference is scale_inference  # type: ignore
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 

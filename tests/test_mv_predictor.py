@@ -39,9 +39,7 @@ class TestMVAdditivePredictor:
         assert jnp.linalg.norm(scaled.penalty.value, ord=jnp.inf) == pytest.approx(1.0)
 
     def test_constructor_accepts_numpy_integer_dimension(self) -> None:
-        predictor = gam.MVAdditivePredictor.from_random_walk(
-            "delta", ndim=np.int64(4)
-        )
+        predictor = gam.MVAdditivePredictor.from_random_walk("delta", ndim=np.int64(4))
 
         assert predictor.ndim == 4
 
@@ -107,9 +105,7 @@ class TestMVAdditivePredictor:
         with pytest.raises(ValueError, match="Unknown constraint"):
             gam.MVAdditivePredictor.from_identity("delta", 3).constrain("unknown")
         with pytest.raises(ValueError, match="at least two"):
-            gam.MVAdditivePredictor.from_identity("delta1", 1).constrain(
-                "sumzero_coef"
-            )
+            gam.MVAdditivePredictor.from_identity("delta1", 1).constrain("sumzero_coef")
 
         with pytest.raises(ValueError, match="full row rank"):
             gam.MVAdditivePredictor.from_identity("delta", 3).constrain(

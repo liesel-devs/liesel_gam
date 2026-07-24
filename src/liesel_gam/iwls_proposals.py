@@ -1155,7 +1155,7 @@ class GaussianLocIWLSProposal(IWLSProposal):
     n: int
 
     @classmethod
-    def from_term(  # type: ignore[override]
+    def from_term(  # type: ignore[override]  # ty: ignore[invalid-method-override]
         cls,
         term: IWLSProposalInputTerm,
         *,
@@ -1240,7 +1240,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
     n: int
 
     @classmethod
-    def from_term(  # type: ignore[override]
+    def from_term(  # type: ignore[override]  # ty: ignore[invalid-method-override]
         cls,
         term: IWLSProposalInputTerm,
     ) -> Self:
@@ -1323,7 +1323,7 @@ class TwoPieceStudentTIWLSProposal(IWLSProposal):
         raise ValueError(f"Unknown TwoPieceStudentT parameter {cls.parameter!r}.")
 
     @classmethod
-    def from_term(  # type: ignore[override]
+    def from_term(  # type: ignore[override]  # ty: ignore[invalid-method-override]
         cls,
         term: IWLSProposalInputTerm,
         *,

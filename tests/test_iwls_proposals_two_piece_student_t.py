@@ -84,10 +84,10 @@ def test_two_piece_student_t_weights_match_tfp_mean_hessian():
     model = DictModel()
     expected = jnp.stack(
         [
-            IWLSWeights.two_piece_student_t_loc()(model, state),
-            IWLSWeights.two_piece_student_t_scale()(model, state),
-            IWLSWeights.two_piece_student_t_df()(model, state),
-            IWLSWeights.two_piece_student_t_skewness()(model, state),
+            IWLSWeights.two_piece_student_t_loc()(model, state),  # type: ignore
+            IWLSWeights.two_piece_student_t_scale()(model, state),  # type: ignore
+            IWLSWeights.two_piece_student_t_df()(model, state),  # type: ignore
+            IWLSWeights.two_piece_student_t_skewness()(model, state),  # type: ignore
         ]
     )
 

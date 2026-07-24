@@ -144,7 +144,7 @@ def _loc_info(penalty, scale_factored=False):
         smooth_scale_name="tau",
         scale_name="obs_scale",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         n=3,
         basis_name="B",
         scale_factored=scale_factored,
@@ -158,7 +158,7 @@ def _scale_info(penalty, scale_factored=False):
         smooth_name="f(x)",
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         n=3,
         basis_name="B",
         scale_factored=scale_factored,
@@ -299,7 +299,7 @@ def test_gaussian_iwls_weights_loc_clips_observation_scale_at_machine_epsilon():
     eps = jnp.sqrt(jnp.finfo(jnp.float32).eps)
     expected = 1.0 / jnp.clip(state["obs_scale"], min=eps) ** 2
 
-    actual = IWLSWeights.gaussian_loc(scale_name="obs_scale")(DictModel(), state)
+    actual = IWLSWeights.gaussian_loc(scale_name="obs_scale")(DictModel(), state)  # type: ignore
 
     assert jnp.all(jnp.isfinite(actual))
     assert jnp.allclose(actual, expected)
@@ -308,16 +308,16 @@ def test_gaussian_iwls_weights_loc_clips_observation_scale_at_machine_epsilon():
 def test_iwls_weights_constant_defaults_to_one():
     state = {"obs_scale": jnp.array([1.0, 2.0], dtype=jnp.float32)}
 
-    actual = IWLSWeights.constant()(DictModel(), state)
+    actual = IWLSWeights.constant()(DictModel(), state)  # type: ignore
 
-    assert actual.shape == ()
+    assert actual.shape == ()  # type: ignore
     assert actual == pytest.approx(1.0)
 
 
 def test_iwls_weights_constant_accepts_observation_wise_weights():
     weights = jnp.array([0.5, 1.5, 2.5], dtype=jnp.float32)
 
-    actual = IWLSWeights.constant(weights)(DictModel(), {})
+    actual = IWLSWeights.constant(weights)(DictModel(), {})  # type: ignore
 
     assert jnp.allclose(actual, weights)
 
@@ -328,7 +328,7 @@ def test_iwls_proposal_precision_uses_constant_unit_weights():
         basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.constant(),
         basis_name="B",
     )
@@ -350,7 +350,7 @@ def test_iwls_proposal_precision_uses_static_basis_matrix():
         basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.constant(),
         basis_name="B",
     )
@@ -367,7 +367,7 @@ def test_iwls_weights_score_squared_matches_gaussian_location_score_squared():
 
     actual = IWLSWeights.score_squared("eta")(model, state)
 
-    assert actual.shape == values["eta"].shape
+    assert actual.shape == values["eta"].shape  # type: ignore
     assert jnp.allclose(actual, expected)
 
 
@@ -415,7 +415,7 @@ def test_iwls_weights_score_squared_preserves_scalar_eta_shape():
 
     actual = IWLSWeights.score_squared("eta")(model, state)
 
-    assert actual.shape == ()
+    assert actual.shape == ()  # type: ignore
     assert actual == pytest.approx(0.25)
 
 
@@ -438,7 +438,7 @@ def test_iwls_weights_score_squared_supports_weak_linear_predictor():
 
     actual = IWLSWeights.score_squared(loc.linear_predictor.name)(model, model.state)
 
-    assert actual.shape == eta.shape
+    assert actual.shape == eta.shape  # type: ignore
     assert jnp.allclose(actual, expected)
 
 
@@ -464,7 +464,7 @@ def test_iwls_weights_score_squared_supports_weak_linear_predictor_interface():
         interface, model.state
     )
 
-    assert actual.shape == eta.shape
+    assert actual.shape == eta.shape  # type: ignore
     assert jnp.allclose(actual, expected)
 
 
@@ -495,8 +495,8 @@ def test_iwls_proposal_precision_uses_score_squared_weights():
 def test_gaussian_iwls_weights_backwards_compatible_loc_alias():
     state = {"obs_scale": jnp.array([0.0, 2.0], dtype=jnp.float32)}
 
-    actual = GaussianIWLSWeights.loc(scale_name="obs_scale")(DictModel(), state)
-    expected = IWLSWeights.gaussian_loc(scale_name="obs_scale")(DictModel(), state)
+    actual = GaussianIWLSWeights.loc(scale_name="obs_scale")(DictModel(), state)  # type: ignore
+    expected = IWLSWeights.gaussian_loc(scale_name="obs_scale")(DictModel(), state)  # type: ignore
 
     assert jnp.allclose(actual, expected)
 
@@ -561,19 +561,19 @@ def test_scale_working_weights_are_constant_two():
 def test_gaussian_iwls_weights_scale_returns_constant_two():
     _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
 
-    actual = IWLSWeights.gaussian_scale()(DictModel(), state)
+    actual = IWLSWeights.gaussian_scale()(DictModel(), state)  # type: ignore
 
-    assert actual.shape == ()
+    assert actual.shape == ()  # type: ignore
     assert actual == pytest.approx(2.0)
 
 
 def test_gaussian_iwls_weights_backwards_compatible_scale_alias():
     _, _, state = _state(jnp.array(2.0, dtype=jnp.float32))
 
-    actual = GaussianIWLSWeights.scale()(DictModel(), state)
-    expected = IWLSWeights.gaussian_scale()(DictModel(), state)
+    actual = GaussianIWLSWeights.scale()(DictModel(), state)  # type: ignore
+    expected = IWLSWeights.gaussian_scale()(DictModel(), state)  # type: ignore
 
-    assert actual.shape == ()
+    assert actual.shape == ()  # type: ignore
     assert jnp.allclose(actual, expected)
 
 
@@ -589,7 +589,7 @@ def test_iwls_proposal_uses_supplied_working_weights_function():
         basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         working_weights_fn=working_weights,
         basis_name="B",
     )
@@ -614,7 +614,7 @@ def test_iwls_proposal_from_term_extracts_geometry_from_supported_terms(term):
     expected_penalty = (
         term_penalty.value
         if term_penalty is not None
-        else jnp.eye(term.nbases, dtype=proposal.basis.dtype)
+        else jnp.eye(term.nbases, dtype=proposal.basis.dtype)  # type: ignore
     )
 
     assert proposal.basis_name == term.basis.name
@@ -641,14 +641,14 @@ def test_iwls_proposal_mcmc_spec_supports_indexing_term_subclasses():
     model = lsl.Model([term])
     spec = IWLSProposal.mcmc_spec(term, fallback_chol_info=None)
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    proposal = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__  # type: ignore
     expected_basis = jax.nn.one_hot(group, num_classes=term.nclusters)
 
     assert isinstance(proposal, IWLSProposal)
     assert proposal.basis_name == term.basis.name
     assert jnp.allclose(proposal.basis, expected_basis)
     assert jnp.allclose(proposal.penalty, jnp.eye(term.nclusters))
-    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
+    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)  # type: ignore
 
 
 def test_iwls_proposal_precision_matches_explicit_one_hot_for_indexing_term():
@@ -705,11 +705,11 @@ def test_gaussian_iwls_loc_spec_supports_indexing_term():
         fallback_chol_info=None,
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    proposal = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__  # type: ignore
 
     assert isinstance(proposal, GaussianLocIWLSProposal)
     assert jnp.allclose(proposal.basis, explicit_basis)
-    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
+    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)  # type: ignore
 
 
 def test_gaussian_iwls_scale_spec_supports_indexing_term():
@@ -718,11 +718,11 @@ def test_gaussian_iwls_scale_spec_supports_indexing_term():
 
     spec = gaussian_iwls_spec_scale(term, fallback_chol_info=None)
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    proposal = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__  # type: ignore
 
     assert isinstance(proposal, GaussianScaleIWLSProposal)
     assert jnp.allclose(proposal.basis, explicit_basis)
-    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)
+    assert kernel.chol_info_fn(model.state).shape == (term.nclusters, term.nclusters)  # type: ignore
 
 
 def test_iwls_proposal_supports_riterm_with_unobserved_clusters():
@@ -745,7 +745,7 @@ def test_iwls_proposal_supports_riterm_with_unobserved_clusters():
     )
 
     assert term.nclusters == 3
-    assert proposal.basis.shape == (group.size, term.nclusters)
+    assert proposal.basis.shape == (group.size, term.nclusters)  # type: ignore
     assert jnp.allclose(proposal.basis, explicit_basis)
     assert jnp.allclose(proposal.penalty, jnp.eye(term.nclusters))
     assert jnp.allclose(proposal.precision(model.state), expected)
@@ -799,7 +799,7 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
         basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         working_weights_fn=working_weights,
         basis_name="B",
     )
@@ -813,9 +813,9 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
     )
     assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info is None
-    assert kernel.chol_info_fn.__self__ is proposal
+    assert kernel.chol_info_fn.__self__ is proposal  # type: ignore
     assert jnp.allclose(
-        kernel.chol_info_fn(state),
+        kernel.chol_info_fn(state),  # type: ignore
         jnp.linalg.cholesky(_expected_precision(Z, penalty, weights, state["tau"])),
     )
 
@@ -826,7 +826,7 @@ def test_iwls_proposal_kernel_factory_uses_iwls_defaults_for_constant_weights():
         basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.constant(),
         basis_name="B",
     )
@@ -839,7 +839,7 @@ def test_iwls_proposal_kernel_factory_uses_iwls_defaults_for_constant_weights():
     assert kernel.da_tune_step_size is True
     assert kernel.fallback_chol_info is None
     assert jnp.allclose(
-        kernel.chol_info_fn(state),
+        kernel.chol_info_fn(state),  # type: ignore
         jnp.linalg.cholesky(_expected_precision(Z, penalty, 1.0, state["tau"])),
     )
 
@@ -850,7 +850,7 @@ def test_iwls_proposal_kernel_factory_uses_iwls_step_default_when_tuning_request
         basis=Z,
         smooth_scale_name="tau",
         penalty=penalty,
-        model=DictModel(),
+        model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.gaussian_scale(),
         basis_name="B",
     )
@@ -897,7 +897,7 @@ def test_iwls_spec_builds_tuned_kernel_with_constant_unit_weights():
 
     spec = IWLSProposal.mcmc_spec(term, fallback_chol_info=None)
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    proposal = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__  # type: ignore
 
     assert isinstance(spec, gs.MCMCSpec)
     assert spec.kernel_kwargs == {"term": term}
@@ -915,7 +915,7 @@ def test_iwls_spec_builds_tuned_kernel_with_constant_unit_weights():
     assert proposal.model is model
     assert proposal.scale_factored is False
     assert proposal.working_weights(model.state) == pytest.approx(1.0)
-    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)  # type: ignore
 
 
 def test_iwls_spec_forwards_kernel_kwargs():
@@ -929,9 +929,9 @@ def test_iwls_spec_forwards_kernel_kwargs():
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
 
-    assert kernel.initial_step_size == pytest.approx(0.25)
-    assert kernel.da_tune_step_size is True
-    assert kernel.fallback_chol_info == "chol_of_modified_info"
+    assert kernel.initial_step_size == pytest.approx(0.25)  # type: ignore
+    assert kernel.da_tune_step_size is True  # type: ignore
+    assert kernel.fallback_chol_info == "chol_of_modified_info"  # type: ignore
 
 
 def test_iwls_spec_can_disable_step_size_tuning_for_constant_weights():
@@ -944,8 +944,8 @@ def test_iwls_spec_can_disable_step_size_tuning_for_constant_weights():
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
 
-    assert kernel.initial_step_size == pytest.approx(0.75)
-    assert kernel.da_tune_step_size is False
+    assert kernel.initial_step_size == pytest.approx(0.75)  # type: ignore
+    assert kernel.da_tune_step_size is False  # type: ignore
 
 
 def test_iwls_spec_rejects_factored_terms():
@@ -971,7 +971,7 @@ def test_gaussian_iwls_spec_loc_builds_tuned_kernel_with_custom_chol_info():
         fallback_chol_info=None,
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    proposal = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__  # type: ignore
 
     assert isinstance(spec, gs.MCMCSpec)
     assert spec.kernel_kwargs == {"term": term}
@@ -990,7 +990,7 @@ def test_gaussian_iwls_spec_loc_builds_tuned_kernel_with_custom_chol_info():
     assert proposal.model is model
     assert proposal.n == term.value.shape[0]
     assert proposal.scale_factored is False
-    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)  # type: ignore
 
 
 def test_gaussian_iwls_spec_loc_forwards_kernel_kwargs():
@@ -1005,9 +1005,9 @@ def test_gaussian_iwls_spec_loc_forwards_kernel_kwargs():
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
 
-    assert kernel.initial_step_size == pytest.approx(0.25)
-    assert kernel.da_tune_step_size is True
-    assert kernel.fallback_chol_info == "chol_of_modified_info"
+    assert kernel.initial_step_size == pytest.approx(0.25)  # type: ignore
+    assert kernel.da_tune_step_size is True  # type: ignore
+    assert kernel.fallback_chol_info == "chol_of_modified_info"  # type: ignore
 
 
 def test_gaussian_iwls_spec_loc_uses_iwls_step_default_when_tuning_requested():
@@ -1020,10 +1020,10 @@ def test_gaussian_iwls_spec_loc_uses_iwls_step_default_when_tuning_requested():
     )
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
 
-    assert kernel.initial_step_size == pytest.approx(
+    assert kernel.initial_step_size == pytest.approx(  # type: ignore
         _iwls_kernel_default_initial_step_size()
     )
-    assert kernel.da_tune_step_size is True
+    assert kernel.da_tune_step_size is True  # type: ignore
 
 
 def test_gaussian_iwls_spec_loc_rejects_factored_terms():
@@ -1045,7 +1045,7 @@ def test_gaussian_iwls_spec_scale_builds_tuned_kernel_with_custom_chol_info():
 
     spec = gaussian_iwls_spec_scale(term, fallback_chol_info=None)
     kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
-    proposal = kernel.chol_info_fn.__self__
+    proposal = kernel.chol_info_fn.__self__  # type: ignore
 
     assert isinstance(spec, gs.MCMCSpec)
     assert spec.kernel_kwargs == {"term": term}
@@ -1063,7 +1063,7 @@ def test_gaussian_iwls_spec_scale_builds_tuned_kernel_with_custom_chol_info():
     assert proposal.model is model
     assert proposal.n == term.value.shape[0]
     assert proposal.scale_factored is False
-    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)
+    assert kernel.chol_info_fn(model.state).shape == (term.nbases, term.nbases)  # type: ignore
 
 
 def test_gaussian_iwls_spec_scale_rejects_factored_terms():
