@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import jax
 import jax.numpy as jnp
@@ -23,6 +23,10 @@ from .term import (
 )
 
 KeyArray = Any
+
+
+def _as_array_dict(data: Mapping[str, Any]) -> dict[str, ArrayLike]:
+    return {key: jnp.asarray(value) for key, value in data.items()}
 
 
 def _summarise_which(which: str | Sequence[str] | None) -> Sequence[SummaryQuantities]:
@@ -128,7 +132,7 @@ def summarise_1d_smooth(
         newdata_x = newdata
         xgrid = np.asarray(newdata[term.basis.x.name])
 
-    newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
+    newdata_x = _as_array_dict(newdata_x)
 
     term_samples = term.predict(dict(samples), newdata=newdata_x)
     term_summary = (
@@ -215,6 +219,12 @@ PlotVars = Literal[
 ]
 
 
+def _normalise_which(which: PlotVars | Sequence[PlotVars]) -> Sequence[PlotVars]:
+    if isinstance(which, str):
+        return [cast(PlotVars, which)]
+    return which
+
+
 def summarise_nd_smooth(
     term: StrctTerm | StrctInteractionTerm | StrctTensorProdTerm,
     samples: Mapping[str, ArrayLike],
@@ -249,8 +259,7 @@ def summarise_nd_smooth(
         If *True*, then the function will create a large grid of all combinations of
         covariate values in ``newdata`` that correspond to this term.
     """
-    if isinstance(which, str):
-        which = [which]
+    which = _normalise_which(which)
 
     if newdata is None:
         newdata_x: Mapping[str, ArrayLike] = input_grid_nd_smooth(term, ngrid=ngrid)
@@ -260,7 +269,7 @@ def summarise_nd_smooth(
     else:
         newdata_x = newdata
 
-    newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
+    newdata_x = _as_array_dict(newdata_x)
 
     term_samples = term.predict(dict(samples), newdata=newdata_x)
 
@@ -396,7 +405,7 @@ def summarise_cluster(
         observed = [x in unique_x for x in grid]
         newdata_x = {term.basis.x.name: grid}
 
-    newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
+    newdata_x = _as_array_dict(newdata_x)
     predictions = term.predict(samples=dict(samples), newdata=newdata_x)
     predictions_summary = (
         gs.SamplesSummary.from_array(
@@ -494,8 +503,7 @@ def summarise_regions(
         hdi_prob=hdi_prob,
     )
     region = term.basis.x.name
-    if isinstance(which, str):
-        which = [which]
+    which = _normalise_which(which)
 
     unique_labels_in_df = df[term.basis.x.name].unique().tolist()
     assert polygons is not None
@@ -616,8 +624,7 @@ def summarise_1d_smooth_clustered(
         If *True*, then the function will create a large grid of all combinations of
         covariate values in ``newdata`` that correspond to this term.
     """
-    if isinstance(which, str):
-        which = [which]
+    which = _normalise_which(which)
 
     term = clustered_term.value_node["x"]
     cluster = clustered_term.value_node["cluster"]
@@ -627,7 +634,7 @@ def summarise_1d_smooth_clustered(
 
     if labels is None:
         try:
-            labels = cluster.mapping  # type: ignore
+            labels = cluster.mapping
         except (AttributeError, ValueError):
             labels = None
 
@@ -714,7 +721,7 @@ def summarise_1d_smooth_clustered(
         full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
         newdata_x = dict(zip(grid.keys(), full_grid_arrays))
 
-    newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
+    newdata_x = _as_array_dict(newdata_x)
 
     term_samples = clustered_term.predict(dict(samples), newdata=newdata_x)
     term_summary = (
