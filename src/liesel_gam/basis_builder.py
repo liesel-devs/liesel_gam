@@ -21,10 +21,10 @@ except RuntimeError as e:
 
     on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
     if on_rtd:
-        scon = None
-        r = None
-        to_py = None
-        to_r = None
+        scon = cast(Any, None)
+        r = cast(Any, None)
+        to_py = cast(Any, None)
+        to_r = cast(Any, None)
         pass
     else:
         raise e
@@ -1433,25 +1433,34 @@ class BasisBuilder:
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
         _validate_formula(formula)
-        spec = fo.ModelSpec(formula, output="numpy")
+        parsed_formula = fo.Formula(formula)
+        if not isinstance(parsed_formula, fo.SimpleFormula):
+            raise ValueError("Structured formulas are not supported.")
+
+        spec = fo.ModelSpec(parsed_formula, output="numpy")
 
         # evaluate model matrix once to get a spec with structure information
         # also necessary to populate spec with the correct information for
         # transformations like center, scale, standardize
         try:
-            spec = spec.get_model_matrix(self.data, context=context).model_spec
+            evaluated_spec = spec.get_model_matrix(
+                self.data, context=context
+            ).model_spec
+            if evaluated_spec is None:
+                raise RuntimeError("Formulaic did not return a model specification.")
         except Exception as e:
             raise RuntimeError(
                 "Could not build model matrix. This could be caused by "
                 "unsupported data dtypes like dates. Please check your input data. "
                 "Also check the original error message, included above."
             ) from e
+        spec = evaluated_spec
 
         # get column names. There may be a more efficient way to do it
         # that does not require building the model matrix a second time, but this
         # works robustly for now: we take the names that formulaic creates
         column_names = list(
-            fo.ModelSpec(formula, output="pandas")
+            fo.ModelSpec(parsed_formula, output="pandas")
             .get_model_matrix(self.data, context=context)
             .columns
         )
