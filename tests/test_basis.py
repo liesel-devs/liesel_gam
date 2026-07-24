@@ -87,7 +87,7 @@ class TestBasis:
         assert basis.name == ""
 
     def test_array_without_name(self) -> None:
-        basis = gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)  # type: ignore
+        basis = gam.Basis(jnp.linspace(0, 1, 10), basis_fn=lambda x: x)
         assert basis.name == ""
         assert basis.x.name == ""
 
@@ -238,6 +238,7 @@ class TestBasis:
         basis.update_penalty(jnp.eye(1))
 
         basis.update_penalty(jnp.eye(10))
+        assert basis.penalty is not None
         assert jnp.allclose(basis.penalty.value, jnp.eye(10))
 
         basis = gam.Basis(x, basis_fn=lambda x: jnp.expand_dims(x**2, 0), penalty=None)
@@ -247,16 +248,19 @@ class TestBasis:
             basis.update_penalty(jnp.eye(1))
 
         basis.update_penalty(jnp.eye(10))
+        assert basis.penalty is not None
         assert jnp.allclose(basis.penalty.value, jnp.eye(10))
 
     def test_penalty_node(self):
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
         pen = lsl.Value(jnp.eye(10))
         basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=pen)
+        assert basis.penalty is not None
         assert jnp.allclose(basis.penalty.value, jnp.eye(10))
         assert basis.penalty is pen
 
         basis = gam.Basis(x, basis_fn=lambda x: x**2, penalty=jnp.eye(10))
+        assert basis.penalty is not None
         assert jnp.allclose(basis.penalty.value, jnp.eye(10))
 
 
