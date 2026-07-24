@@ -114,6 +114,8 @@ class PandasRegistry:
 
     def _is_closure(self, func: Callable) -> bool:
         """Check if function is a closure (captures variables from outer scope)."""
+        if not inspect.isfunction(func):
+            return False
         return func.__closure__ is not None
 
     def _hash_closure_value(self, value: Any) -> str:

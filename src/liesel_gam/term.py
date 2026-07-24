@@ -1692,7 +1692,7 @@ class StrctInteractionTerm(UserVar):
     ) -> list[Basis]:
         bases = []
         for t in marginals:
-            if hasattr(t, "init_full_basis"):
+            if isinstance(t, IndexingTerm):
                 bases.append(t.init_full_basis())
             else:
                 bases.append(t.basis)
@@ -2188,7 +2188,7 @@ class StrctTensorProdTerm(UserVar):
                         scales.append(term.scale)
             else:
                 for term in self.terms_by_order[i]:
-                    assert hasattr(term, "scales")
+                    assert isinstance(term, StrctInteractionTerm)
                     for scale in term.scales:
                         if scale not in scales:
                             scales.append(scale)
