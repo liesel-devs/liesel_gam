@@ -6,17 +6,15 @@ import scipy
 from jax import Array
 from jax.random import key, uniform
 from liesel.contrib.splines import basis_matrix, equidistant_knots
-from ryp import r, to_py
 
 import liesel_gam as gam
+
+from .r_data import columb_to_pandas
 
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:

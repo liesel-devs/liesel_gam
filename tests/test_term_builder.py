@@ -18,6 +18,7 @@ import liesel_gam.term_builder as gb
 from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
+from .r_data import columb_to_pandas
 
 
 def scale_wb(
@@ -69,10 +70,7 @@ def bases(data) -> gb.BasisBuilder:
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 @pytest.fixture(scope="module")

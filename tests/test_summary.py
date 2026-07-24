@@ -14,6 +14,8 @@ from ryp import r, to_py
 import liesel_gam as gam
 from liesel_gam.summary import grid_nd, input_grid_nd_smooth, summarise_by_samples
 
+from .r_data import columb_to_pandas
+
 
 @pytest.fixture(scope="module")
 def columb() -> pd.DataFrame:
@@ -21,9 +23,7 @@ def columb() -> pd.DataFrame:
     'area', 'home.value', 'income', 'crime', 'open.space', 'district',
     'x', 'y', 'home_value'
     """
-    r("library(mgcv)")
-    r("data(columb)")
-    return to_py("columb", format="pandas").reset_index()
+    return columb_to_pandas(reset_index=True)
 
 
 @pytest.fixture(scope="module")

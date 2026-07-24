@@ -3,19 +3,17 @@ import jax.numpy as jnp
 import liesel.model as lsl
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
-from ryp import r, to_py
 
 import liesel_gam as gam
 import liesel_gam.term_builder as gb
 from liesel_gam.kernel import init_star_ig_gibbs_factored
 
+from .r_data import columb_to_pandas
+
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 class TestGibbsKernel:

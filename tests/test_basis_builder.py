@@ -16,6 +16,7 @@ from liesel_gam.registry import PandasRegistry
 from liesel_gam.term_builder import BasisBuilder
 
 from .make_df import make_test_df
+from .r_data import columb_to_pandas
 
 
 @pytest.fixture(scope="module")
@@ -587,10 +588,7 @@ class TestFoBasisLinearCategorical:
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 @pytest.fixture(scope="module")
