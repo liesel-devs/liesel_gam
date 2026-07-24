@@ -117,7 +117,7 @@ class TestBSplineApprox:
         x = jax.random.uniform(k0, shape=(4, 100, 40))
         knots = kn(x, n_param=20)
 
-        coef = jax.random.normal(k1, shape=(20))
+        coef = jax.random.normal(k1, shape=(20,))
 
         bspline = BSplineApprox(knots, ngrid=1000)
 
@@ -176,10 +176,10 @@ class TestBSplineApprox:
 
         key = jax.random.key(seed)
         k0, k1 = jax.random.split(key)
-        x = jax.random.uniform(k0, shape=(40))
+        x = jax.random.uniform(k0, shape=(40,))
         knots = kn(x, n_param=20)
 
-        coef = jax.random.normal(k1, shape=(20))
+        coef = jax.random.normal(k1, shape=(20,))
 
         bspline = BSplineApprox(knots, ngrid=1000)
 
@@ -199,10 +199,10 @@ class TestBSplineApprox:
 
         key = jax.random.key(seed)
         k0, k1 = jax.random.split(key)
-        x = jax.random.uniform(k0, shape=(40))
+        x = jax.random.uniform(k0, shape=(40,))
         knots = kn(x, n_param=20)
 
-        coef = jax.random.normal(k1, shape=(20))
+        coef = jax.random.normal(k1, shape=(20,))
 
         bspline = BSplineApprox(knots, ngrid=1000)
 
