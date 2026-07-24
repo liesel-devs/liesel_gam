@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import Any, Literal, NamedTuple, Self
 
 import jax
+import jax.experimental
 import jax.numpy as jnp
 import liesel.model as lsl
 from formulaic import ModelSpec

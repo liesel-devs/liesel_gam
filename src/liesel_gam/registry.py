@@ -114,6 +114,8 @@ class PandasRegistry:
 
     def _is_closure(self, func: Callable) -> bool:
         """Check if function is a closure (captures variables from outer scope)."""
+        if not inspect.isfunction(func):
+            return False
         return func.__closure__ is not None
 
     def _hash_closure_value(self, value: Any) -> str:
@@ -173,7 +175,7 @@ class PandasRegistry:
             method_name = func.__name__
             return f"method_{obj_id}_{method_name}"
 
-        elif hasattr(func, "__call__"):
+        elif callable(func):
             # Callable objects, lambdas, etc.: use object ID
             return f"obj_id_{id(func)}"
         else:
@@ -265,7 +267,7 @@ class PandasRegistry:
             transformation_name = getattr(transform, "__name__", str(transform))
             raise ValueError(
                 f"Failed to apply transformation '{transformation_name}' "
-                f"to variable '{base_var.name}': {str(e)}"
+                f"to variable '{base_var.name}': {e!s}"
             )
 
         return derived_var
@@ -500,7 +502,7 @@ class PandasRegistry:
         if not self.is_numeric(name):
             raise TypeError(
                 f"Type mismatch for variable '{name}': expected numeric, "
-                f"got {str(self.data[name].dtype)}"
+                f"got {self.data[name].dtype!s}"
             )
         return self.get_obs(name)
 
@@ -522,7 +524,7 @@ class PandasRegistry:
         if not self.is_categorical(name):
             raise TypeError(
                 f"Type mismatch for variable '{name}': expected categorical, "
-                f"got {str(series.dtype)}"
+                f"got {series.dtype!s}"
             )
 
         mapping = CategoryMapping.from_series(series)
@@ -571,7 +573,7 @@ class PandasRegistry:
         if not self.is_boolean(name):
             raise TypeError(
                 f"Type mismatch for variable '{name}': expected boolean, "
-                f"got {str(self.data[name].dtype)}"
+                f"got {self.data[name].dtype!s}"
             )
         return self.get_obs(name)
 

@@ -5,18 +5,30 @@ import liesel.model as lsl
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax import Array
-from ryp import r, to_py
 
 import liesel_gam as gam
 from liesel_gam.term import _factorized_tensor_dot
 
+from .r_data import columb_to_pandas
+
+
+def _as_interaction(
+    term: gam.StrctTerm | gam.StrctInteractionTerm,
+) -> gam.StrctInteractionTerm:
+    assert isinstance(term, gam.StrctInteractionTerm)
+    return term
+
+
+def _as_interaction(
+    term: gam.StrctTerm | gam.StrctInteractionTerm,
+) -> gam.StrctInteractionTerm:
+    assert isinstance(term, gam.StrctInteractionTerm)
+    return term
+
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
@@ -207,33 +219,41 @@ class TestSmoothTerm:
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x)
         term = gam.StrctTerm(basis, penalty=None, scale=gam.VarIGPrior(1.0, 0.005, 2.0))
+        assert isinstance(term.scale, lsl.Var)
+        scale_var = term.scale.value_node[0]
+        assert isinstance(scale_var, lsl.Var)
+        assert scale_var.dist_node is not None
         assert term.scale.value == pytest.approx(jnp.sqrt(2.0))
 
-        assert term.scale.value_node[0].dist_node[
-            "concentration"
-        ].value == pytest.approx(1.0)
-        assert term.scale.value_node[0].dist_node["scale"].value == pytest.approx(0.005)
+        assert scale_var.dist_node["concentration"].value == pytest.approx(1.0)
+        assert scale_var.dist_node["scale"].value == pytest.approx(0.005)
 
         with pytest.raises(ValueError):
             gam.StrctTerm(
-                basis, penalty=None, scale=gam.VarIGPrior(jnp.ones(2), 0.005, 2.0)
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(jnp.ones(2), 0.005, 2.0),  # type: ignore
             )
 
         with pytest.raises(ValueError):
             gam.StrctTerm(
-                basis, penalty=None, scale=gam.VarIGPrior(1.0, jnp.ones(2), 2.0)
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(1.0, jnp.ones(2), 2.0),  # type: ignore
             )
 
         with pytest.raises(ValueError):
             gam.StrctTerm(
-                basis, penalty=None, scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2))
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2)),  # type: ignore
             )
 
         with pytest.raises(ValueError, match="1 or 5, got size 2"):
             gam.StrctTerm(
                 basis,
                 penalty=None,
-                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2)),
+                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2)),  # type: ignore
                 validate_scalar_scale=False,
             )
 
@@ -241,7 +261,7 @@ class TestSmoothTerm:
             gam.StrctTerm(
                 basis,
                 penalty=None,
-                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(5)),
+                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(5)),  # type: ignore
                 validate_scalar_scale=False,
             )
 
@@ -256,7 +276,7 @@ class TestSmoothTerm:
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x)
         with pytest.raises(TypeError, match="Unexpected type for scale"):
-            gam.StrctTerm(basis, penalty=None, scale="test")
+            gam.StrctTerm(basis, penalty=None, scale="test")  # type: ignore
 
         with pytest.raises(TypeError, match="Unexpected type for scale"):
             scale = lsl.Var.new_param("test", convert=lambda x: x)
@@ -279,11 +299,13 @@ class TestNonCentering:
         term = gam.StrctTerm(basis, penalty=None, scale=scale)
         term.factor_scale()
         assert term.scale is scale
+        assert term.coef.dist_node is not None
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
         # does nothing
         term.factor_scale()
         assert term.scale is scale
+        assert term.coef.dist_node is not None
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     def test_reparam_with_scale_ig(self):
@@ -293,6 +315,7 @@ class TestNonCentering:
         term = gam.StrctTerm(basis, penalty=None, scale=scale)
         term.factor_scale()
         assert term.scale is scale
+        assert term.coef.dist_node is not None
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     def test_reparam_with_scale_ig_multivariate(self):
@@ -302,6 +325,7 @@ class TestNonCentering:
         term = gam.StrctTerm(
             basis, penalty=None, scale=scale, validate_scalar_scale=False
         )
+        assert isinstance(scale.value_node[0], lsl.Var)
         scale.value_node[0].value = jnp.ones(5)
         scale.update()
         with pytest.raises(ValueError):
@@ -328,7 +352,7 @@ class TestStrctTermFConstructor:
         basis = gam.Basis(x, xname="x")
         scale = lsl.Var(2.0, name="a")
         with pytest.raises(TypeError):
-            gam.StrctTerm.f(basis, scale=scale, factor_scale=True, fname=basis)
+            gam.StrctTerm.f(basis, scale=scale, factor_scale=True, fname=basis)  # type: ignore
 
     def test_init_factor_scale(self):
         x = jax.random.uniform(jax.random.key(1), (10, 5))
@@ -337,6 +361,7 @@ class TestStrctTermFConstructor:
         term = gam.StrctTerm.f(basis, scale=scale, factor_scale=True)
 
         assert term.scale is scale
+        assert term.coef.dist_node is not None
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     def test_init_new_ig_factor_scale(self):
@@ -346,6 +371,8 @@ class TestStrctTermFConstructor:
             basis, scale=gam.VarIGPrior(1.0, 0.005, 10.0**2)
         ).factor_scale()
 
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(10.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
@@ -355,6 +382,7 @@ class TestTermWithCustomPenalty:
         x = jax.random.uniform(jax.random.key(1), (10, 5))
         basis = gam.Basis(x)
         term = gam.StrctTerm(basis, penalty=None, scale=1.0)
+        assert term.coef.dist_node is not None
         assert isinstance(term.coef.dist_node.init_dist(), tfd.Normal)
 
     def test_penalty_none(self) -> None:
@@ -522,6 +550,8 @@ class TestInteractionTerm:
         px = tb.ps("x", k=20)
         py = tb.ps("y", k=20)
 
+        assert isinstance(px.basis.x, lsl.Var)
+        assert isinstance(py.basis.x, lsl.Var)
         assert px.basis.x.strong
         assert py.basis.x.strong
 
@@ -533,17 +563,17 @@ class TestInteractionTerm:
 
         px.basis.x.name = ""
         with pytest.raises(ValueError):
-            tp.input_obs
+            _ = tp.input_obs
 
         x = px.basis.value_node[0]
         x_weak = lsl.Var.new_calc(jnp.square, x, name="x**2")
 
         px.basis.value_node[0] = x_weak
         with pytest.raises(ValueError):
-            tp.input_obs
+            _ = tp.input_obs
 
         x.name = "x"
-        "x" in tp.input_obs
+        assert "x" in tp.input_obs
 
     def test_weak_input_obs(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -552,6 +582,7 @@ class TestInteractionTerm:
         py = tb.ps("y", k=20)
 
         assert isinstance(px.basis.x, lsl.TransientCalc)
+        assert isinstance(py.basis.x, lsl.Var)
         assert py.basis.x.strong
 
         tp = gam.StrctInteractionTerm(px, py)
@@ -562,7 +593,7 @@ class TestInteractionTerm:
 
         tp.input_obs["x"].name = ""
         with pytest.raises(ValueError):
-            tp.input_obs
+            _ = tp.input_obs
 
 
 class TestTensorProdTerm:
@@ -581,7 +612,7 @@ class TestTensorProdTerm:
         assert len(ta.terms_by_order[1]) == 2
         assert len(ta.terms_by_order[2]) == 1
 
-        ti = ta.terms_by_order[2][0]
+        ti = _as_interaction(ta.terms_by_order[2][0])
 
         assert ti.coef.value.shape == (9 * 9,)
         assert "x" in ti.input_obs
@@ -606,13 +637,13 @@ class TestTensorProdTerm:
         assert len(ta.terms_by_order[2]) == 3
         assert len(ta.terms_by_order[3]) == 1
 
-        ti = ta.terms_by_order[2][0]
+        ti = _as_interaction(ta.terms_by_order[2][0])
 
         assert ti.coef.value.shape == (9 * 9,)
         assert "x" in ti.input_obs
         assert "y" in ti.input_obs
 
-        ti3 = ta.terms_by_order[3][0]
+        ti3 = _as_interaction(ta.terms_by_order[3][0])
         assert ti3.coef.value.shape == (9 * 9 * 9,)
         assert "x" in ti3.input_obs
         assert "y" in ti3.input_obs
@@ -645,7 +676,7 @@ class TestTensorProdTerm:
         assert 3 not in ta.terms_by_order
         assert len(ta.terms_by_order[2]) == 3
 
-        ti = ta.terms_by_order[2][0]
+        ti = _as_interaction(ta.terms_by_order[2][0])
 
         assert ti.coef.value.shape == (9 * 9,)
         assert "x" in ti.input_obs
@@ -661,7 +692,7 @@ class TestTensorProdTerm:
         assert 3 in ta.terms_by_order
         assert len(ta.terms_by_order[3]) == 1
 
-        ti3 = ta.terms_by_order[3][0]
+        ti3 = _as_interaction(ta.terms_by_order[3][0])
         assert ti3.coef.value.shape == (9 * 9 * 9,)
         assert "x" in ti3.input_obs
         assert "y" in ti3.input_obs
@@ -678,13 +709,13 @@ class TestTensorProdTerm:
         assert len(ta.terms_by_order[2]) == 3
         assert len(ta.terms_by_order[3]) == 1
 
-        ti = ta.terms_by_order[2][0]
+        ti = _as_interaction(ta.terms_by_order[2][0])
 
         assert ti.coef.value.shape == (9 * 9,)
         assert "x" in ti.input_obs
         assert "y" in ti.input_obs
 
-        ti3 = ta.terms_by_order[3][0]
+        ti3 = _as_interaction(ta.terms_by_order[3][0])
         assert ti3.coef.value.shape == (9 * 9 * 9,)
         assert "x" in ti3.input_obs
         assert "y" in ti3.input_obs
@@ -701,7 +732,7 @@ class TestTensorProdTerm:
         assert len(ta.terms_by_order[1]) == 3
         assert len(ta.terms_by_order[3]) == 1
 
-        ti3 = ta.terms_by_order[3][0]
+        ti3 = _as_interaction(ta.terms_by_order[3][0])
         assert ti3.coef.value.shape == (9 * 9 * 9,)
         assert "x" in ti3.input_obs
         assert "y" in ti3.input_obs
@@ -741,10 +772,12 @@ class TestTensorProdTerm:
 
         for term in ta.terms_by_order[1]:
             assert term.scale is scale
+            assert term.coef.dist_node is not None
             assert term.coef.dist_node["scale"] is scale
 
         for i in [2, 3]:
             for term in ta.terms_by_order[i]:
+                assert isinstance(term, gam.StrctInteractionTerm)
                 for term_scale in term.scales:
                     assert term_scale is scale
 
@@ -752,6 +785,9 @@ class TestTensorProdTerm:
         assert s2.scale is scale
         assert s3.scale is scale
 
+        assert s1.coef.dist_node is not None
+        assert s2.coef.dist_node is not None
+        assert s3.coef.dist_node is not None
         assert s1.coef.dist_node["scale"] is scale
         assert s2.coef.dist_node["scale"] is scale
         assert s3.coef.dist_node["scale"] is scale
@@ -805,6 +841,7 @@ class TestTensorProdTerm:
         ta = gam.StrctTensorProdTerm(s1, s2, s3)
 
         for term in ta.terms_by_order[1]:
+            assert isinstance(term.basis, gam.Basis)
             assert term.basis.name == f"B({term.basis.x.name})"
 
         for i in [2, 3]:

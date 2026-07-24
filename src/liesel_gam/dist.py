@@ -1,7 +1,7 @@
 from collections.abc import Callable, Sequence
 from functools import cached_property, reduce
 from math import prod
-from typing import Self
+from typing import Any, Self, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -12,6 +12,7 @@ from tensorflow_probability.substrates.jax.internal.parameter_properties import 
 )
 
 Array = jax.typing.ArrayLike
+DistributionT = TypeVar("DistributionT", bound="MultivariateNormalStructured")
 
 
 class MultivariateNormalSingular(tfd.Distribution):
@@ -105,12 +106,12 @@ class MultivariateNormalSingular(tfd.Distribution):
 
     @classmethod
     def _parameter_properties(cls, dtype=jnp.float32, num_classes=None):
-        return dict(
-            loc=ParameterProperties(event_ndims=1),
-            scale=ParameterProperties(event_ndims=0),
-            penalty=ParameterProperties(event_ndims=2),
-            penalty_rank=ParameterProperties(event_ndims=0),
-        )
+        return {
+            "loc": ParameterProperties(event_ndims=1),
+            "scale": ParameterProperties(event_ndims=0),
+            "penalty": ParameterProperties(event_ndims=2),
+            "penalty_rank": ParameterProperties(event_ndims=0),
+        }
 
     def _event_shape(self):
         return tf.TensorShape((jnp.shape(self._penalty)[-1],))
@@ -134,7 +135,10 @@ class MultivariateNormalSingular(tfd.Distribution):
 
         return -(jnp.log(self._scale) * self._penalty_rank + neg_kernel)
 
-    def _sample_n(self, n, seed=None) -> Array:
+    def _sample_n(self, n, seed: Array | None = None, **kwargs: Any) -> Array:
+        if seed is None:
+            raise ValueError("A PRNG seed is required for sampling.")
+
         shape = [n] + self.batch_shape + self.event_shape
 
         # The added dimension at the end here makes sure that matrix multiplication
@@ -763,7 +767,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         batch_shape = tuple(variances.shape[:-1])
         return tf.TensorShape(batch_shape)
 
-    def _batch_shape_tensor(self):
+    def _batch_shape_tensor(self, **kwargs: Any):
         variances = self._op.variances  # shape (B..., K)
         batch_shape = tuple(variances.shape[:-1])
         return jnp.array(batch_shape)
@@ -821,14 +825,14 @@ class MultivariateNormalStructured(tfd.Distribution):
 
     @classmethod
     def get_locscale_constructor(
-        cls,
+        cls: type[DistributionT],
         penalties: Sequence[Array],
         tol: float = 1e-6,
         precompute_masks: bool = True,
         validate_args: bool = False,
         allow_nan_stats: bool = True,
         include_normalizing_constant: bool = True,
-    ) -> Callable[[Array, Array], "MultivariateNormalStructured"]:
+    ) -> Callable[[Array, Array], DistributionT]:
         """
         Creates a constructor for this distribution that takes a location array and
         an array of marginal scales.
@@ -903,7 +907,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         else:
             masks = None
 
-        def construct_dist(loc: Array, scales: Array) -> "MultivariateNormalStructured":
+        def construct_dist(loc: Array, scales: Array) -> DistributionT:
             loc = jnp.asarray(loc)
             scales = jnp.asarray(scales)
             op = StructuredPenaltyOperator(
@@ -945,7 +949,10 @@ class MultivariateNormalStructured(tfd.Distribution):
         diags = jnp.zeros(shape).at[..., r, r].set(sqrt_eval)
         return evecs @ diags
 
-    def _sample_n(self, n, seed=None) -> Array:
+    def _sample_n(self, n, seed: Array | None = None, **kwargs: Any) -> Array:
+        if seed is None:
+            raise ValueError("A PRNG seed is required for sampling.")
+
         shape = [n] + self.batch_shape + self.event_shape
 
         # The added dimension at the end here makes sure that matrix multiplication

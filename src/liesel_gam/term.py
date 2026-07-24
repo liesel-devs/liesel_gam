@@ -1405,8 +1405,6 @@ class LinTerm(BasisDot, LinMixin):
     (4,)
     """
 
-    pass
-
 
 class StrctLinTerm(StrctTerm, LinMixin):
     """
@@ -1426,8 +1424,6 @@ class StrctLinTerm(StrctTerm, LinMixin):
     >>> term.coef.value.shape
     (2,)
     """
-
-    pass
 
 
 class StrctInteractionTerm(UserVar):
@@ -1822,11 +1818,10 @@ class StrctInteractionTerm(UserVar):
                 # case: potentially multivariate marginal, possibly thin plate,
                 # where basis.x is a calculator that collects the strong inputs.
                 for xj in b.x.all_input_nodes():
-                    if xj.var is not None:
-                        if xj.var.observed:
-                            if not xj.var.name:
-                                raise ValueError(f"Observed name not found for {b}")
-                            _input_x[xj.var.name] = xj.var
+                    if xj.var is not None and xj.var.observed and not xj.var.name:
+                        raise ValueError(f"Observed name not found for {b}")
+                    if xj.var is not None and xj.var.observed:
+                        _input_x[xj.var.name] = xj.var
 
         return _input_x
 
@@ -2231,7 +2226,7 @@ class StrctTensorProdTerm(UserVar):
                         scales.append(term.scale)
             else:
                 for term in self.terms_by_order[i]:
-                    assert hasattr(term, "scales")
+                    assert isinstance(term, StrctInteractionTerm)
                     for scale in term.scales:
                         if scale not in scales:
                             scales.append(scale)

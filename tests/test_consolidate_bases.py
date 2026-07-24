@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import liesel.model as lsl
+from liesel.goose.types import Position
 
 import liesel_gam as gam
 from liesel_gam.consolidate_bases import consolidate_bases, evaluate_bases
@@ -77,16 +78,16 @@ class TestConsolidateBases:
 
         _, model_for_bases = consolidate_bases(model, copy=True)
 
-        newdata = {"x1": jnp.linspace(0, 1, 5), "x2": jnp.linspace(0, 1, 5)}
+        newdata = Position({"x1": jnp.linspace(0, 1, 5), "x2": jnp.linspace(0, 1, 5)})
         newdata = evaluate_bases(newdata, model_for_bases)
         assert "B(x1)" in newdata
         assert "B(x2)" in newdata
 
-        newdata = {"x1": jnp.linspace(0, 1, 5)}
+        newdata = Position({"x1": jnp.linspace(0, 1, 5)})
         newdata = evaluate_bases(newdata, model_for_bases)
         assert "B(x1)" in newdata
         assert "B(x2)" in newdata
 
-        newdata = evaluate_bases({}, model_for_bases)
+        newdata = evaluate_bases(Position({}), model_for_bases)
         assert "B(x1)" in newdata
         assert "B(x2)" in newdata

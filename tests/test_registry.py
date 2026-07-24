@@ -407,6 +407,7 @@ def test_dummy_vars_unknown_category_values():
 
     # now simulate what happens when the base variable contains an unknown code
     base_var = original_dummy.value_node.inputs[0].var
+    assert base_var is not None
     base_var.value = jnp.array([0, 1, 0, 2])  # introduce unknown code 2
 
     # update the dummy matrix

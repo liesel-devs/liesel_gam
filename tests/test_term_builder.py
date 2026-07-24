@@ -33,10 +33,7 @@ def bases(data) -> gb.BasisBuilder:
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 @pytest.fixture(scope="module")
@@ -116,6 +113,7 @@ class TestTermBuilder:
         )
 
         term = tb.ps("x", k=20)
+        assert isinstance(term.scale, lsl.Var)
         assert term.scale.value == pytest.approx(3.0)
 
     def test_ri_basis_with_unobserved_cluster(self) -> None:
@@ -144,10 +142,14 @@ class TestLinTerm:
         tb = gam.TermBuilder.from_df(columb)
 
         term = tb.slin("x + y", factor_scale=True, scale=3.0)
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
         term = tb.slin("x + y", scale=3.0)
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(3.0)
 
@@ -178,6 +180,7 @@ class TestLinTerm:
         assert (
             term_with_intercept.coef.value.shape[-1] == basis_with_intercept.shape[-1]
         )
+        assert term_with_intercept.basis.penalty is not None
         assert term_with_intercept.basis.penalty.value.shape == (
             basis_with_intercept.shape[-1],
             basis_with_intercept.shape[-1],
@@ -207,24 +210,24 @@ class TestLinTerm:
         assert term.mappings is not None
 
         with pytest.raises(TypeError):
-            term.model_spec = "test"
+            term.model_spec = "test"  # type: ignore
 
         term._model_spec = None
         with pytest.raises(ValueError):
-            term.model_spec
+            _ = term.model_spec
 
         with pytest.raises(TypeError):
-            term.mappings = "test"
+            term.mappings = "test"  # type: ignore
 
         with pytest.raises(TypeError):
-            term.mappings = {"test": "value"}
+            term.mappings = {"test": "value"}  # type: ignore
 
         term._column_names = None
         with pytest.raises(ValueError):
-            term.column_names
+            _ = term.column_names
 
         with pytest.raises(TypeError):
-            term.column_names = 2
+            term.column_names = 2  # type: ignore
 
         with pytest.raises(TypeError):
             term.column_names = "test"
@@ -232,7 +235,7 @@ class TestLinTerm:
         term = tb.lin("x + y")
         term._mappings = None
         with pytest.raises(ValueError):
-            term.mappings
+            _ = term.mappings
 
     def test_lin_term_column_names(self, columb, data):
         tb = gam.TermBuilder.from_df(columb)
@@ -240,17 +243,17 @@ class TestLinTerm:
         assert term.column_names == ["x", "y"]
 
         with pytest.raises(TypeError):
-            term.column_names = [1, 2]
+            term.column_names = [1, 2]  # type: ignore
 
         tb = gam.TermBuilder.from_df(data)
         term = tb.lin("y + cat_ordered")
         assert term.column_names == ["y", "cat_ordered[T.med]", "cat_ordered[T.high]"]
 
         term = tb.lin("`with space`")
-        term.column_names == ["with space"]
+        assert term.column_names == ["with space"]
 
         term = tb.lin("`weird:col*name`")
-        term.column_names == ["weird:col*name"]
+        assert term.column_names == ["weird:col*name"]
 
 
 class TestMRFTerm:
@@ -285,7 +288,7 @@ class TestMRFTerm:
 
         mrf._mapping = None
         with pytest.raises(ValueError):
-            mrf.mapping
+            _ = mrf.mapping
 
     def test_labels_categorical(self) -> None:
         nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
@@ -328,10 +331,14 @@ class TestMRFTerm:
     def test_factor_scale(self, columb, columb_polys):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.mrf("district", factor_scale=True, scale=3.0, polys=columb_polys)
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
         term = tb.mrf("district", scale=3.0, polys=columb_polys)
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(3.0)
 
@@ -367,6 +374,8 @@ class TestBasisReparameterization:
         term = tb.ps(
             "x", k=20, absorb_cons=False, diagonal_penalty=False, scale_penalty=False
         )
+        assert term.basis.penalty is not None
+        assert term.coef.dist_node is not None
         p1 = term.basis.penalty.value
         p1b = term.coef.dist_node["penalty"].value
         term.basis.scale_penalty()
@@ -389,6 +398,7 @@ class TestBasisReparameterization:
 
         coef = jax.random.normal(jax.random.key(42), term.coef.value.shape)
 
+        assert basis.reparam_matrix is not None
         constrained_coef = basis.reparam_matrix @ coef
         assert constrained_coef.sum() == pytest.approx(0.0, abs=1e-6)
         assert basis.constraint == "sumzero_coef"
@@ -474,7 +484,7 @@ class TestBasisReparameterization:
         term = tb.lin("x + area")
 
         with pytest.raises(AttributeError):
-            term.constrain("sumzero_term")
+            term.constrain("sumzero_term")  # type: ignore
 
     def test_constrain_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
@@ -511,9 +521,11 @@ def _test_term(
     assert not any(jnp.isnan(smooth.value))
     assert smooth.value.shape == columb.shape[0:1]
     assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
+    assert smooth.basis.penalty is not None
     assert is_diagonal(smooth.basis.penalty.value)
 
     smooth = fn("x", k=k, diagonal_penalty=False)
+    assert smooth.basis.penalty is not None
     assert not any(jnp.isnan(smooth.value))
     assert smooth.value.shape == columb.shape[0:1]
     assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
@@ -521,6 +533,7 @@ def _test_term(
 
     if test_absorb_cons:
         smooth = fn("x", k=k, absorb_cons=False)
+        assert smooth.basis.penalty is not None
         assert not any(jnp.isnan(smooth.value))
         assert smooth.value.shape == columb.shape[0:1]
         assert smooth.basis.value.shape == (columb.shape[0], k - fewer_bases_by)
@@ -528,6 +541,8 @@ def _test_term(
 
     smooth_scaled = fn("x", k=k, scale_penalty=True, diagonal_penalty=False)
     smooth_unscaled = fn("x", k=k, scale_penalty=False, diagonal_penalty=False)
+    assert smooth_scaled.basis.penalty is not None
+    assert smooth_unscaled.basis.penalty is not None
     smooth_unscaled.update()
     assert not any(jnp.isnan(smooth_unscaled.value))
     assert smooth_unscaled.value.shape == columb.shape[0:1]
@@ -538,11 +553,14 @@ def _test_term(
     )
 
     smooth_factor_scale = fn("x", k=k, factor_scale=True, scale=2.0)
-    smooth_factor_scale.scale.value == pytest.approx(2.0)
-    smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
+    assert isinstance(smooth_factor_scale.scale, lsl.Var)
+    assert smooth_factor_scale.coef.dist_node is not None
+    assert smooth_factor_scale.scale.value == pytest.approx(2.0)
+    assert smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     _, vars_ = model.pop_nodes_and_vars()
     smooth = fn(vars_["x"], k=k, diagonal_penalty=False)
+    assert smooth.basis.penalty is not None
     assert not any(jnp.isnan(smooth.value))
     assert smooth.value.shape == columb.shape[0:1]
     assert smooth.basis.value.shape == (columb.shape[0], k - constraints)
@@ -560,7 +578,7 @@ class TestTerms:
     def test_s(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         s = partial(tb._s, bs="ps")
-        s.__name__ = "ps"  # monkey-patch
+        s.__name__ = "ps"  # type: ignore  # monkey-patch
         _test_term(s, k=20, constraints=1, fewer_bases_by=0, columb=columb)
 
     def test_np(self, columb):
@@ -588,6 +606,7 @@ class TestTerms:
             return spl.basis_matrix(x.squeeze(), knots=knots)
 
         smooth = tb.f("x", basis_fn=bfun, penalty=pen)
+        assert smooth.basis.penalty is not None
 
         model = lsl.Model([smooth])
         fname = "f"
@@ -603,11 +622,14 @@ class TestTerms:
         assert not is_diagonal(smooth.basis.penalty.value)
 
         smooth = tb.f("x", basis_fn=bfun, penalty=pen)
+        assert smooth.basis.penalty is not None
         smooth.diagonalize_penalty()
         assert is_diagonal(smooth.basis.penalty.value)
 
         smooth_scaled = tb.f("x", basis_fn=bfun, penalty=pen).scale_penalty()
         smooth_unscaled = tb.f("x", basis_fn=bfun, penalty=pen)
+        assert smooth_scaled.basis.penalty is not None
+        assert smooth_unscaled.basis.penalty is not None
         smooth_unscaled.update()
         assert not any(jnp.isnan(smooth_unscaled.value))
         assert smooth_unscaled.value.shape == columb.shape[0:1]
@@ -624,8 +646,10 @@ class TestTerms:
         smooth_factor_scale = tb.f(
             "x", basis_fn=bfun, penalty=jnp.eye(pen.shape[-1]), factor_scale=True
         )
-        smooth_factor_scale.scale.value == pytest.approx(2.0)
-        smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
+        assert isinstance(smooth_factor_scale.scale, lsl.Var)
+        assert smooth_factor_scale.coef.dist_node is not None
+        assert smooth_factor_scale.scale.value == pytest.approx(1.0)
+        assert smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     def test_cp(self, columb):
         tb = gb.TermBuilder.from_df(columb)
@@ -709,15 +733,19 @@ class TestRITerm:
 
         ri._labels = None
         with pytest.raises(ValueError):
-            ri.labels
+            _ = ri.labels
 
     def test_factor_scale(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         term = tb.ri("district", factor_scale=True, scale=3.0)
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(1.0)
 
         term = tb.ri("district", scale=3.0)
+        assert isinstance(term.scale, lsl.Var)
+        assert term.coef.dist_node is not None
         assert term.scale.value == pytest.approx(3.0)
         assert term.coef.dist_node["scale"].value == pytest.approx(3.0)
 
@@ -767,22 +795,34 @@ class TestTPTerm:
 
         assert ta.nbases == 9 * 9
         for i in range(len(ta.scales)):
-            assert ta.scales[i].value_node[0].value_node[0].inference is not None
+            scale = ta.scales[i]
+            assert isinstance(scale, lsl.Var)
+            value_var = scale.value_node[0]
+            assert isinstance(value_var, lsl.Var)
+            assert isinstance(value_var.value_node[0], lsl.Var)
+            assert value_var.value_node[0].inference is not None
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         ta = tb.tf(psy, psx, common_scale=gam.VarIGPrior(1.0, 0.005))
         assert ta.terms_by_order[2][0].nbases == 9 * 9
         for i in range(len(ta.scales)):
-            assert ta.scales[i].value_node[0].value_node[0].inference is not None
+            scale = ta.scales[i]
+            assert isinstance(scale, lsl.Var)
+            value_var = scale.value_node[0]
+            assert isinstance(value_var, lsl.Var)
+            assert isinstance(value_var.value_node[0], lsl.Var)
+            assert value_var.value_node[0].inference is not None
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         ta = tb.tf(psy, psx, common_scale=1.0)
         assert ta.terms_by_order[2][0].nbases == 9 * 9
         for i in range(len(ta.scales)):
-            assert ta.scales[i].strong
-            assert ta.scales[i].inference is None
+            scale = ta.scales[i]
+            assert isinstance(scale, lsl.Var)
+            assert scale.strong
+            assert scale.inference is None
             if i > 0:
                 assert ta.scales[i] is ta.scales[i - 1]
 
@@ -802,6 +842,8 @@ class TestTPTerm:
         tb = gb.TermBuilder.from_df(columb)
         psy = tb.ps("y", k=10)
         psx = tb.ps("x", k=10)
+        assert isinstance(psy.scale, lsl.Var)
+        assert isinstance(psy.scale.value_node[0], lsl.Var)
         psy.scale.value_node[0].inference = gs.MCMCSpec(gs.NUTSKernel)
         tb.tx(psy, psx)
 
@@ -811,6 +853,8 @@ class TestTPTerm:
         tb = gb.TermBuilder.from_df(columb)
         psy = tb.ps("y", k=10)
         psx = tb.ps("x", k=10)
+        assert isinstance(psy.scale, lsl.Var)
+        assert isinstance(psy.scale.value_node[0], lsl.Var)
         psy.scale.value_node[0].inference = None
         tb.tx(psy, psx)
 
@@ -818,6 +862,10 @@ class TestTPTerm:
 
         psy = tb.ps("y", k=10)
         psx = tb.ps("x", k=10)
+        assert isinstance(psy.scale, lsl.Var)
+        assert isinstance(psy.scale.value_node[0], lsl.Var)
+        assert isinstance(psx.scale, lsl.Var)
+        assert isinstance(psx.scale.value_node[0], lsl.Var)
         psy.scale.value_node[0].inference = None
         psx.scale.value_node[0].inference = None
         tb.tx(psy, psx)
@@ -835,6 +883,8 @@ class TestTPTerm:
         tb = gb.TermBuilder.from_df(columb)
         psy = tb.ps("y", k=10)
         psx = tb.ps("x", k=10)
+        assert isinstance(psy.scale, lsl.Var)
+        assert isinstance(psy.scale.value_node[0], lsl.Var)
         psy.scale.value_node[0].name = ""
         tb.tx(psy, psx)
 
@@ -860,17 +910,20 @@ class TestTPTerm:
 
         getattr(tb, method)(psy, psx)
 
-        yvar = psy.scale.value_node[0]
-        xvar = psx.scale.value_node[0]
+        assert isinstance(psy.scale, lsl.Var)
+        psy_scale = psy.scale.value_node[0]
+        assert isinstance(psy_scale, lsl.Var)
+        assert isinstance(psx.scale, lsl.Var)
+        psx_scale = psx.scale.value_node[0]
+        assert isinstance(psx_scale, lsl.Var)
+        assert not jnp.isnan(psy_scale.log_prob)
+        assert not jnp.isnan(psx_scale.log_prob)
 
-        assert not jnp.isnan(yvar.value_node[0].log_prob)
-        assert not jnp.isnan(xvar.value_node[0].log_prob)
+        assert psy_scale.strong
+        assert psx_scale.strong
 
-        assert yvar.value_node[0].strong
-        assert xvar.value_node[0].strong
-
-        assert yvar.value_node[0].inference is sy_inference
-        assert xvar.value_node[0].inference is None
+        assert psy_scale.inference is sy_inference
+        assert psx_scale.inference is None
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
     def test_ig_scale(self, columb, method):
@@ -883,8 +936,16 @@ class TestTPTerm:
 
         getattr(tb, method)(psy, psx)
 
+        assert isinstance(psy.scale, lsl.Var)
+        assert isinstance(psy.scale.value_node[0], lsl.Var)
+        assert isinstance(psx.scale, lsl.Var)
+        assert isinstance(psx.scale.value_node[0], lsl.Var)
         yvar = psy.scale.value_node[0]
         xvar = psx.scale.value_node[0]
+        assert isinstance(yvar, lsl.Var)
+        assert isinstance(yvar.value_node[0], lsl.Var)
+        assert isinstance(xvar, lsl.Var)
+        assert isinstance(xvar.value_node[0], lsl.Var)
 
         assert not jnp.isnan(yvar.value_node[0].log_prob)
         assert not jnp.isnan(xvar.value_node[0].log_prob)
@@ -903,8 +964,16 @@ class TestTPTerm:
 
         getattr(tb, method)(psy, psx)
 
+        assert isinstance(psy.scale, lsl.Var)
+        assert isinstance(psy.scale.value_node[0], lsl.Var)
+        assert isinstance(psx.scale, lsl.Var)
+        assert isinstance(psx.scale.value_node[0], lsl.Var)
         yvar = psy.scale.value_node[0]
         xvar = psx.scale.value_node[0]
+        assert isinstance(yvar, lsl.Var)
+        assert isinstance(yvar.value_node[0], lsl.Var)
+        assert isinstance(xvar, lsl.Var)
+        assert isinstance(xvar.value_node[0], lsl.Var)
 
         assert not jnp.isnan(yvar.value_node[0].log_prob)
         assert not jnp.isnan(xvar.value_node[0].log_prob)
@@ -912,6 +981,8 @@ class TestTPTerm:
         assert yvar.value_node[0].strong
         assert xvar.value_node[0].strong
 
+        assert isinstance(yvar.value_node[0].inference, gs.MCMCSpec)
+        assert isinstance(xvar.value_node[0].inference, gs.MCMCSpec)
         assert yvar.value_node[0].inference.kernel is gs.HMCKernel
         assert xvar.value_node[0].inference.kernel is gs.HMCKernel
 
@@ -954,12 +1025,15 @@ class TestHasStarGibbs:
     def test_term(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
+        assert isinstance(ri.scale, lsl.Var)
         assert _has_star_gibbs(ri.scale)
 
         ri2 = tb.ri("district", scale=lsl.Var.new_param(1.0, name="test"))
+        assert isinstance(ri2.scale, lsl.Var)
         assert not _has_star_gibbs(ri2.scale)
 
         ri3 = tb.ri("district", scale=1.0)
+        assert isinstance(ri3.scale, lsl.Var)
         assert not _has_star_gibbs(ri3.scale)
 
     def test_other_inference(self):
@@ -973,6 +1047,7 @@ class TestHasStarGibbs:
     def test_inference_dict_one_of_them_star_ig(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
+        assert isinstance(ri.scale, lsl.Var)
         v = _find_parameter(ri.scale)
         inference_ig = v.inference
         v.inference = {"a": gs.MCMCSpec(gs.NUTSKernel), "b": inference_ig}

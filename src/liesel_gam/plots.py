@@ -34,6 +34,10 @@ from .term import (
 KeyArray = Any
 
 
+def _as_array_dict(data: Mapping[str, Any]) -> dict[str, ArrayLike]:
+    return {key: jnp.asarray(value) for key, value in data.items()}
+
+
 def plot_1d_smooth(
     term: StrctTerm,
     samples: dict[str, ArrayLike],
@@ -81,7 +85,7 @@ def plot_1d_smooth(
         newdata_x = newdata
         xgrid = np.asarray(newdata[term.basis.x.name])
 
-    newdata_x = {k: jnp.asarray(v) for k, v in newdata_x.items()}
+    newdata_x = _as_array_dict(newdata_x)
 
     term_samples = term.predict(samples, newdata=newdata_x)
 
@@ -104,8 +108,8 @@ def plot_1d_smooth(
         p = p + p9.geom_ribbon(
             p9.aes(
                 term.basis.x.name,
-                ymin=f"q_{str(ci_quantiles[0])}",
-                ymax=f"q_{str(ci_quantiles[1])}",
+                ymin=f"q_{ci_quantiles[0]!s}",
+                ymax=f"q_{ci_quantiles[1]!s}",
             ),
             fill="#56B4E9",
             alpha=0.5,
@@ -679,7 +683,7 @@ def plot_1d_smooth_clustered(
 
     if labels is None:
         try:
-            labels = cluster.mapping  # type: ignore
+            labels = cluster.mapping
         except (AttributeError, ValueError):
             labels = None
 
