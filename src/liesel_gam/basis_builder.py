@@ -25,7 +25,6 @@ except RuntimeError as e:
         r = cast(Any, None)
         to_py = cast(Any, None)
         to_r = cast(Any, None)
-        pass
     else:
         raise e
 
@@ -1881,9 +1880,10 @@ class BasisBuilder:
             return basis
 
         smooth_penalty = smooth.penalty
-        if np.shape(smooth_penalty)[1] > len(labels):
-            smooth_penalty = smooth_penalty[:, 1:]
-        elif np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]:
+        if (
+            np.shape(smooth_penalty)[1] > len(labels)
+            or np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]
+        ):
             smooth_penalty = smooth_penalty[:, 1:]
 
         try:

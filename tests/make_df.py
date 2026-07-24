@@ -48,9 +48,7 @@ def block_categorical(n: int, rng: np.random.Generator) -> pd.DataFrame:
 
 
 def block_logical(n: int, rng: np.random.Generator) -> pd.DataFrame:
-    df = pd.DataFrame(
-        {"flag_bool": rng.choice([True, False, None], size=n)}
-    )
+    df = pd.DataFrame({"flag_bool": rng.choice([True, False, None], size=n)})
     df["flag_bool"] = df["flag_bool"].astype("bool")
     return df
 

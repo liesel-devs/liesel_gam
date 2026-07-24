@@ -777,7 +777,7 @@ class MultivariateNormalStructured(tfd.Distribution):
 
     @classmethod
     def from_penalties(
-        cls: type[DistributionT],
+        cls,
         loc: Array,
         scales: Array,
         penalties: Sequence[Array],
@@ -786,7 +786,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         validate_args: bool = False,
         allow_nan_stats: bool = True,
         include_normalizing_constant: bool = True,
-    ) -> DistributionT:
+    ) -> Self:
         """
         Initializes the distribution directly from marginal scales and penalties
         (computationally expensive).
@@ -807,14 +807,14 @@ class MultivariateNormalStructured(tfd.Distribution):
 
     @classmethod
     def get_locscale_constructor(
-        cls: type[DistributionT],
+        cls,
         penalties: Sequence[Array],
         tol: float = 1e-6,
         precompute_masks: bool = True,
         validate_args: bool = False,
         allow_nan_stats: bool = True,
         include_normalizing_constant: bool = True,
-    ) -> Callable[[Array, Array], DistributionT]:
+    ) -> Callable[[Array, Array], Self]:
         """
         Creates a constructor for this distribution that takes a location array and
         an array of marginal scales.
@@ -889,7 +889,7 @@ class MultivariateNormalStructured(tfd.Distribution):
         else:
             masks = None
 
-        def construct_dist(loc: Array, scales: Array) -> DistributionT:
+        def construct_dist(loc: Array, scales: Array) -> Self:
             loc = jnp.asarray(loc)
             scales = jnp.asarray(scales)
             op = StructuredPenaltyOperator(

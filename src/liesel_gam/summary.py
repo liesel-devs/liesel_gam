@@ -679,9 +679,12 @@ def summarise_1d_smooth_clustered(
         observed = {x: x in unique_clusters for x in cgrid}
     elif newdata is None:
         cgrid = np.unique(cluster.basis.x.value)
-        if isinstance(x, lsl.Node) and len(x.inputs) == 1:
-            xgrid = {x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)}
-        elif isinstance(x, lsl.Var) and x.strong:
+        if (
+            isinstance(x, lsl.Node)
+            and len(x.inputs) == 1
+            or isinstance(x, lsl.Var)
+            and x.strong
+        ):
             xgrid = {x.name: jnp.linspace(x.value.min(), x.value.max(), ngrid)}
         else:
             assert isinstance(term, StrctTerm | LinTerm), (

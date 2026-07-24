@@ -1371,8 +1371,6 @@ class LinTerm(BasisDot, LinMixin):
     (4,)
     """
 
-    pass
-
 
 class StrctLinTerm(StrctTerm, LinMixin):
     """
@@ -1392,8 +1390,6 @@ class StrctLinTerm(StrctTerm, LinMixin):
     >>> term.coef.value.shape
     (2,)
     """
-
-    pass
 
 
 class StrctInteractionTerm(UserVar):

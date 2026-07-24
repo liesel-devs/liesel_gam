@@ -217,24 +217,28 @@ class TestSmoothTerm:
         assert scale_var.dist_node is not None
         assert term.scale.value == pytest.approx(jnp.sqrt(2.0))
 
-        assert scale_var.dist_node[
-            "concentration"
-        ].value == pytest.approx(1.0)
+        assert scale_var.dist_node["concentration"].value == pytest.approx(1.0)
         assert scale_var.dist_node["scale"].value == pytest.approx(0.005)
 
         with pytest.raises(ValueError):
             gam.StrctTerm(
-                basis, penalty=None, scale=gam.VarIGPrior(jnp.ones(2), 0.005, 2.0)  # type: ignore
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(jnp.ones(2), 0.005, 2.0),  # type: ignore
             )
 
         with pytest.raises(ValueError):
             gam.StrctTerm(
-                basis, penalty=None, scale=gam.VarIGPrior(1.0, jnp.ones(2), 2.0)  # type: ignore
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(1.0, jnp.ones(2), 2.0),  # type: ignore
             )
 
         with pytest.raises(ValueError):
             gam.StrctTerm(
-                basis, penalty=None, scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2))  # type: ignore
+                basis,
+                penalty=None,
+                scale=gam.VarIGPrior(1.0, 1.0, jnp.ones(2)),  # type: ignore
             )
 
         with pytest.raises(ValueError, match="1 or 5, got size 2"):
