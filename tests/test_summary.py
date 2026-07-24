@@ -408,7 +408,7 @@ class Test1dSmoothClusteredSummary:
 
 class TestNDSmoothSummary:
     def test_grid(self):
-        in_grid = {
+        in_grid: dict[str, ArrayLike] = {
             "x1": np.linspace(0, 1, 4),
             "x2": np.linspace(1, 2, 3),
             "x3": np.linspace(2, 3, 5),
@@ -664,8 +664,8 @@ class TestClusterSummary:
         model = lsl.Model([term])
         samples = model.sample((4, 20), jkey(0))
 
-        labels = term.mapping  # type: ignore
-        term._mapping = None  # type: ignore
+        labels = term.mapping
+        term._mapping = None
         su1 = gam.summarise_cluster(term, samples=samples, labels=labels)
         assert su1.shape[0] == 10
         assert all(su1["district"].unique() == df["district"].unique())
