@@ -519,17 +519,17 @@ class TestInteractionTerm:
 
         px.basis.x.name = ""
         with pytest.raises(ValueError):
-            tp.input_obs
+            _ = tp.input_obs
 
         x = px.basis.value_node[0]
         x_weak = lsl.Var.new_calc(jnp.square, x, name="x**2")
 
         px.basis.value_node[0] = x_weak
         with pytest.raises(ValueError):
-            tp.input_obs
+            _ = tp.input_obs
 
         x.name = "x"
-        "x" in tp.input_obs
+        assert "x" in tp.input_obs
 
     def test_weak_input_obs(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -549,7 +549,7 @@ class TestInteractionTerm:
 
         tp.input_obs["x"].name = ""
         with pytest.raises(ValueError):
-            tp.input_obs
+            _ = tp.input_obs
 
 
 class TestTensorProdTerm:

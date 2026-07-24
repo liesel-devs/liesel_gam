@@ -251,7 +251,7 @@ class TestLinTerm:
 
         term._model_spec = None
         with pytest.raises(ValueError):
-            term.model_spec
+            _ = term.model_spec
 
         with pytest.raises(TypeError):
             term.mappings = "test"  # type: ignore
@@ -261,7 +261,7 @@ class TestLinTerm:
 
         term._column_names = None
         with pytest.raises(ValueError):
-            term.column_names
+            _ = term.column_names
 
         with pytest.raises(TypeError):
             term.column_names = 2  # type: ignore
@@ -272,7 +272,7 @@ class TestLinTerm:
         term = tb.lin("x + y")
         term._mappings = None
         with pytest.raises(ValueError):
-            term.mappings
+            _ = term.mappings
 
     def test_lin_term_column_names(self, columb, data):
         tb = gam.TermBuilder.from_df(columb)
@@ -287,10 +287,10 @@ class TestLinTerm:
         assert term.column_names == ["y", "cat_ordered[T.med]", "cat_ordered[T.high]"]
 
         term = tb.lin("`with space`")
-        term.column_names == ["with space"]
+        assert term.column_names == ["with space"]
 
         term = tb.lin("`weird:col*name`")
-        term.column_names == ["weird:col*name"]
+        assert term.column_names == ["weird:col*name"]
 
 
 class TestMRFTerm:
@@ -325,7 +325,7 @@ class TestMRFTerm:
 
         mrf._mapping = None
         with pytest.raises(ValueError):
-            mrf.mapping
+            _ = mrf.mapping
 
     def test_labels_categorical(self) -> None:
         nb = {"a": ["b", "c"], "b": ["a"], "c": ["a"]}
@@ -592,8 +592,8 @@ def _test_term(
     smooth_factor_scale = fn("x", k=k, factor_scale=True, scale=2.0)
     assert isinstance(smooth_factor_scale.scale, lsl.Var)
     assert smooth_factor_scale.coef.dist_node is not None
-    smooth_factor_scale.scale.value == pytest.approx(2.0)
-    smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
+    assert smooth_factor_scale.scale.value == pytest.approx(2.0)
+    assert smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     _, vars_ = model.pop_nodes_and_vars()
     smooth = fn(vars_["x"], k=k, diagonal_penalty=False)
@@ -685,8 +685,8 @@ class TestTerms:
         )
         assert isinstance(smooth_factor_scale.scale, lsl.Var)
         assert smooth_factor_scale.coef.dist_node is not None
-        smooth_factor_scale.scale.value == pytest.approx(2.0)
-        smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
+        assert smooth_factor_scale.scale.value == pytest.approx(1.0)
+        assert smooth_factor_scale.coef.dist_node["scale"].value == pytest.approx(1.0)
 
     def test_cp(self, columb):
         tb = gb.TermBuilder.from_df(columb)
@@ -770,7 +770,7 @@ class TestRITerm:
 
         ri._labels = None
         with pytest.raises(ValueError):
-            ri.labels
+            _ = ri.labels
 
     def test_factor_scale(self, columb):
         tb = gb.TermBuilder.from_df(columb)

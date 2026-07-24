@@ -1763,11 +1763,10 @@ class StrctInteractionTerm(UserVar):
                 # case: potentially multivariate marginal, possibly thin plate,
                 # where basis.x is a calculator that collects the strong inputs.
                 for xj in b.x.all_input_nodes():
-                    if xj.var is not None:
-                        if xj.var.observed:
-                            if not xj.var.name:
-                                raise ValueError(f"Observed name not found for {b}")
-                            _input_x[xj.var.name] = xj.var
+                    if xj.var is not None and xj.var.observed and not xj.var.name:
+                        raise ValueError(f"Observed name not found for {b}")
+                    if xj.var is not None and xj.var.observed:
+                        _input_x[xj.var.name] = xj.var
 
         return _input_x
 

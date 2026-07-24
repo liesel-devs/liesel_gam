@@ -106,12 +106,12 @@ class MultivariateNormalSingular(tfd.Distribution):
 
     @classmethod
     def _parameter_properties(cls, dtype=jnp.float32, num_classes=None):
-        return dict(
-            loc=ParameterProperties(event_ndims=1),
-            scale=ParameterProperties(event_ndims=0),
-            penalty=ParameterProperties(event_ndims=2),
-            penalty_rank=ParameterProperties(event_ndims=0),
-        )
+        return {
+            "loc": ParameterProperties(event_ndims=1),
+            "scale": ParameterProperties(event_ndims=0),
+            "penalty": ParameterProperties(event_ndims=2),
+            "penalty_rank": ParameterProperties(event_ndims=0),
+        }
 
     def _event_shape(self):
         return tf.TensorShape((jnp.shape(self._penalty)[-1],))

@@ -16,7 +16,7 @@ try:
     # readthedocs safeguard: R is not installed in the readthedocs build environment
     import smoothcon as scon
     from ryp import r, to_py, to_r
-except RuntimeError as e:
+except RuntimeError:
     import os
 
     on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
@@ -26,7 +26,7 @@ except RuntimeError as e:
         to_py = cast(Any, None)
         to_r = cast(Any, None)
     else:
-        raise e
+        raise
 
 from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
@@ -263,8 +263,8 @@ class BasisBuilder:
         ``lsl.Var`` objects. Registry-backed matrices are cached by the registry;
         matrices from supplied variables are created directly.
         """
-        all_str = all([isinstance(x_, str) for x_ in x])
-        all_var = all([isinstance(x_, lsl.Var) for x_ in x])
+        all_str = all(isinstance(x_, str) for x_ in x)
+        all_var = all(isinstance(x_, lsl.Var) for x_ in x)
 
         if all_str:
             names = cast(tuple[str, ...], x)
@@ -1470,7 +1470,7 @@ class BasisBuilder:
         df_subset = self.data.loc[:, required]
         df_colnames = df_subset.columns
 
-        variables = dict()
+        variables = {}
 
         mappings = {}
         for col in df_colnames:
@@ -1742,7 +1742,7 @@ class BasisBuilder:
         var, mapping = self.registry.get_categorical_obs(x)
         self.mappings[x] = mapping
 
-        labels = set(list(mapping.labels_to_integers_map))
+        labels = set(mapping.labels_to_integers_map)
 
         if penalty is not None:
             if penalty_labels is None:
@@ -1759,7 +1759,7 @@ class BasisBuilder:
         pass_to_r: dict[str, np.typing.NDArray | dict[str, np.typing.NDArray]] = {}
         if polys is not None:
             xt_args.append("polys=polys")
-            if not labels == set(list(polys)):
+            if not labels == set(polys):
                 raise ValueError(
                     "Names in 'polys' must correspond to the levels of 'x'."
                 )
@@ -1767,7 +1767,7 @@ class BasisBuilder:
 
         if nb is not None:
             xt_args.append("nb=nb")
-            if not labels == set(list(nb)):
+            if not labels == set(nb):
                 raise ValueError("Names in 'nb' must correspond to the levels of 'x'.")
 
             nb_processed = {}

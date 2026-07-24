@@ -507,8 +507,6 @@ class TestMultivariateNormalStructuredSingular:
 
         lp1 = dist.log_prob(x)
 
-        lp1 = lp1
-
         Ki = jnp.linalg.inv(K)
         dist2 = tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=Ki)
 
@@ -564,8 +562,6 @@ class TestMultivariateNormalStructuredSingular:
         x = jax.random.normal(jax.random.key(seed), (n,))
 
         lp1 = dist.log_prob(x)
-
-        lp1 = lp1
 
         Ki = jnp.linalg.inv(K)
         dist2 = tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=Ki)

@@ -175,7 +175,7 @@ class PandasRegistry:
             method_name = func.__name__
             return f"method_{obj_id}_{method_name}"
 
-        elif hasattr(func, "__call__"):
+        elif callable(func):
             # Callable objects, lambdas, etc.: use object ID
             return f"obj_id_{id(func)}"
         else:

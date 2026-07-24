@@ -3454,7 +3454,7 @@ def _find_parameter(var: lsl.Var) -> lsl.Var:
                 f"In the graph of {var}, there are {len(params)} parameters, "
                 "so we cannot return a unique parameter."
             )
-        param = list(model.parameters.values())[0]
+        param = next(iter(model.parameters.values()))
 
     return param
 

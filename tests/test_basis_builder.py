@@ -71,7 +71,7 @@ class TestFoBasisInputTypes:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         basis = bases.lin("label")
-        basis.value.shape[1] == (len(data["label"].unique()) - 1)
+        assert basis.value.shape[1] == (len(data["label"].unique()) - 1)
         assert "label" in bases.mappings
 
     def test_date(self, data):
@@ -612,7 +612,6 @@ class TestMRFBasis:
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        columb_polys
         basis = bases.mrf(
             "district",
             polys=columb_polys,

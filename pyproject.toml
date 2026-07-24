@@ -61,7 +61,7 @@ filterwarnings = [
 ]
 
 [tool.ruff.lint]
-extend-select = [
+select = [
     "F",  # pyflakes (flake8 core)
     "E",  # pycodestyle errors (flake8)
     "W",  # pycodestyle warnings (flake8)
