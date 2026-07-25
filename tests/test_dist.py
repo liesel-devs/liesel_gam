@@ -460,7 +460,7 @@ class TestMultivariateNormalStructuredSingular:
 
         loc = jnp.zeros(n)
         scales = jnp.array([1.0, 2.0])
-        d1 = dist_constr(loc=loc, scales=scales)
+        d1 = dist_constr(loc, scales)
         d2 = gd.MultivariateNormalStructured.from_penalties(
             loc=loc, scales=scales, penalties=[K1, K2]
         )
@@ -479,13 +479,13 @@ class TestMultivariateNormalStructuredSingular:
 
         loc = jnp.zeros(n)
         scales = jnp.array([1.0, 2.0])
-        dist_constr(loc=loc, scales=scales)
+        dist_constr(loc, scales)
 
         with pytest.raises(ValueError):
-            dist_constr(loc=loc, scales=jnp.array([1.0]))
+            dist_constr(loc, jnp.array([1.0]))
 
         with pytest.raises(ValueError):
-            dist_constr(loc=jnp.zeros(3), scales=scales)
+            dist_constr(jnp.zeros(3), scales)
 
     @pytest.mark.parametrize("seed", (0, 1, 2, 3))
     def test_log_prob(self, seed):
@@ -499,15 +499,13 @@ class TestMultivariateNormalStructuredSingular:
 
         loc = jnp.zeros(n)
         scales = jnp.array([1.0, 2.0])
-        dist = dist_constr(loc=loc, scales=scales)
+        dist = dist_constr(loc, scales)
 
         K = dist._op.materialize_precision()
 
         x = jax.random.normal(jax.random.key(seed), (n,))
 
         lp1 = dist.log_prob(x)
-
-        lp1 = lp1
 
         Ki = jnp.linalg.inv(K)
         dist2 = tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=Ki)
@@ -529,8 +527,8 @@ class TestMultivariateNormalStructuredSingular:
 
         loc = jnp.zeros(n)
         scales = jnp.array([1.0, 2.0])
-        dist_norm = dist_constr_norm(loc=loc, scales=scales)
-        dist_unnorm = dist_constr_unnorm(loc=loc, scales=scales)
+        dist_norm = dist_constr_norm(loc, scales)
+        dist_unnorm = dist_constr_unnorm(loc, scales)
 
         x1 = jax.random.normal(jax.random.key(seed), (n,))
         x2 = jax.random.normal(jax.random.key(seed + 1), (n,))
@@ -557,15 +555,13 @@ class TestMultivariateNormalStructuredSingular:
 
         loc = jnp.zeros(n)
         scales = jnp.array([1.0, 2.0])
-        dist = dist_constr(loc=loc, scales=scales)
+        dist = dist_constr(loc, scales)
 
         K = dist._op.materialize_precision()
 
         x = jax.random.normal(jax.random.key(seed), (n,))
 
         lp1 = dist.log_prob(x)
-
-        lp1 = lp1
 
         Ki = jnp.linalg.inv(K)
         dist2 = tfd.MultivariateNormalFullCovariance(loc=loc, covariance_matrix=Ki)
@@ -592,8 +588,10 @@ class TestMultivariateNormalStructuredSingular:
         eigenvalues2 = jax.vmap(jnp.linalg.eigvalsh)(K2)
 
         K_tau2 = jax.vmap(
-            lambda tau21, tau22, K1, K2: tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
-            + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2),
+            lambda tau21, tau22, K1, K2: (
+                tau21 * jnp.kron(K1, jnp.eye(K2.shape[0]))
+                + tau22 * jnp.kron(jnp.eye(K1.shape[0]), K2)
+            ),
             (0, 0, 0, 0),
         )(tau21, tau22, K1, K2)
 

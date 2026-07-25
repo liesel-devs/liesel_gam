@@ -112,7 +112,7 @@ class TestCategoryMappingFromSeries:
 
     def test_from_series_invalid_type(self) -> None:
         with pytest.raises(TypeError):
-            gam.CategoryMapping.from_series(np.array(["a", "b"]))
+            gam.CategoryMapping.from_series(np.array(["a", "b"]))  # type: ignore
 
 
 class TestCategoryMappingEncoding:

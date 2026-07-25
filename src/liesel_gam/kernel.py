@@ -13,7 +13,7 @@ def star_ig_gibbs(
     The 'penalty' argument is used only in the case that no penalty can be retrieved
     from the coefficient's distribution node.
     """
-    variance_var = scale.value_node[0]  # type: ignore
+    variance_var = scale.value_node[0]
     a_value = variance_var.dist_node["concentration"].value  # type: ignore
     b_value = variance_var.dist_node["scale"].value  # type: ignore
 
@@ -65,13 +65,13 @@ def init_star_ig_gibbs(
     if len(position_keys) != 1:
         raise ValueError("The position keys must be a single key.")
 
-    variance_var = scale.value_node[0]  # type: ignore
+    variance_var = scale.value_node[0]
     name = variance_var.name
 
     if position_keys[0] != name:
         raise ValueError(f"The position key must be {name}.")
 
-    return star_ig_gibbs(coef, scale, penalty)  # type: ignore
+    return star_ig_gibbs(coef, scale, penalty)
 
 
 def star_ig_gibbs_factored(
@@ -84,7 +84,7 @@ def star_ig_gibbs_factored(
     The 'penalty' argument is used only in the case that no penalty can be retrieved
     from the coefficient's distribution node.
     """
-    variance_var = scale.value_node[0]  # type: ignore
+    variance_var = scale.value_node[0]
     a_value = variance_var.dist_node["concentration"].value  # type: ignore
     b_value = variance_var.dist_node["scale"].value  # type: ignore
 
@@ -141,10 +141,10 @@ def init_star_ig_gibbs_factored(
     if len(position_keys) != 1:
         raise ValueError("The position keys must be a single key.")
 
-    variance_var = scale.value_node[0]  # type: ignore
+    variance_var = scale.value_node[0]
     name = variance_var.name
 
     if position_keys[0] != name:
         raise ValueError(f"The position key must be {name}.")
 
-    return star_ig_gibbs_factored(scaled_coef, latent_coef, scale, penalty)  # type: ignore
+    return star_ig_gibbs_factored(scaled_coef, latent_coef, scale, penalty)

@@ -9,6 +9,7 @@ from formulaic.errors import (
     FormulaParsingError,
     FormulaSyntaxError,
 )
+from jax.typing import ArrayLike
 from ryp import r, to_py
 
 import liesel_gam.term_builder as gb
@@ -16,6 +17,7 @@ from liesel_gam.registry import PandasRegistry
 from liesel_gam.term_builder import BasisBuilder
 
 from .make_df import make_test_df
+from .r_data import columb_to_pandas
 
 
 @pytest.fixture(scope="module")
@@ -69,7 +71,7 @@ class TestFoBasisInputTypes:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)
         basis = bases.lin("label")
-        basis.value.shape[1] == (len(data["label"].unique()) - 1)
+        assert basis.value.shape[1] == (len(data["label"].unique()) - 1)
         assert "label" in bases.mappings
 
     def test_date(self, data):
@@ -587,10 +589,7 @@ class TestFoBasisLinearCategorical:
 
 @pytest.fixture(scope="module")
 def columb():
-    r("library(mgcv)")
-    r("data(columb)")
-    columb = to_py("columb", format="pandas")
-    return columb
+    return columb_to_pandas()
 
 
 @pytest.fixture(scope="module")
@@ -613,7 +612,6 @@ class TestMRFBasis:
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        columb_polys
         basis = bases.mrf(
             "district",
             polys=columb_polys,
@@ -622,6 +620,8 @@ class TestMRFBasis:
             absorb_cons=False,
         )
         _, neighbors, labels = basis.mrf_spec[:3]
+        assert neighbors is not None
+        assert basis.penalty is not None
 
         label_arr = np.asarray(list(columb_polys))
         # label_arr = np.asarray(labels)
@@ -695,6 +695,7 @@ class TestMRFBasis:
         _, neighbors7, labels7 = basis7.mrf_spec[:3]
 
         for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
+            assert b.penalty is not None
             assert jnp.allclose(b.value, basis.value)
             assert jnp.allclose(b.penalty.value, basis.penalty.value)
 
@@ -707,6 +708,7 @@ class TestMRFBasis:
             neighbors7,
         ]
         for nb in nb_list:
+            assert nb is not None
             for key, nb_list in nb.items():
                 assert nb_list == neighbors[key]
 
@@ -737,6 +739,8 @@ class TestMRFBasis:
             absorb_cons=False,
         )
         _, neighbors, labels = basis.mrf_spec[:3]
+        assert neighbors is not None
+        assert basis.penalty is not None
 
         basis2 = bases.mrf(
             "district",
@@ -839,6 +843,7 @@ class TestMRFBasis:
         _, neighbors7, labels7 = basis7.mrf_spec[:3]
 
         for b in [basis2, basis3, basis4, basis5, basis6, basis7]:
+            assert b.penalty is not None
             assert jnp.allclose(b.value, basis.value)
             assert jnp.allclose(b.penalty.value, basis.penalty.value)
 
@@ -862,6 +867,7 @@ class TestMRFBasis:
                 # because in these cases, the smooth does not compute the neighbor list
                 assert nb is None
             else:
+                assert nb is not None
                 for key, nb_list in nb.items():
                     assert nb_list == neighbors[key]
 
@@ -891,6 +897,8 @@ class TestMRFBasis:
             absorb_cons=False,
         )
         _, neighbors, labels = basis.mrf_spec[:3]
+        assert neighbors is not None
+        assert basis.penalty is not None
 
         basis2 = bases.mrf(
             "district",
@@ -958,6 +966,7 @@ class TestMRFBasis:
             )
 
         for b in [basis2, basis4]:
+            assert b.penalty is not None
             assert jnp.allclose(b.value, basis.value)
             assert jnp.allclose(b.penalty.value, basis.penalty.value)
 
@@ -966,6 +975,7 @@ class TestMRFBasis:
             neighbors4,
         ]
         for i, nb in enumerate(nb_list):
+            assert nb is not None
             for key, nb_list in nb.items():
                 assert nb_list == neighbors[key]
 
@@ -996,6 +1006,7 @@ class TestMRFBasis:
             scale_penalty=False,
             absorb_cons=False,
         )
+        assert basis.penalty is not None
         K2 = basis.penalty.value
 
         assert jnp.allclose(basis.value[:, 0], jnp.array([1.0, 0.0, 0.0, 0.0]))
@@ -1011,6 +1022,7 @@ class TestMRFBasis:
         basis = bases.mrf(
             "district", penalty=K, penalty_labels=["c", "b", "a"], absorb_cons=True
         )
+        assert basis.penalty is not None
 
         assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
         assert basis.penalty.value.shape[-1] == 2
@@ -1022,6 +1034,7 @@ class TestMRFBasis:
             absorb_cons=True,
             diagonal_penalty=True,
         )
+        assert basis.penalty is not None
 
         assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
         assert basis.penalty.value.shape[-1] == 2
@@ -1034,6 +1047,7 @@ class TestMRFBasis:
             diagonal_penalty=True,
             scale_penalty=True,
         )
+        assert basis.penalty is not None
 
         assert basis.penalty.value.shape[-1] == basis.value.shape[-1]
         assert basis.penalty.value.shape[-1] == 2
@@ -1051,6 +1065,7 @@ class TestMRFBasis:
             scale_penalty=False,
             diagonal_penalty=False,
         )
+        assert basis.penalty is not None
         K = np.array([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [-1.0, -1.0, 2.0]])
 
         assert jnp.allclose(basis.penalty.value, K)
@@ -1063,6 +1078,7 @@ class TestMRFBasis:
             scale_penalty=False,
             diagonal_penalty=False,
         )
+        assert basis.penalty is not None
         assert jnp.allclose(basis.penalty.value, K)
 
         df = pd.DataFrame({"district": ["a", "b", "c", "c"]})
@@ -1079,6 +1095,7 @@ class TestMRFBasis:
             scale_penalty=False,
             diagonal_penalty=False,
         )
+        assert basis.penalty is not None
         assert jnp.allclose(basis.penalty.value, K)
 
         basis = bases.mrf(
@@ -1090,6 +1107,7 @@ class TestMRFBasis:
             penalty=K,
             penalty_labels=["c", "b", "a"],
         )
+        assert basis.penalty is not None
         assert not jnp.allclose(basis.penalty.value, K)
 
     def test_warnings(self, caplog):
@@ -1102,7 +1120,11 @@ class TestMRFBasis:
 
         K = np.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
         nb = {"a": ["c"], "b": ["c"], "c": ["a", "b"]}
-        polys = {"a": jnp.ones((2, 2)), "b": jnp.ones((2, 2)), "c": jnp.ones((2, 2))}
+        polys: dict[str, ArrayLike] = {
+            "a": jnp.ones((2, 2)),
+            "b": jnp.ones((2, 2)),
+            "c": jnp.ones((2, 2)),
+        }
 
         registry = PandasRegistry(df)
         bases = BasisBuilder(registry)
@@ -1137,7 +1159,7 @@ class TestMRFBasis:
         bases = BasisBuilder(registry)
 
         with pytest.raises(TypeError, match="must be int"):
-            bases.mrf("district", k="1", penalty=K, penalty_labels=["c", "b", "a"])
+            bases.mrf("district", k="1", penalty=K, penalty_labels=["c", "b", "a"])  # type: ignore
 
         with pytest.raises(ValueError, match="smaller than"):
             bases.mrf("district", k=-2, penalty=K, penalty_labels=["c", "b", "a"])
@@ -1157,7 +1179,7 @@ class TestMRFBasis:
 
         nb = {"a": [[1]], "b": ["c"], "c": ["a", "b"]}
         with pytest.raises(ValueError, match="1d"):
-            bases.mrf("district", k=-1, nb=nb)
+            bases.mrf("district", k=-1, nb=nb)  # type: ignore
 
         nb = {"a": ["c"], "b": ["c"], "d": ["a", "b"]}
         with pytest.raises(ValueError, match="Names in 'nb'"):
@@ -1197,26 +1219,30 @@ class TestS:
         bases = BasisBuilder(registry)
 
         with pytest.raises(ValueError):
-            bases._s("x", bs="ab", k=8)
+            bases._s("x", bs="ab", k=8)  # type: ignore
 
     def test_tp_univariate(self, columb):
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
         b1 = bases._s("x", bs="tp", k=8)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 7
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases._s("x", bs="tp", k=8, diagonal_penalty=False)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 7
         assert not is_diagonal(b2.penalty.value)
 
         b3 = bases._s("x", bs="tp", k=8, diagonal_penalty=False, scale_penalty=False)
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 7
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
         b4 = bases._s("x", bs="tp", k=8, absorb_cons=False)
+        assert b4.penalty is not None
         assert b4.value.shape[-1] == 8
         assert is_diagonal(b4.penalty.value)
 
@@ -1225,21 +1251,25 @@ class TestS:
         bases = BasisBuilder(registry)
 
         b1 = bases._s("x", "y", bs="tp", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases._s("x", "y", bs="tp", k=20, diagonal_penalty=False)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert not is_diagonal(b2.penalty.value)
 
         b3 = bases._s(
             "x", "y", bs="tp", k=20, diagonal_penalty=False, scale_penalty=False
         )
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 19
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
         b4 = bases._s("x", "y", bs="tp", k=20, absorb_cons=False)
+        assert b4.penalty is not None
         assert b4.value.shape[-1] == 20
         assert is_diagonal(b4.penalty.value)
 
@@ -1248,19 +1278,23 @@ class TestS:
         bases = BasisBuilder(registry)
 
         b1 = bases._s("x", bs="gp", k=8)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 7
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases._s("x", bs="gp", k=8, diagonal_penalty=False)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 7
         assert not is_diagonal(b2.penalty.value)
 
         b3 = bases._s("x", bs="gp", k=8, diagonal_penalty=False, scale_penalty=False)
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 7
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
         b4 = bases._s("x", bs="gp", k=8, absorb_cons=False)
+        assert b4.penalty is not None
         assert b4.value.shape[-1] == 8
         assert is_diagonal(b4.penalty.value)
 
@@ -1269,21 +1303,25 @@ class TestS:
         bases = BasisBuilder(registry)
 
         b1 = bases._s("x", "y", bs="gp", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases._s("x", "y", bs="gp", k=20, diagonal_penalty=False)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert not is_diagonal(b2.penalty.value)
 
         b3 = bases._s(
             "x", "y", bs="gp", k=20, diagonal_penalty=False, scale_penalty=False
         )
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 19
         assert not is_diagonal(b3.penalty.value)
         assert not jnp.allclose(b2.penalty.value, b3.penalty.value)
 
         b4 = bases._s("x", "y", bs="gp", k=20, absorb_cons=False)
+        assert b4.penalty is not None
         assert b4.value.shape[-1] == 20
         assert is_diagonal(b4.penalty.value)
 
@@ -1294,6 +1332,7 @@ class TestKriging:
         bases = BasisBuilder(registry)
 
         b1 = bases.kriging("x", "y", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
@@ -1301,18 +1340,20 @@ class TestKriging:
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
-        names = [
+        names = (
             "power_exponential",
             "matern1.5",
             "matern2.5",
             "matern3.5",
-        ]
+        )
         b = bases.kriging("x", "y", k=20, kernel_name="spherical")
+        assert b.penalty is not None
         assert b.value.shape[-1] == 19
         assert is_diagonal(b.penalty.value)
 
         for kname in names:
             b2 = bases.kriging("x", "y", k=20, kernel_name=kname)
+            assert b2.penalty is not None
             assert b2.value.shape[-1] == 19
             assert is_diagonal(b2.penalty.value)
             assert not jnp.allclose(b.value, b2.value)
@@ -1323,10 +1364,12 @@ class TestKriging:
         bases = BasisBuilder(registry)
 
         b1 = bases.kriging("x", "y", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.kriging("x", "y", k=20, linear_trend=False)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
@@ -1338,10 +1381,12 @@ class TestKriging:
         bases = BasisBuilder(registry)
 
         b1 = bases.kriging("x", "y", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.kriging("x", "y", k=20, range=3.0)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
@@ -1353,6 +1398,7 @@ class TestKriging:
         bases = BasisBuilder(registry)
 
         b1 = bases.kriging("x", "y", k=20, kernel_name="power_exponential")
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
@@ -1372,6 +1418,7 @@ class TestKriging:
             kernel_name="power_exponential",
             power_exponential_power=2.0,
         )
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
@@ -1385,10 +1432,12 @@ class TestKriging:
         knots = jnp.linspace(columb["x"].min(), columb["x"].max(), 20)
 
         b1 = bases.kriging("x", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.kriging("x", k=20, knots=knots)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
@@ -1402,6 +1451,7 @@ class TestThinPlate:
         bases = BasisBuilder(registry)
 
         b1 = bases.tp("x", "y", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
@@ -1410,10 +1460,12 @@ class TestThinPlate:
         bases = BasisBuilder(registry)
 
         b1 = bases.tp("x", "y", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.tp("x", "y", k=20, penalty_order=2)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
@@ -1421,6 +1473,7 @@ class TestThinPlate:
         assert jnp.allclose(b1.penalty.value, b2.penalty.value)
 
         b3 = bases.tp("x", "y", k=20, penalty_order=3)
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 19
         assert is_diagonal(b3.penalty.value)
 
@@ -1434,17 +1487,19 @@ class TestThinPlate:
             bases.tp("x", "y", k=20, penalty_order=0)
 
         with pytest.raises(TypeError):
-            bases.tp("x", "y", k=20, penalty_order=2.0)
+            bases.tp("x", "y", k=20, penalty_order=2.0)  # type: ignore
 
     def test_remove_null_space(self, columb):
         registry = PandasRegistry(columb)
         bases = BasisBuilder(registry)
 
         b1 = bases.tp("x", "y", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.tp("x", "y", k=20, remove_null_space_completely=True)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 17
         assert is_diagonal(b2.penalty.value)
 
@@ -1455,10 +1510,12 @@ class TestThinPlate:
         knots = jnp.linspace(columb["x"].min(), columb["x"].max(), 20)
 
         b1 = bases.tp("x", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.tp("x", k=20, knots=knots)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
@@ -1470,14 +1527,17 @@ class TestThinPlate:
         bases = BasisBuilder(registry)
 
         b1 = bases.ts("x", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
         b2 = bases.ts("x", "y", k=20)
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert is_diagonal(b2.penalty.value)
 
         b3 = bases.tp("x", "y", k=20)
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 19
         assert is_diagonal(b3.penalty.value)
 
@@ -1491,6 +1551,7 @@ class TestRegressionSpline:
         bases = BasisBuilder(registry)
 
         b1 = bases.cr("x", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
@@ -1499,6 +1560,7 @@ class TestRegressionSpline:
         bases = BasisBuilder(registry)
 
         b1 = bases.cs("x", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert is_diagonal(b1.penalty.value)
 
@@ -1507,6 +1569,7 @@ class TestRegressionSpline:
         bases = BasisBuilder(registry)
 
         b1 = bases.cc("x", k=20)
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 18
         assert is_diagonal(b1.penalty.value)
 
@@ -1522,6 +1585,7 @@ class TestRegressionSpline:
                 scale_penalty=False,
                 diagonal_penalty=False,
             )
+            assert b1.penalty is not None
             assert b1.value.shape[-1] == 20
             assert not is_diagonal(b1.penalty.value)
 
@@ -1533,6 +1597,7 @@ class TestRegressionSpline:
                 scale_penalty=False,
                 diagonal_penalty=False,
             )
+            assert b2.penalty is not None
             assert b2.value.shape[-1] == 20
             assert not is_diagonal(b2.penalty.value)
 
@@ -1547,6 +1612,7 @@ class TestRegressionSpline:
                 scale_penalty=False,
                 diagonal_penalty=False,
             )
+            assert b3.penalty is not None
             assert b3.value.shape[-1] == 20
             assert not is_diagonal(b3.penalty.value)
 
@@ -1573,6 +1639,7 @@ class TestRegressionSpline:
             scale_penalty=False,
             diagonal_penalty=False,
         )
+        assert b1.penalty is not None
         assert b1.value.shape[-1] == 19
         assert not is_diagonal(b1.penalty.value)
 
@@ -1584,6 +1651,7 @@ class TestRegressionSpline:
             scale_penalty=False,
             diagonal_penalty=False,
         )
+        assert b2.penalty is not None
         assert b2.value.shape[-1] == 19
         assert not is_diagonal(b2.penalty.value)
 
@@ -1598,6 +1666,7 @@ class TestRegressionSpline:
             scale_penalty=False,
             diagonal_penalty=False,
         )
+        assert b3.penalty is not None
         assert b3.value.shape[-1] == 19
         assert not is_diagonal(b3.penalty.value)
 
@@ -1611,4 +1680,4 @@ class TestRegressionSpline:
             bases.cc("x", k=20, penalty_order=0)
 
         with pytest.raises(TypeError):
-            bases.cc("x", k=20, penalty_order=2.0)
+            bases.cc("x", k=20, penalty_order=2.0)  # type: ignore

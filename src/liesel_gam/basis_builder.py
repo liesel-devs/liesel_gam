@@ -16,18 +16,17 @@ try:
     # readthedocs safeguard: R is not installed in the readthedocs build environment
     import smoothcon as scon
     from ryp import r, to_py, to_r
-except RuntimeError as e:
+except RuntimeError:
     import os
 
     on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
     if on_rtd:
-        scon = None
-        r = None
-        to_py = None
-        to_r = None
-        pass
+        scon = cast(Any, None)
+        r = cast(Any, None)
+        to_py = cast(Any, None)
+        to_r = cast(Any, None)
     else:
-        raise e
+        raise
 
 from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
@@ -264,8 +263,8 @@ class BasisBuilder:
         ``lsl.Var`` objects. Registry-backed matrices are cached by the registry;
         matrices from supplied variables are created directly.
         """
-        all_str = all([isinstance(x_, str) for x_ in x])
-        all_var = all([isinstance(x_, lsl.Var) for x_ in x])
+        all_str = all(isinstance(x_, str) for x_ in x)
+        all_var = all(isinstance(x_, lsl.Var) for x_ in x)
 
         if all_str:
             names = cast(tuple[str, ...], x)
@@ -1433,25 +1432,34 @@ class BasisBuilder:
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
         _validate_formula(formula)
-        spec = fo.ModelSpec(formula, output="numpy")
+        parsed_formula = fo.Formula(formula)
+        if not isinstance(parsed_formula, fo.SimpleFormula):
+            raise ValueError("Structured formulas are not supported.")
+
+        spec = fo.ModelSpec(parsed_formula, output="numpy")
 
         # evaluate model matrix once to get a spec with structure information
         # also necessary to populate spec with the correct information for
         # transformations like center, scale, standardize
         try:
-            spec = spec.get_model_matrix(self.data, context=context).model_spec
+            evaluated_spec = spec.get_model_matrix(
+                self.data, context=context
+            ).model_spec
+            if evaluated_spec is None:
+                raise RuntimeError("Formulaic did not return a model specification.")
         except Exception as e:
             raise RuntimeError(
                 "Could not build model matrix. This could be caused by "
                 "unsupported data dtypes like dates. Please check your input data. "
                 "Also check the original error message, included above."
             ) from e
+        spec = evaluated_spec
 
         # get column names. There may be a more efficient way to do it
         # that does not require building the model matrix a second time, but this
         # works robustly for now: we take the names that formulaic creates
         column_names = list(
-            fo.ModelSpec(formula, output="pandas")
+            fo.ModelSpec(parsed_formula, output="pandas")
             .get_model_matrix(self.data, context=context)
             .columns
         )
@@ -1462,7 +1470,7 @@ class BasisBuilder:
         df_subset = self.data.loc[:, required]
         df_colnames = df_subset.columns
 
-        variables = dict()
+        variables = {}
 
         mappings = {}
         for col in df_colnames:
@@ -1734,7 +1742,7 @@ class BasisBuilder:
         var, mapping = self.registry.get_categorical_obs(x)
         self.mappings[x] = mapping
 
-        labels = set(list(mapping.labels_to_integers_map))
+        labels = set(mapping.labels_to_integers_map)
 
         if penalty is not None:
             if penalty_labels is None:
@@ -1751,7 +1759,7 @@ class BasisBuilder:
         pass_to_r: dict[str, np.typing.NDArray | dict[str, np.typing.NDArray]] = {}
         if polys is not None:
             xt_args.append("polys=polys")
-            if not labels == set(list(polys)):
+            if not labels == set(polys):
                 raise ValueError(
                     "Names in 'polys' must correspond to the levels of 'x'."
                 )
@@ -1759,7 +1767,7 @@ class BasisBuilder:
 
         if nb is not None:
             xt_args.append("nb=nb")
-            if not labels == set(list(nb)):
+            if not labels == set(nb):
                 raise ValueError("Names in 'nb' must correspond to the levels of 'x'.")
 
             nb_processed = {}
@@ -1872,9 +1880,10 @@ class BasisBuilder:
             return basis
 
         smooth_penalty = smooth.penalty
-        if np.shape(smooth_penalty)[1] > len(labels):
-            smooth_penalty = smooth_penalty[:, 1:]
-        elif np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]:
+        if (
+            np.shape(smooth_penalty)[1] > len(labels)
+            or np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]
+        ):
             smooth_penalty = smooth_penalty[:, 1:]
 
         try:
