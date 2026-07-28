@@ -1056,6 +1056,73 @@ class TestTPTerm:
         assert yvar.value_node[0].inference.kernel is gs.HMCKernel
         assert xvar.value_node[0].inference.kernel is gs.HMCKernel
 
+    @pytest.mark.parametrize(
+        "order",
+        (None, (2,), (2, 3), (3,)),
+        ids=("all", "2", "2-3", "3"),
+    )
+    @pytest.mark.xfail(
+        reason="TermBuilder.tf does not uniquify grouped term names",
+        strict=True,
+    )
+    def test_grouped_tf_name_handling(self, columb, order):
+        tb = gb.TermBuilder.from_df(columb)
+
+        def tensor():
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                tb.ps("area", k=5),
+                order=order,
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor(), tensor()])
+
+    @pytest.mark.xfail(
+        reason="TermBuilder.tf groups ignore the builder name prefix",
+        strict=True,
+    )
+    def test_grouped_tf_name_handling_two_termbuilders(self, columb):
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        def tensor(prefix):
+            tb = gb.TermBuilder(registry, prefix_names_by=prefix)
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                order=(2,),
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
+
+    def test_grouped_tf_name_handling_two_prefixed_dataframes(self, columb):
+        def tensor(prefix):
+            tb = gb.TermBuilder.from_df(columb, prefix_names_by=prefix)
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                order=(2,),
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
+
+    def test_grouped_tf_name_handling_explicit_prefixes(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+
+        def tensor(prefix):
+            return tb.tf(
+                tb.ps("x", k=5, prefix=prefix),
+                tb.ps("y", k=5, prefix=prefix),
+                order=(2,),
+                prefix=prefix,
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
+
 
 class TestHasStarGibbs:
     def test_term(self, columb):
