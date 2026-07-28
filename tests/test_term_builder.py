@@ -808,6 +808,18 @@ class TestTPTerm:
         psx = tb.ps("x", k=10)
         tb.tx(psy, psx)
 
+    @pytest.mark.parametrize("order", ((2,), (2, 3), (3,)))
+    def test_tf_without_main_effects(self, columb, order):
+        tb = gb.TermBuilder.from_df(columb)
+        term = tb.tf(
+            tb.ps("x", k=10),
+            tb.ps("y", k=10),
+            tb.ps("area", k=10),
+            order=order,
+        )
+
+        assert set(term.terms_by_order) == set(order)
+
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")

@@ -3401,9 +3401,7 @@ class TermBuilder:
                     this_subterm.basis.var_value_node.name
                 )
 
-        first_order_bases = []
-        for term_ in term.terms_by_order[1]:
-            first_order_bases.append(term_.basis)
+        first_order_bases = [term_.basis for term_ in term.marginals]
 
         for i in term.order:
             if i == 1:
