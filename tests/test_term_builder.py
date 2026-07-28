@@ -1061,10 +1061,6 @@ class TestTPTerm:
         (None, (2,), (2, 3), (3,)),
         ids=("all", "2", "2-3", "3"),
     )
-    @pytest.mark.xfail(
-        reason="TermBuilder.tf does not uniquify grouped term names",
-        strict=True,
-    )
     def test_grouped_tf_name_handling(self, columb, order):
         tb = gb.TermBuilder.from_df(columb)
 
@@ -1077,12 +1073,14 @@ class TestTPTerm:
                 group_terms_by_order=True,
             )
 
-        lsl.Model([tensor(), tensor()])
+        first = tensor()
+        second = tensor()
 
-    @pytest.mark.xfail(
-        reason="TermBuilder.tf groups ignore the builder name prefix",
-        strict=True,
-    )
+        assert {group.name for group in first.term_groups.values()}.isdisjoint(
+            group.name for group in second.term_groups.values()
+        )
+        lsl.Model([first, second])
+
     def test_grouped_tf_name_handling_two_termbuilders(self, columb):
         registry = gb.PandasRegistry(columb, na_action="drop")
 
@@ -1095,7 +1093,12 @@ class TestTPTerm:
                 group_terms_by_order=True,
             )
 
-        lsl.Model([tensor("l."), tensor("s.")])
+        first = tensor("l.")
+        second = tensor("s.")
+
+        assert all(group.name.startswith("l.") for group in first.term_groups.values())
+        assert all(group.name.startswith("s.") for group in second.term_groups.values())
+        lsl.Model([first, second])
 
     def test_grouped_tf_name_handling_two_prefixed_dataframes(self, columb):
         def tensor(prefix):
