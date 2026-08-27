@@ -607,7 +607,7 @@ class StrctTerm(UserVar):
         >>> term.name, term.coef.value.shape
         ('f(x)', (2,))
         """
-        if not basis.x.name:
+        if not basis.input_name:
             raise ValueError("basis.x must be named.")
 
         if not basis.name:
@@ -616,7 +616,7 @@ class StrctTerm(UserVar):
         if not isinstance(fname, str):
             raise TypeError(f"Expected type str, got {type(fname)}.")
 
-        name = f"{fname}({basis.x.name})"
+        name = f"{fname}({basis.input_name})"
         coef_name = coef_name or "$\\beta_{" + f"{name}" + "}$"
 
         term = cls(

@@ -25,6 +25,26 @@ def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
     return D.T @ D
 
 
+class TestLinBasis:
+    def test_generates_column_names(self) -> None:
+        basis = gam.LinBasis(jnp.ones((3, 2)), xname="x", name="V")
+
+        assert basis.column_names == ["V[0]", "V[1]"]
+
+    def test_accepts_column_names(self) -> None:
+        basis = gam.LinBasis(
+            jnp.ones((3, 2)),
+            xname="x",
+            name="V",
+            column_names=["intercept", "slope"],
+        )
+
+        assert basis.column_names == ["intercept", "slope"]
+
+        basis.column_names = ["constant", "gradient"]
+        assert basis.column_names == ["constant", "gradient"]
+
+
 class TestBasis:
     def test_approximate_tracks_changed_input(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
