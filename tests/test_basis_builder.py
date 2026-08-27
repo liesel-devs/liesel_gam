@@ -32,6 +32,101 @@ def bases(data) -> gb.BasisBuilder:
 
 
 class TestBasisBuilder:
+    def test_init_approximation_applies_to_univariate_basis(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry, approximation=True)
+
+        basis = bases.basis(
+            "x_int",
+            basis_fn=lambda value: jnp.column_stack((value[:, 0], value[:, 0] ** 2)),
+            use_callback=False,
+        )
+
+        assert basis.approximation is not None
+
+    def test_init_approximation_applies_to_pspline(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry, approximation=True)
+
+        basis = bases.ps("x_int", k=10)
+
+        assert basis.approximation is not None
+
+    @pytest.mark.parametrize("family", ("ps", "cp"))
+    @pytest.mark.parametrize("k", (20, 40))
+    def test_native_approximation_is_declared_row_wise(
+        self, family: str, k: int
+    ) -> None:
+        data = pd.DataFrame({"x": np.linspace(0.0, 1.0, 100)})
+        bases = gb.BasisBuilder(gb.PandasRegistry(data))
+        method = getattr(bases, family)
+        basis = method(
+            "x",
+            k=k,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            approximation=False,
+        )
+
+        assert basis.row_wise is True
+        basis.constrain("sumzero_term")
+        assert basis.row_wise is True
+        basis.diagonalize_penalty()
+        assert basis.row_wise is True
+
+        exact_fn = basis._exact_basis_fn
+        values = jnp.linspace(0.01, 0.99, 37)
+        exact = exact_fn(values)
+        evaluated_sizes = []
+
+        def recording_fn(value, *args, **kwargs):
+            evaluated_sizes.append(value.shape[0])
+            return exact_fn(value, *args, **kwargs)
+
+        basis._exact_basis_fn = recording_fn
+        spec = gb.ApproximationSpec(rtol=1e-3, atol=1e-5)
+        basis.approximate(spec)
+        approximate = basis.value_node.function(values)
+
+        assert 4 not in evaluated_sizes
+        assert jnp.allclose(approximate, exact, rtol=1e-3, atol=1e-5)
+
+    def test_call_can_disable_builder_approximation(self, data) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry, approximation=True)
+
+        basis = bases.basis(
+            "x_int",
+            basis_fn=lambda value: value.astype(float),
+            use_callback=False,
+            approximation=False,
+        )
+
+        assert basis.approximation is None
+
+    def test_multivariate_basis_requires_explicitly_supported_approximation(
+        self, data
+    ) -> None:
+        registry = gb.PandasRegistry(data, na_action="drop")
+        bases = gb.BasisBuilder(registry, approximation=True)
+
+        basis = bases.basis(
+            "x_int",
+            "x_uint8",
+            basis_fn=lambda value: value.astype(float),
+            use_callback=False,
+        )
+        assert basis.approximation is None
+
+        with pytest.raises(ValueError, match="exactly one scalar covariate"):
+            bases.basis(
+                "x_int",
+                "x_uint8",
+                basis_fn=lambda value: value.astype(float),
+                use_callback=False,
+                approximation=True,
+            )
+
     def test_init(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         gb.BasisBuilder(registry)

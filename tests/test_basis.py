@@ -26,6 +26,243 @@ def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
 
 
 class TestBasis:
+    def test_approximate_tracks_changed_input(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+
+        def basis_fn(value):
+            return jnp.column_stack((jnp.sin(value), value**2))
+
+        basis = gam.Basis(x, basis_fn=basis_fn, use_callback=False)
+        spec = gam.ApproximationSpec(rtol=1e-3, atol=1e-5)
+
+        assert basis.approximate(spec) is basis
+
+        x.value = jnp.linspace(0.01, 0.99, 37)
+        basis.update()
+        assert spec.rtol is not None
+        assert spec.atol is not None
+
+        assert jnp.allclose(
+            basis.value,
+            basis_fn(x.value),
+            rtol=spec.rtol,
+            atol=spec.atol,
+        )
+
+    def test_approximation_reports_fitted_spec(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(2.0, 4.0, 20), name="x")
+        basis = gam.Basis(x, basis_fn=lambda value: value[:, None])
+        spec = gam.ApproximationSpec()
+
+        assert basis.approximation is None
+        assert basis.approximation_grid_size is None
+
+        basis.approximate(spec)
+
+        assert basis.approximation == spec._replace(bounds=(2.0, 4.0))
+        assert basis.approximation_grid_size == 1_000
+
+    def test_default_approximation_evaluates_one_fixed_grid(self) -> None:
+        evaluated_sizes = []
+
+        def basis_fn(value):
+            evaluated_sizes.append(value.shape[0])
+            return jnp.column_stack((value, value**2))
+
+        basis = gam.Basis(
+            jnp.linspace(0.0, 1.0, 20),
+            xname="x",
+            basis_fn=basis_fn,
+            use_callback=False,
+        )
+        evaluated_sizes.clear()
+
+        basis.approximate()
+
+        assert evaluated_sizes.count(1_000) == 1
+        assert 999 not in evaluated_sizes
+        assert basis.approximation_grid_size == 1_000
+
+    @pytest.mark.parametrize("tolerance", ({"atol": 1e-3}, {"rtol": 1e-3}))
+    def test_approximation_refinement_is_opt_in(self, tolerance) -> None:
+        evaluated_sizes = []
+
+        def basis_fn(value):
+            evaluated_sizes.append(value.shape[0])
+            return (1.0 + value**2)[:, None]
+
+        basis = gam.Basis(
+            jnp.linspace(0.0, 1.0, 20),
+            xname="x",
+            basis_fn=basis_fn,
+            use_callback=False,
+        )
+        evaluated_sizes.clear()
+
+        basis.approximate(
+            gam.ApproximationSpec(grid_size=5, max_grid_size=33, **tolerance)
+        )
+
+        assert evaluated_sizes[:7] == [20, 4, 4, 4, 4, 4, 5]
+        assert {4, 8, 9, 16, 17}.issubset(evaluated_sizes)
+        assert basis.approximation_grid_size == 17
+
+    def test_approximation_uses_exact_whole_batch_fallback(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+
+        def basis_fn(value):
+            return jnp.column_stack((jnp.exp(value), jnp.sin(value)))
+
+        basis = gam.Basis(x, basis_fn=basis_fn, use_callback=False)
+        basis.approximate(gam.ApproximationSpec(bounds=(0.0, 1.0)))
+
+        x.value = jnp.array([0.123, 0.456, 1.1])
+        basis.update()
+
+        assert jnp.array_equal(basis.value, basis_fn(x.value))
+
+    def test_callback_basis_uses_jitted_approximation(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+        basis = gam.Basis(x, basis_fn=scipy.special.expit, use_callback=True)
+        spec = gam.ApproximationSpec(rtol=1e-3, atol=1e-5)
+        basis.approximate(spec)
+
+        new_values = jnp.linspace(0.01, 0.99, 37)
+        assert spec.rtol is not None
+        assert spec.atol is not None
+        assert isinstance(basis.value_node, lsl.Calc | lsl.TransientCalc)
+        result = jax.jit(basis.value_node.function)(new_values)
+
+        assert jnp.allclose(
+            result,
+            scipy.special.expit(new_values),
+            rtol=spec.rtol,
+            atol=spec.atol,
+        )
+
+    def test_approximate_rejects_dynamic_basis_kwargs(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+        shift = lsl.Var.new_obs(1.0, name="shift")
+        basis = gam.Basis(
+            x,
+            basis_fn=lambda value, shift: value + shift,
+            shift=shift,
+        )
+
+        with pytest.raises(ValueError, match="dynamic basis_kwargs"):
+            basis.approximate()
+
+    def test_approximate_rejects_batch_dependent_basis(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+        basis = gam.Basis(
+            x,
+            basis_fn=lambda value: (value - jnp.mean(value))[:, None],
+            use_callback=False,
+        )
+
+        with pytest.raises(ValueError, match="row-wise"):
+            basis.approximate()
+
+    def test_approximate_validates_unknown_basis_without_changing_shape(self) -> None:
+        evaluated_sizes = []
+        transform = jnp.arange(12.0).reshape(4, 3)
+
+        def basis_fn(value):
+            evaluated_sizes.append(value.shape[0])
+            raw = jnp.column_stack((value, value**2, value**3, value**4))
+            return raw @ transform
+
+        basis = gam.Basis(
+            jnp.linspace(0.0, 1.0, 20),
+            xname="x",
+            basis_fn=basis_fn,
+            use_callback=False,
+        )
+        evaluated_sizes.clear()
+
+        basis.approximate()
+
+        assert evaluated_sizes.count(4) == 5
+        assert 1 not in evaluated_sizes
+        assert basis.approximation is not None
+
+    def test_declared_row_wise_basis_skips_validation(self) -> None:
+        evaluated_sizes = []
+
+        def basis_fn(value):
+            evaluated_sizes.append(value.shape[0])
+            return jnp.column_stack((value, value**2))
+
+        basis = gam.Basis(
+            jnp.linspace(0.0, 1.0, 20),
+            xname="x",
+            basis_fn=basis_fn,
+            row_wise=True,
+            use_callback=False,
+        )
+        evaluated_sizes.clear()
+
+        basis.approximate()
+
+        assert basis.row_wise is True
+        assert 4 not in evaluated_sizes
+
+    def test_declared_non_row_wise_basis_rejects_approximation(self) -> None:
+        evaluated_sizes = []
+
+        def basis_fn(value):
+            evaluated_sizes.append(value.shape[0])
+            return value[:, None]
+
+        basis = gam.Basis(
+            jnp.linspace(0.0, 1.0, 20),
+            xname="x",
+            basis_fn=basis_fn,
+            row_wise=False,
+            use_callback=False,
+        )
+        evaluated_sizes.clear()
+
+        with pytest.raises(ValueError, match="row-wise"):
+            basis.approximate()
+
+        assert basis.row_wise is False
+        assert evaluated_sizes == []
+
+    def test_approximate_rejects_nonfinite_basis(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+        basis = gam.Basis(
+            x,
+            basis_fn=lambda value: jnp.where(value < 1.0, value, jnp.nan)[:, None],
+            use_callback=False,
+        )
+
+        with pytest.raises(ValueError, match="finite basis values"):
+            basis.approximate()
+
+    def test_approximate_rejects_constant_basis(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+        basis = gam.Basis(
+            x,
+            basis_fn=lambda value: jnp.ones((value.shape[0], 2)),
+            use_callback=False,
+        )
+
+        with pytest.raises(ValueError, match="nonconstant"):
+            basis.approximate()
+
+    def test_approximate_accepts_periodic_basis(self) -> None:
+        x = lsl.Var.new_obs(jnp.linspace(0.0, 1.0, 20), name="x")
+        basis = gam.Basis(
+            x,
+            basis_fn=lambda value: jnp.sin(2.0 * jnp.pi * value)[:, None],
+            use_callback=False,
+        )
+
+        basis.approximate()
+
+        assert basis.approximation is not None
+
     def test_identity(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
         basis = gam.Basis(x, basis_fn=lambda x: x)
@@ -287,6 +524,112 @@ def is_diagonal(M, atol=1e-6):
 
 
 class TestBasisReparameterization:
+    def test_approximation_is_transparent_to_constraint_order(self):
+        values = jnp.linspace(0.0, 1.0, 20)
+        x1 = lsl.Var.new_obs(values, name="x1")
+        x2 = lsl.Var.new_obs(values, name="x2")
+
+        def basis_fn(value):
+            return jnp.column_stack((jnp.ones_like(value), value, value**2))
+
+        spec = gam.ApproximationSpec(rtol=1e-3, atol=1e-5)
+        first = gam.Basis(
+            x1,
+            basis_fn=basis_fn,
+            penalty=jnp.eye(3),
+            use_callback=False,
+        )
+        second = gam.Basis(
+            x2,
+            basis_fn=basis_fn,
+            penalty=jnp.eye(3),
+            use_callback=False,
+        )
+
+        first.approximate(spec).constrain("sumzero_term")
+        second.constrain("sumzero_term").approximate(spec)
+
+        new_values = jnp.linspace(0.01, 0.99, 37)
+        x1.value = new_values
+        x2.value = new_values
+        first.update()
+        second.update()
+
+        assert spec.rtol is not None
+        assert spec.atol is not None
+        assert jnp.allclose(
+            first.value,
+            second.value,
+            rtol=spec.rtol,
+            atol=spec.atol,
+        )
+
+    def test_transient_approximation_can_be_constrained(self):
+        values = jnp.linspace(0.0, 1.0, 20)
+        basis = gam.Basis(
+            values,
+            xname="x",
+            basis_fn=lambda value: jnp.column_stack((value, value**2)),
+            penalty=jnp.eye(2),
+            use_callback=False,
+            cache_basis=False,
+        )
+
+        basis.approximate().constrain("sumzero_term")
+
+        assert basis.constraint == "sumzero_term"
+
+    def test_approximation_is_transparent_to_all_transformations(self):
+        values = jnp.linspace(0.0, 1.0, 20)
+        knots = equidistant_knots(values, n_param=7, order=3)
+
+        def basis_fn(value):
+            return basis_matrix(value, knots, 3)
+
+        penalty = pspline_penalty(7)
+        spec = gam.ApproximationSpec(rtol=1e-3, atol=1e-5)
+        first = gam.Basis(
+            values,
+            xname="x1",
+            basis_fn=basis_fn,
+            penalty=penalty,
+            use_callback=True,
+        )
+        second = gam.Basis(
+            values,
+            xname="x2",
+            basis_fn=basis_fn,
+            penalty=penalty,
+            use_callback=True,
+        )
+
+        first.approximate(spec)
+        first.scale_penalty().constrain("sumzero_term").diagonalize_penalty()
+        second.scale_penalty().constrain("sumzero_term").diagonalize_penalty()
+        second.approximate(spec)
+
+        new_values = jnp.linspace(0.01, 0.99, 37)
+        first_x = first.x
+        second_x = second.x
+        assert isinstance(first_x, lsl.Var)
+        assert isinstance(second_x, lsl.Var)
+        first_x.value = new_values
+        second_x.value = new_values
+        first.update()
+        second.update()
+
+        assert spec.rtol is not None
+        assert spec.atol is not None
+        assert jnp.allclose(
+            first.value,
+            second.value,
+            rtol=spec.rtol,
+            atol=spec.atol,
+        )
+        assert first.penalty is not None
+        assert second.penalty is not None
+        assert jnp.allclose(first.penalty.value, second.penalty.value)
+
     def test_penalty_is_none(self):
         x = lsl.Var.new_obs(jnp.linspace(0, 1, 10), name="x")
         basis = gam.Basis(x, basis_fn=lambda x: jnp.expand_dims(x**2, -1), penalty=None)

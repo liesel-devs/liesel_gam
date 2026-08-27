@@ -78,6 +78,27 @@ def columb_polys():
 
 
 class TestTermBuilder:
+    def test_init_approximation_reaches_basis_builder(self, data) -> None:
+        builder = gam.TermBuilder.from_df(data, approximation=True)
+
+        term = builder.f(
+            "x_int",
+            basis_fn=lambda value: jnp.column_stack((value[:, 0], value[:, 0] ** 2)),
+            use_callback=False,
+            row_wise=True,
+        )
+
+        assert term.basis.approximation is not None
+        assert term.basis.row_wise is True
+
+    def test_init_approximation_applies_after_np_transformations(self, data) -> None:
+        builder = gam.TermBuilder.from_df(data, approximation=True)
+
+        term = builder.np("x_int", k=10)
+
+        assert term.basis.approximation is not None
+        assert term.basis.constraint == "constant_and_linear"
+
     def test_init(self, data) -> None:
         gb.TermBuilder.from_df(data)
 
@@ -803,6 +824,18 @@ class TestTPTerm:
         psx = tb.ps("x", k=10)
         tb.tx(psy, psx)
 
+    @pytest.mark.parametrize("order", ((2,), (2, 3), (3,)))
+    def test_tf_without_main_effects(self, columb, order):
+        tb = gb.TermBuilder.from_df(columb)
+        term = tb.tf(
+            tb.ps("x", k=10),
+            tb.ps("y", k=10),
+            tb.ps("area", k=10),
+            order=order,
+        )
+
+        assert set(term.terms_by_order) == set(order)
+
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
@@ -1038,6 +1071,76 @@ class TestTPTerm:
         assert isinstance(xvar.value_node[0].inference, gs.MCMCSpec)
         assert yvar.value_node[0].inference.kernel is gs.HMCKernel
         assert xvar.value_node[0].inference.kernel is gs.HMCKernel
+
+    @pytest.mark.parametrize(
+        "order",
+        (None, (2,), (2, 3), (3,)),
+        ids=("all", "2", "2-3", "3"),
+    )
+    def test_grouped_tf_name_handling(self, columb, order):
+        tb = gb.TermBuilder.from_df(columb)
+
+        def tensor():
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                tb.ps("area", k=5),
+                order=order,
+                group_terms_by_order=True,
+            )
+
+        first = tensor()
+        second = tensor()
+
+        assert {group.name for group in first.term_groups.values()}.isdisjoint(
+            group.name for group in second.term_groups.values()
+        )
+        lsl.Model([first, second])
+
+    def test_grouped_tf_name_handling_two_termbuilders(self, columb):
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        def tensor(prefix):
+            tb = gb.TermBuilder(registry, prefix_names_by=prefix)
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                order=(2,),
+                group_terms_by_order=True,
+            )
+
+        first = tensor("l.")
+        second = tensor("s.")
+
+        assert all(group.name.startswith("l.") for group in first.term_groups.values())
+        assert all(group.name.startswith("s.") for group in second.term_groups.values())
+        lsl.Model([first, second])
+
+    def test_grouped_tf_name_handling_two_prefixed_dataframes(self, columb):
+        def tensor(prefix):
+            tb = gb.TermBuilder.from_df(columb, prefix_names_by=prefix)
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                order=(2,),
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
+
+    def test_grouped_tf_name_handling_explicit_prefixes(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+
+        def tensor(prefix):
+            return tb.tf(
+                tb.ps("x", k=5, prefix=prefix),
+                tb.ps("y", k=5, prefix=prefix),
+                order=(2,),
+                prefix=prefix,
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
 
 
 class TestHasStarGibbs:

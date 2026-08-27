@@ -131,6 +131,7 @@ Bases
     :nosignatures:
 
     ~liesel_gam.Basis
+    ~liesel_gam.ApproximationSpec
     ~liesel_gam.MRFBasis
     ~liesel_gam.LinBasis
 

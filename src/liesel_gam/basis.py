@@ -19,6 +19,35 @@ Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
 
 
+class ApproximationSpec(NamedTuple):
+    """
+    Configuration for a univariate basis approximation.
+
+    Parameters
+    ----------
+    bounds
+        Approximation domain. If ``None``, the minimum and maximum observed
+        during construction are used.
+    rtol
+        Relative tolerance for midpoint validation. Supplying ``rtol`` or ``atol``
+        enables iterative grid refinement.
+    atol
+        Absolute tolerance for midpoint validation. A missing tolerance component is
+        treated as zero during refinement.
+    max_grid_size
+        Maximum number of regular-grid nodes before setup fails.
+    grid_size
+        Number of regular-grid nodes. Used directly by default and as the initial grid
+        size when iterative refinement is enabled.
+    """
+
+    bounds: tuple[float, float] | None = None
+    rtol: float | None = None
+    atol: float | None = None
+    max_grid_size: int = 16_385
+    grid_size: int = 1_000
+
+
 def make_callback(function, output_shape, dtype, m: int = 0):
     k = output_shape[-1] if len(output_shape) else None
 
@@ -104,6 +133,10 @@ class Basis(UserVar):
         identity penalty is assumed, but not materialized, which saves memory but must
         be handled explicitly later, if downstream functionality relies on an explicit
         penalty matrix.
+    row_wise
+        Whether each output row depends only on the corresponding input row. ``True``
+        declares that property, ``False`` rejects approximation, and ``None`` validates
+        unknown behavior when approximation is requested.
     **basis_kwargs
         Additional keyword arguments forwarded to ``basis_fn``.
 
@@ -173,8 +206,11 @@ class Basis(UserVar):
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: ArrayLike | lsl.Value | Literal["identity"] | None = "identity",
+        row_wise: bool | None = None,
         **basis_kwargs,
     ) -> None:
+        if row_wise is not None and not isinstance(row_wise, bool):
+            raise TypeError("row_wise must be a bool or None.")
         self._validate_xname(value, xname)
         value_var = _ensure_var_or_node(value, xname)
 
@@ -234,6 +270,11 @@ class Basis(UserVar):
 
         self._constraint: str | None = None
         self._reparam_matrix: Array | None = None
+        self._exact_basis_fn = fn
+        self._basis_kwargs = basis_kwargs
+        self._row_wise = row_wise
+        self._approximation_spec: ApproximationSpec | None = None
+        self._approximation_grid_size: int | None = None
 
     @property
     def nbases(self) -> int:
@@ -269,6 +310,41 @@ class Basis(UserVar):
         See :meth:`.Basis.constrain` for details.
         """
         return self._reparam_matrix
+
+    @property
+    def approximation(self) -> ApproximationSpec | None:
+        """Fitted approximation settings, including the resolved bounds."""
+        return self._approximation_spec
+
+    @property
+    def approximation_grid_size(self) -> int | None:
+        """Number of selected grid nodes, or ``None`` for an exact basis."""
+        return self._approximation_grid_size
+
+    @property
+    def row_wise(self) -> bool | None:
+        """Whether row-wise evaluation is declared, rejected, or unknown."""
+        return self._row_wise
+
+    def _basis_kwargs_values(self) -> dict[str, Any]:
+        return {
+            key: value.value if isinstance(value, lsl.Var | lsl.Node) else value
+            for key, value in self._basis_kwargs.items()
+        }
+
+    def _exact_value(self) -> Array:
+        return self._exact_basis_fn(
+            self.x.value,
+            **self._basis_kwargs_values(),
+        )
+
+    def _use_exact_basis_fn(self) -> None:
+        assert isinstance(self.value_node, lsl.Calc | lsl.TransientCalc)
+        if self._approximation_spec is None:
+            self.value_node.function = self._exact_basis_fn
+            self.update()
+        else:
+            self.approximate(self._approximation_spec)
 
     def _validate_xname(self, value: lsl.Var | lsl.Node | ArrayLike, xname: str | None):
         if isinstance(value, lsl.Var | lsl.Node) and xname is not None:
@@ -382,6 +458,195 @@ class Basis(UserVar):
 
         return basis
 
+    def approximate(self, spec: ApproximationSpec = ApproximationSpec()) -> Self:
+        """
+        Approximate a univariate basis by linear interpolation on a regular grid.
+
+        By default, the exact basis is evaluated once on a fixed regular grid. If
+        ``spec.rtol`` or ``spec.atol`` is supplied, the number of grid intervals is
+        doubled until exact midpoint evaluations satisfy the requested elementwise
+        tolerance.
+
+        Parameters
+        ----------
+        spec
+            Bounds, grid size, optional tolerances, and grid-size guard. Grid sizes
+            count nodes, including both endpoints. Inferred bounds must contain all
+            construction values.
+
+        Returns
+        -------
+        The modified basis instance.
+
+        Notes
+        -----
+        This method supports row-wise evaluators of one scalar covariate without
+        dynamic ``basis_kwargs``. It approximates values only; derivatives with
+        respect to the input are not guaranteed to match the exact evaluator.
+
+        If every value in a runtime batch lies inside the approximation bounds,
+        interval indices are calculated algebraically and values are linearly
+        interpolated. If any value lies outside, the entire batch is evaluated
+        exactly.
+
+        Basis constraints and penalty reparameterizations remain transparent to
+        approximation order: they use the retained exact evaluator and rebuild the
+        approximation when necessary.
+        """
+        if any(
+            isinstance(value, lsl.Var | lsl.Node)
+            for value in self._basis_kwargs.values()
+        ):
+            raise ValueError(
+                "Basis approximation does not support dynamic basis_kwargs."
+            )
+
+        x = jnp.asarray(self.x.value)
+        if x.ndim == 1:
+            scalar_x = x
+            matrix_input = False
+        elif x.ndim == 2 and x.shape[1] == 1:
+            scalar_x = x[:, 0]
+            matrix_input = True
+        else:
+            raise ValueError("Basis approximation requires one scalar input.")
+
+        def as_input(values):
+            return values[:, None] if matrix_input else values
+
+        refine = spec.rtol is not None or spec.atol is not None
+        rtol = 0.0 if spec.rtol is None else spec.rtol
+        atol = 0.0 if spec.atol is None else spec.atol
+        if rtol < 0.0 or atol < 0.0:
+            raise ValueError("Approximation tolerances must be non-negative.")
+        if spec.grid_size < 2:
+            raise ValueError("grid_size must be at least 2.")
+        if spec.max_grid_size < spec.grid_size:
+            raise ValueError("max_grid_size must not be smaller than grid_size.")
+        if not bool(jnp.all(jnp.isfinite(scalar_x))):
+            raise ValueError("Basis approximation requires finite input values.")
+
+        if spec.bounds is None:
+            lo = float(jnp.min(scalar_x))
+            hi = float(jnp.max(scalar_x))
+        else:
+            lo, hi = map(float, spec.bounds)
+        if not jnp.isfinite(lo) or not jnp.isfinite(hi) or lo >= hi:
+            raise ValueError("Approximation bounds must be finite and increasing.")
+        if bool(jnp.any((scalar_x < lo) | (scalar_x > hi))):
+            raise ValueError("Approximation bounds must contain all observed values.")
+
+        exact_fn = self._exact_basis_fn
+        basis_kwargs = self._basis_kwargs_values()
+        if self.row_wise is False:
+            raise ValueError("Basis approximation requires a row-wise basis evaluator.")
+
+        observed = jnp.asarray(exact_fn(x, **basis_kwargs))
+        if not bool(jnp.all(jnp.isfinite(observed))):
+            raise ValueError("Basis approximation requires finite basis values.")
+
+        # finite probes cannot prove arbitrary callables; declarations cover
+        # evaluators that need a stronger guarantee.
+        if self.row_wise is None:
+            representative = jnp.linspace(lo, hi, 4)
+            together = jnp.asarray(exact_fn(as_input(representative), **basis_kwargs))
+            replacements = lo + (jnp.arange(4) + 0.5) * (hi - lo) / 4
+            perturbed = [
+                jnp.asarray(
+                    exact_fn(
+                        as_input(representative.at[index].set(replacements[index])),
+                        **basis_kwargs,
+                    )
+                )
+                for index in range(4)
+            ]
+            if not all(
+                bool(jnp.all(jnp.isfinite(value))) for value in (together, *perturbed)
+            ):
+                raise ValueError("Basis approximation requires finite basis values.")
+            row_wise = (
+                together.ndim in (1, 2)
+                and together.shape[0] == representative.shape[0]
+                and all(value.shape == together.shape for value in perturbed)
+            )
+            if row_wise:
+                for index, value in enumerate(perturbed):
+                    unchanged = jnp.arange(4) != index
+                    if not bool(jnp.array_equal(together[unchanged], value[unchanged])):
+                        row_wise = False
+                        break
+            if not row_wise:
+                raise ValueError(
+                    "Basis approximation requires a row-wise basis evaluator."
+                )
+
+        if bool(
+            jnp.allclose(
+                observed,
+                jnp.broadcast_to(observed[0], observed.shape),
+                rtol=rtol if refine else 1e-5,
+                atol=atol if refine else 1e-8,
+            )
+        ):
+            raise ValueError(
+                "Basis approximation requires a nonconstant basis evaluator."
+            )
+
+        grid_size = spec.grid_size
+        while True:
+            grid = jnp.linspace(lo, hi, grid_size)
+            basis_grid = jnp.asarray(exact_fn(as_input(grid), **basis_kwargs))
+            if not bool(jnp.all(jnp.isfinite(basis_grid))):
+                raise ValueError("Basis approximation requires finite basis values.")
+            if not refine:
+                break
+
+            midpoints = (grid[:-1] + grid[1:]) / 2.0
+            exact_midpoints = jnp.asarray(exact_fn(as_input(midpoints), **basis_kwargs))
+            if not bool(jnp.all(jnp.isfinite(exact_midpoints))):
+                raise ValueError("Basis approximation requires finite basis values.")
+            interpolated_midpoints = (basis_grid[:-1] + basis_grid[1:]) / 2.0
+            error = jnp.abs(exact_midpoints - interpolated_midpoints)
+            tolerance = atol + rtol * jnp.abs(exact_midpoints)
+            if bool(jnp.all(error <= tolerance)):
+                break
+            grid_size = 2 * grid_size - 1
+            if grid_size > spec.max_grid_size:
+                raise ValueError(
+                    "Basis approximation did not meet the requested tolerance "
+                    f"before max_grid_size={spec.max_grid_size}."
+                )
+
+        step = (hi - lo) / (grid_size - 1)
+
+        def interpolated_basis(value, *args, **kwargs):
+            value_array = jnp.asarray(value)
+            values = value_array if value_array.ndim == 1 else value_array[..., 0]
+            index = jnp.floor((values - lo) / step).astype(jnp.int32)
+            index = jnp.clip(index, 0, grid_size - 2)
+            weight = (values - (lo + index * step)) / step
+            if basis_grid.ndim > 1:
+                weight = weight[..., None]
+            interpolated = (1.0 - weight) * basis_grid[index] + weight * basis_grid[
+                index + 1
+            ]
+            inside = jnp.all((values >= lo) & (values <= hi))
+            return jax.lax.cond(
+                inside,
+                lambda: interpolated,
+                lambda: jnp.asarray(
+                    exact_fn(value, *args, **kwargs),
+                    dtype=basis_grid.dtype,
+                ),
+            )
+
+        assert isinstance(self.value_node, lsl.Calc | lsl.TransientCalc)
+        self.value_node.function = interpolated_basis
+        self._approximation_spec = spec._replace(bounds=(lo, hi))
+        self._approximation_grid_size = grid_size
+        self.update()
+        return self
+
     def diagonalize_penalty(self, atol: float = 1e-6) -> Self:
         """
         Diagonalize the penalty via an eigenvalue decomposition.
@@ -449,7 +714,7 @@ class Basis(UserVar):
         if self.penalty is None:
             raise TypeError("Basis.penalty is None, cannot apply transformation.")
         assert isinstance(self.value_node, lsl.Calc)
-        basis_fn = self.value_node.function
+        basis_fn = self._exact_basis_fn
 
         K = self.penalty.value
         known_rank = getattr(self, "_penalty_rank", None)
@@ -474,8 +739,8 @@ class Basis(UserVar):
         def reparam_basis(*args, **kwargs):
             return basis_fn(*args, **kwargs) @ Z
 
-        self.value_node.function = reparam_basis
-        self.update()
+        self._exact_basis_fn = reparam_basis
+        self._use_exact_basis_fn()
         penalty = jnp.diag(target_diagonal)
         self.update_penalty(penalty)
         self._penalty_rank = rank
@@ -498,7 +763,7 @@ class Basis(UserVar):
         if self.penalty is None:
             raise TypeError("Basis.penalty is None, cannot apply transformation.")
         K = self.penalty.value
-        design_size = jnp.linalg.norm(self.value, ord=jnp.inf) ** 2
+        design_size = jnp.linalg.norm(self._exact_value(), ord=jnp.inf) ** 2
         penalty_size = jnp.linalg.norm(K, ord=1)
         if not bool(jnp.isfinite(design_size)) or float(design_size) <= 0.0:
             raise ValueError("Cannot scale a penalty for a zero or non-finite basis.")
@@ -530,15 +795,15 @@ class Basis(UserVar):
             raise TypeError("Basis.penalty is None, cannot apply transformation.")
 
         assert isinstance(self.value_node, lsl.Calc)
-        basis_fn = self.value_node.function
+        basis_fn = self._exact_basis_fn
 
         K = self.penalty.value
 
         def reparam_basis(*args, **kwargs):
             return basis_fn(*args, **kwargs) @ Z
 
-        self.value_node.function = reparam_basis
-        self.update()
+        self._exact_basis_fn = reparam_basis
+        self._use_exact_basis_fn()
         penalty = Z.T @ K @ Z
         self.update_penalty(penalty)
         return self
@@ -696,10 +961,11 @@ class Basis(UserVar):
         tensor product interactions. TEST, 28(1), 1–39.
         https://doi.org/10.1007/s11749-019-00631-z
         """  # noqa: E501
-        if not self.value.ndim == 2:
+        exact_value = self._exact_value()
+        if not exact_value.ndim == 2:
             raise ValueError(
                 "Constraints can only be applied to matrix-valued bases. "
-                f"{self} has shape {self.value.shape}"
+                f"{self} has shape {exact_value.shape}"
             )
 
         if self.constraint is not None:
@@ -717,9 +983,9 @@ class Basis(UserVar):
             case "sumzero_coef":
                 Z = LinearConstraintEVD.sumzero_coef(self.nbases)
             case "sumzero_term":
-                Z = LinearConstraintEVD.sumzero_term(self.value)
+                Z = LinearConstraintEVD.sumzero_term(exact_value)
             case "constant_and_linear":
-                Z = LinearConstraintEVD.constant_and_linear(self.x.value, self.value)
+                Z = LinearConstraintEVD.constant_and_linear(self.x.value, exact_value)
             case "custom":
                 Z = LinearConstraintEVD.general(constraint_matrix)
 
