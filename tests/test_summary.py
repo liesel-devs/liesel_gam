@@ -1,6 +1,7 @@
 from collections.abc import Mapping, Sequence
 
 import jax.numpy as jnp
+import liesel.goose as gs
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
@@ -522,16 +523,16 @@ class TestNDSmoothSummary:
             )
             direct = np.asarray(
                 term.predict(
-                    dict(samples),
-                    newdata=newdata,
+                    gs.Position(dict(samples)),
+                    newdata=gs.Position(newdata),
                 )
             )
             for marginal in marginals:
                 input_name = marginal.basis.input_name
                 direct = direct + np.asarray(
                     marginal.predict(
-                        dict(samples),
-                        newdata={input_name: newdata[input_name]},
+                        gs.Position(dict(samples)),
+                        newdata=gs.Position({input_name: newdata[input_name]}),
                     )
                 )
 
@@ -582,20 +583,20 @@ class TestNDSmoothSummary:
 
             direct = np.asarray(
                 term.predict(
-                    dict(samples),
-                    newdata=evaluation_grid,
+                    gs.Position(dict(samples)),
+                    newdata=gs.Position(evaluation_grid),
                 )
             )
             direct = direct + np.asarray(
                 x.predict(
-                    dict(samples),
-                    newdata={"x": evaluation_grid["x"]},
+                    gs.Position(dict(samples)),
+                    newdata=gs.Position({"x": evaluation_grid["x"]}),
                 )
             )
             direct = direct + np.asarray(
                 area.predict(
-                    dict(samples),
-                    newdata={"area": evaluation_grid["area"]},
+                    gs.Position(dict(samples)),
+                    newdata=gs.Position({"area": evaluation_grid["area"]}),
                 )
             )
             np.testing.assert_allclose(

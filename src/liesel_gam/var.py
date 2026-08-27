@@ -7,8 +7,11 @@ import jax
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
+import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
+from jax.core import Tracer
 
+from .category_mapping import CategoryMapping
 from .kernel import init_star_ig_gibbs, init_star_ig_gibbs_factored
 
 InferenceTypes = Any
@@ -110,6 +113,238 @@ class UserVar(lsl.Var):
         raise NotImplementedError(
             f"This constructor is not implemented on {cls.__name__}."
         )
+
+
+class CatVar(UserVar):
+    """An observed variable that stores categorical labels as integer codes.
+
+    Parameters
+    ----------
+    labels
+        A nonempty rectangular array of hashable, nonmissing, non-integer labels.
+        Pandas Series, pandas categoricals, and NumPy arrays are supported. All
+        entries share one category mapping.
+    name
+        Optional variable name. Builders require a directly supplied ``CatVar`` to
+        be named and one-dimensional.
+    categories
+        Optional ordered non-integer categories. They may include unobserved
+        categories. Without this argument, categories are inferred in sorted order;
+        pandas categorical order is preserved.
+    unknown_category
+        Optional non-integer catch-all label for unknown nonmissing labels. It is
+        appended to the category mapping if necessary. The default ``None`` rejects
+        unknown labels.
+    dist
+        Optional Liesel distribution for the encoded integer values.
+
+    The ordinary constructor rejects integer labels because later integer inputs would
+    be ambiguous with encoded category codes. Convert semantic integer labels to a
+    non-integer representation first. Use :meth:`from_codes` only when the supplied
+    integers are already contiguous, zero-based codes.
+
+    A catch-all category does not accept invalid integer codes or missing values. It
+    only handles unknown semantic labels.
+
+    Label-valued replacement, prediction, and sampling inputs are converted on the
+    host before compiled model operations. The JIT-compiled numerical path receives
+    integer codes and therefore remains compatible with JAX transformations.
+
+    .. note::
+
+        Concrete code arrays are validated against the mapping. Traced integer arrays
+        must already contain valid codes; dynamic bounds checks are not performed
+        inside JAX transformations.
+
+    Examples
+    --------
+    Strings, pandas Series, and NumPy string arrays can be used directly:
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> import liesel_gam as gam
+    >>> gam.CatVar(["b", "a", "b"], name="group").value
+    Array([1, 0, 1], dtype=int32)
+    >>> gam.CatVar(pd.Series(["a", "b"]), name="group")
+    CatVar(name="group")
+    >>> gam.CatVar(np.array(["a", "b"]), name="group")
+    CatVar(name="group")
+
+    Explicit categories preserve their order and may include unused levels:
+
+    >>> group = gam.CatVar(
+    ...     ["control", "treated"],
+    ...     categories=["control", "treated", "unused"],
+    ...     name="group",
+    ... )
+    >>> dict(group.mapping.labels_to_codes_map)
+    {'control': 0, 'treated': 1, 'unused': 2}
+
+    Unknown labels can be mapped to an explicitly enabled catch-all category:
+
+    >>> group = gam.CatVar(
+    ...     ["control", "treated"],
+    ...     unknown_category="other",
+    ...     name="group",
+    ... )
+    >>> group.mapping.labels_to_codes(["new-level"]).tolist()
+    [2]
+
+    When used for a random intercept, all unknown labels share this one catch-all
+    coefficient. If no training observation maps to it, that coefficient is informed
+    by its prior and shared hyperparameters rather than directly by data.
+
+    Use :meth:`from_codes` for existing encoded data. An optional distribution sees
+    these codes:
+
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> import tensorflow_probability.substrates.jax.distributions as tfd
+    >>> mapping = gam.CategoryMapping({"a": 0, "b": 1})
+    >>> dist = lsl.Dist(tfd.Categorical, logits=jnp.zeros(2))
+    >>> group = gam.CatVar.from_codes([0, 1], mapping=mapping, name="group", dist=dist)
+
+    Models containing a ``CatVar`` accept labels in prediction data:
+
+    >>> coef = lsl.Var.new_param(jnp.zeros(2), name="coef")
+    >>> effect = lsl.Var.new_calc(
+    ...     lambda group, coef: coef[group], group, coef, name="effect"
+    ... )
+    >>> model = lsl.Model(effect)
+    >>> model.predict(
+    ...     {"coef": jnp.array([[10.0, 20.0]])},
+    ...     predict=["effect"],
+    ...     newdata={"group": ["b", "a"]},
+    ... )["effect"]
+    Array([[20., 10.]], dtype=float32)
+
+    Integer-valued labels are rejected with guidance:
+
+    >>> gam.CatVar([20, 10])
+    Traceback (most recent call last):
+        ...
+    TypeError: CatVar labels must not be integers; use strings or CatVar.from_codes().
+    """
+
+    def __init__(
+        self,
+        labels: Any,
+        *,
+        name: str = "",
+        categories: Any = None,
+        unknown_category: Any | None = None,
+        dist: lsl.Dist | None = None,
+    ) -> None:
+        supplied_labels = [labels]
+        if categories is not None:
+            supplied_labels.append(categories)
+        if unknown_category is not None:
+            supplied_labels.append([unknown_category])
+        for supplied in supplied_labels:
+            labels_flat = np.asarray(supplied, dtype=object).reshape(-1)
+            if any(
+                isinstance(label, (int, np.integer))
+                and not isinstance(label, (bool, np.bool_))
+                for label in labels_flat
+            ):
+                raise TypeError(
+                    "CatVar labels must not be integers; use strings or "
+                    "CatVar.from_codes()."
+                )
+
+        self._mapping = CategoryMapping.from_labels(
+            labels, categories, unknown_category=unknown_category
+        )
+        self._accepts_host_codes = False
+        codes = jnp.asarray(self._mapping.labels_to_codes(labels))
+        super().__init__(codes, dist=dist, name=name, convert=self._convert_value)
+        self.observed = True
+
+    @classmethod
+    def from_codes(
+        cls,
+        codes: Any,
+        *,
+        mapping: CategoryMapping,
+        name: str = "",
+        dist: lsl.Dist | None = None,
+    ) -> CatVar:
+        """Create a categorical variable from already encoded integer codes.
+
+        The mapping defines every valid contiguous, zero-based code and may include
+        categories that are not observed in ``codes``. Later integer inputs are
+        interpreted as codes, while non-integer inputs are converted as labels.
+
+        Parameters
+        ----------
+        codes
+            A nonempty rectangular array of integer category codes.
+        mapping
+            The category mapping that defines every valid code.
+        name
+            Optional variable name.
+        dist
+            Optional Liesel distribution for the encoded integer values.
+
+        Examples
+        --------
+        >>> mapping = CategoryMapping({"a": 0, "b": 1})
+        >>> group = CatVar.from_codes([1, 0], mapping=mapping, name="group")
+        >>> group.value
+        Array([1, 0], dtype=int32)
+        """
+        if not isinstance(mapping, CategoryMapping):
+            raise TypeError("mapping must be a CategoryMapping.")
+
+        codes_array = np.asarray(codes)
+        if codes_array.size == 0:
+            raise ValueError("Categorical codes must be nonempty.")
+        if not np.issubdtype(codes_array.dtype, np.integer):
+            raise TypeError("Categorical codes must have an integer dtype.")
+
+        var = cls.__new__(cls)
+        var._mapping = mapping
+        var._accepts_host_codes = True
+        encoded = jnp.asarray(mapping.to_codes(codes_array))
+        lsl.Var.__init__(var, encoded, dist=dist, name=name, convert=var._convert_value)
+        var.observed = True
+        return var
+
+    @property
+    def mapping(self) -> CategoryMapping:
+        """The category mapping shared by all entries."""
+        return self._mapping
+
+    def _convert_value(self, value: Any) -> jax.Array:
+        if isinstance(value, Tracer):
+            value = jnp.asarray(value)
+            if value.size == 0:
+                raise ValueError("Categorical values must be nonempty.")
+            if not jnp.issubdtype(value.dtype, jnp.integer):
+                raise TypeError("Traced CatVar values must be integer codes.")
+            return value
+
+        value_array = np.asarray(value)
+        if value_array.size == 0:
+            raise ValueError("Categorical values must be nonempty.")
+        normalized_value = jax.tree.map(
+            lambda item: (
+                item.item() if isinstance(item, jax.Array) and item.ndim == 0 else item
+            ),
+            value,
+        )
+
+        is_integer_array = np.issubdtype(value_array.dtype, np.integer)
+        if is_integer_array:
+            is_internal_jax_value = isinstance(value, jax.Array)
+            if not self._accepts_host_codes and not is_internal_jax_value:
+                raise ValueError(
+                    "Integer values are ambiguous for a label-mode CatVar; supply "
+                    "non-integer labels or construct the variable with "
+                    "CatVar.from_codes()."
+                )
+            return jnp.asarray(self.mapping.to_codes(normalized_value))
+        return jnp.asarray(self.mapping.labels_to_codes(normalized_value))
 
 
 class ScaleIG(UserVar):

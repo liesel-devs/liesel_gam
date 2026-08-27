@@ -167,6 +167,7 @@ Terms and Variables
     ~liesel_gam.MRFTerm
     ~liesel_gam.BasisDot
     ~liesel_gam.ScaleIG
+    ~liesel_gam.CatVar
     ~liesel_gam.UserVar
 
 

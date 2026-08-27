@@ -179,7 +179,8 @@ def summarise_1d_smooth(
     newdata_x = _as_array_dict(newdata_x)
 
     term_samples = _normalise_sample_dims(
-        term.predict(dict(samples), newdata=newdata_x), term.value.ndim
+        term.predict(gs.Position(dict(samples)), newdata=gs.Position(newdata_x)),
+        term.value.ndim,
     )
     term_summary = (
         gs.SamplesSummary.from_array(
@@ -358,7 +359,8 @@ def summarise_nd_smooth(
     newdata_x = _as_array_dict(newdata_x)
 
     term_samples = _normalise_sample_dims(
-        term.predict(dict(samples), newdata=newdata_x), term.value.ndim
+        term.predict(gs.Position(dict(samples)), newdata=gs.Position(newdata_x)),
+        term.value.ndim,
     )
     for marginal in marginals:
         if not isinstance(marginal, StrctTerm):
@@ -376,8 +378,8 @@ def summarise_nd_smooth(
 
         marginal_samples = _normalise_sample_dims(
             marginal.predict(
-                dict(samples),  # type: ignore[arg-type]
-                newdata={input_name: newdata_x[input_name]},  # type: ignore[arg-type]
+                gs.Position(dict(samples)),
+                newdata=gs.Position({input_name: newdata_x[input_name]}),
             ),
             marginal.value.ndim,
         )
@@ -550,7 +552,10 @@ def summarise_cluster(
 
     newdata_x = _as_array_dict(newdata_x)
     predictions = _normalise_sample_dims(
-        term.predict(samples=dict(samples), newdata=newdata_x), term.value.ndim
+        term.predict(
+            samples=gs.Position(dict(samples)), newdata=gs.Position(newdata_x)
+        ),
+        term.value.ndim,
     )
     predictions_summary = (
         gs.SamplesSummary.from_array(
@@ -931,7 +936,9 @@ def summarise_1d_smooth_clustered(
     newdata_x = _as_array_dict(newdata_x)
 
     term_samples = _normalise_sample_dims(
-        clustered_term.predict(dict(samples), newdata=newdata_x),
+        clustered_term.predict(
+            gs.Position(dict(samples)), newdata=gs.Position(newdata_x)
+        ),
         clustered_term.value.ndim,
     )
     term_summary = (
