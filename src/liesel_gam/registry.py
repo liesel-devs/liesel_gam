@@ -241,13 +241,13 @@ class PandasRegistry:
             calc: lsl.Calc | lsl.TransientCalc = lsl.TransientCalc(
                 lambda *args: jnp.vstack(args).T,
                 *vars_,
-                _name=name,
+                _name=f"[{name}]",
             )
         else:
             calc = lsl.Calc(
                 lambda *args: jnp.vstack(args).T,
                 *vars_,
-                _name=name,
+                _name=f"[{name}]",
             )
 
         self._matrix_cache[name] = calc
