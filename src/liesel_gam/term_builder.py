@@ -25,7 +25,7 @@ from .term import (
     StrctTensorProdTerm,
     StrctTerm,
 )
-from .var import ScaleIG, VarIGPrior
+from .var import CatVar, ScaleIG, VarIGPrior
 
 InferenceTypes = Any
 
@@ -1863,7 +1863,7 @@ class TermBuilder:
     # random intercept
     def ri(
         self,
-        cluster: str,
+        cluster: str | CatVar,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
@@ -1877,7 +1877,7 @@ class TermBuilder:
         Parameters
         ----------
         cluster
-            Name of the cluster variable.
+            Registry name of the cluster variable or a named :class:`.CatVar`.
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
@@ -1906,7 +1906,9 @@ class TermBuilder:
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty
-            Custom penalty matrix to use. Default is an iid penalty.
+            Custom penalty matrix to use. Both axes must follow category-mapping code
+            order and include every declared category, including unobserved levels.
+            Default is an iid penalty.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -1925,6 +1927,9 @@ class TermBuilder:
 
         Notes
         ------
+        See the integer-code warning on :class:`.CatVar` when supplying direct
+        variables or label-valued prediction data.
+
         If the penalty is iid, then each column of the basis consists only of binary
         (0/1) entries, and each row has only one non-zero entry. In this case it is not
         necessary to store the full matrix in memory and evaluate the term as a dot
@@ -1966,7 +1971,11 @@ class TermBuilder:
         if factor_scale:
             term.factor_scale()
 
-        mapping = self.bases.mappings[cluster]
+        mapping = (
+            cluster.mapping
+            if isinstance(cluster, CatVar)
+            else self.bases.mappings[cluster]
+        )
         term.mapping = mapping
         term.labels = list(mapping.labels_to_integers_map)
         nparams = len(mapping.labels_to_integers_map)
@@ -1980,8 +1989,8 @@ class TermBuilder:
     # random scaling
     def rs(
         self,
-        x: str | StrctTerm | LinTerm,
-        cluster: str,
+        x: str | lsl.Var | StrctTerm | LinTerm,
+        cluster: str | CatVar,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
@@ -2004,9 +2013,10 @@ class TermBuilder:
         Parameters
         ----------
         x
-            Name of input variable, or a smooth represented by a :class:`.StrctTerm`.
+            Registry name or named numeric Liesel variable, including a
+            :class:`.StrctTerm` or :class:`.LinTerm`.
         cluster
-            Name of the cluster variable.
+            Registry name of the cluster variable or a named :class:`.CatVar`.
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
@@ -2047,6 +2057,12 @@ class TermBuilder:
         .ri : Random intercept.
         .BasisBuilder : Initializes the basis and penalty.
 
+        Notes
+        -----
+        A :class:`.CatVar` is accepted for ``cluster`` but rejected for the numeric
+        ``x`` input. See the integer-code warning on :class:`.CatVar` when supplying
+        label-valued prediction data.
+
 
         Examples
         ---------
@@ -2070,6 +2086,25 @@ class TermBuilder:
 
         """
 
+        if isinstance(x, str):
+            x_var = self.registry.get_numeric_obs(x)
+            xname = x
+        elif isinstance(x, CatVar):
+            raise TypeError("Random-slope 'x' must be numeric, not a CatVar.")
+        elif isinstance(x, lsl.Var):
+            x_var = x
+            xname = x_var.name
+        else:
+            raise TypeError("Random-slope 'x' must be a registry name or Liesel Var.")
+
+        if not xname:
+            raise ValueError("A variable supplied as random-slope 'x' must be named.")
+        x_value = jnp.asarray(x_var.value)
+        if not jnp.issubdtype(x_value.dtype, jnp.number):
+            raise TypeError("Random-slope 'x' must be numeric.")
+        if x_value.ndim != 1 or x_value.size == 0:
+            raise ValueError("Random-slope 'x' must be nonempty and one-dimensional.")
+
         ri = self.ri(
             cluster=cluster,
             scale=scale,
@@ -2077,15 +2112,13 @@ class TermBuilder:
             penalty=penalty,
             factor_scale=factor_scale,
         )
+        if x_value.shape[0] != ri.value.shape[0]:
+            raise ValueError(
+                "Random-slope 'x' and 'cluster' must have the same length."
+            )
 
-        if isinstance(x, str):
-            x_var = self.registry.get_numeric_obs(x)
-            xname = x
-        else:
-            x_var = x
-            xname = x_var.name
-
-        fname = self.names.create("rs(" + xname + "|" + cluster + ")")
+        cluster_name = cluster if isinstance(cluster, str) else cluster.name
+        fname = self.names.create(prefix + f"rs({xname}|{cluster_name})")
         term_name = prefix + name if name is not None else fname
         fname = term_name
         term = lsl.Var.new_calc(
@@ -2142,8 +2175,10 @@ class TermBuilder:
         >>> tb.vc(x="x_lin", by=psx)
         Var(name="x_lin*ps(x_nonlin)")
         """
+        if isinstance(x, CatVar):
+            raise TypeError("Varying-coefficient 'x' must be numeric, not a CatVar.")
         x_var = self.bases._get_var_and_value(x)[0]
-        fname = self.names.create(x_var.name + "*" + by.name)
+        fname = self.names.create(prefix + x_var.name + "*" + by.name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -2206,13 +2241,14 @@ class TermBuilder:
     # markov random field
     def mrf(
         self,
-        x: str,
+        x: str | CatVar,
         k: int = -1,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
-        polys: dict[str, ArrayLike] | None = None,
-        nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
+        polys: dict[Any, ArrayLike] | None = None,
+        nb: Mapping[Any, ArrayLike | list[Any] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
+        penalty_labels: Sequence[Any] | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
@@ -2229,7 +2265,7 @@ class TermBuilder:
         Parameters
         ----------
         x
-            Name of the region variable.
+            Registry name of the region variable or a named :class:`.CatVar`.
         k
             If ``-1``, this is a "full-rank" (up to identifiability constraint) Markov
             random field. If ``k`` is an integer smaller than the number of unique
@@ -2278,9 +2314,9 @@ class TermBuilder:
             penalty derived from both nb and polys.
         penalty_labels
             If a penalty is supplied explicitly, labels must also be specified. The
-            labels create the association between penalty columns and region labels. The
-            values of this sequence should be the string labels of unique regions in
-            ``x``.
+            labels create the association between penalty rows and columns and region
+            labels. They must be unique and match the levels of ``x`` exactly; both
+            penalty axes are reordered together.
         absorb_cons
             Whether the default identification constraint should be applied by
             reparameterization and absorbing the reparameterization matrix into the
@@ -2313,6 +2349,15 @@ class TermBuilder:
 
         Notes
         -----
+
+        See the integer-code warning on :class:`.CatVar` when supplying direct
+        variables or label-valued prediction data.
+
+        .. warning::
+
+            Integer entries inside ``nb`` are positional neighbor indices, even when
+            the semantic region labels are themselves integers. This preserves the
+            established MRF input convention.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -2365,6 +2410,7 @@ class TermBuilder:
             polys=polys,
             nb=nb,
             penalty=penalty,
+            penalty_labels=penalty_labels,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,

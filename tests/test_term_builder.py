@@ -466,6 +466,62 @@ class TestLinTerm:
 
 
 class TestMRFTerm:
+    def test_accepts_catvar(self) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"x": [1.0, 2.0, 3.0]}))
+        region = gam.CatVar(["b", "a", "c"], name="region")
+        neighbors = {"a": ["b"], "b": ["a", "c"], "c": ["b"]}
+
+        term = tb.mrf(
+            region,
+            nb=neighbors,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+            scale=1.0,
+        )
+
+        assert term.name == "mrf(region)"
+        assert term.basis.x is region
+        assert term.mapping is region.mapping
+
+    def test_metadata_preserves_non_string_labels(self) -> None:
+        mapping = gam.CategoryMapping({10: 0, 20: 1})
+        region = gam.CatVar.from_codes([0, 1], mapping=mapping, name="region")
+        tb = gam.TermBuilder.from_dict({"unused": [0.0, 1.0]})
+
+        term = tb.mrf(
+            region,
+            penalty=jnp.eye(2),
+            penalty_labels=[10, 20],
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+            scale=1.0,
+        )
+
+        assert term.labels == [10, 20]
+        assert term.ordered_labels == [10, 20]
+
+    def test_forwards_explicit_penalty_labels(self) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"region": ["a", "b", "c"]}))
+        penalty = jnp.array([[2.0, -1.0, -1.0], [-1.0, 1.0, 0.0], [-1.0, 0.0, 1.0]])
+
+        term = tb.mrf(
+            "region",
+            penalty=penalty,
+            penalty_labels=["c", "b", "a"],
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+            scale=1.0,
+        )
+
+        assert term.basis.penalty is not None
+        assert jnp.allclose(
+            term.basis.penalty.value,
+            jnp.array([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [-1.0, -1.0, 2.0]]),
+        )
+
     def test_unobserved_regions(self, columb, columb_polys) -> None:
         i = np.arange(columb.shape[0])
         i10 = i[:10]
@@ -927,6 +983,48 @@ class TestGetParameter:
 
 
 class TestRITerm:
+    def test_accepts_catvar(self) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"x": [1.0, 2.0]}))
+        cluster = gam.CatVar(["a", "b"], categories=["a", "b", "unused"], name="G")
+
+        term = tb.ri(cluster, scale=1.0)
+
+        assert term.name == "ri(G)"
+        assert term.basis.x is cluster
+        assert term.mapping is cluster.mapping
+        assert term.coef.value.size == 3
+        assert tb.labels_to_integers({"G": ["b"]})["G"].tolist() == [1]
+
+    @pytest.mark.parametrize("method", ["ri", "rs", "mrf"])
+    def test_categorical_terms_require_one_dimensional_inputs(
+        self, method: str
+    ) -> None:
+        cluster = gam.CatVar([["a", "b"], ["b", "a"]], name="G")
+        tb = gam.TermBuilder.from_dict({"x": [1.0, 2.0]})
+
+        with pytest.raises(ValueError, match="one-dimensional"):
+            if method == "ri":
+                tb.ri(cluster)
+            elif method == "rs":
+                tb.rs("x", cluster)
+            else:
+                tb.mrf(cluster, nb={"a": ["b"], "b": ["a"]})
+
+    def test_uses_catch_all_coefficient_for_unknown_prediction_labels(self) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"x": [1.0, 2.0]}))
+        cluster = gam.CatVar(["a", "b"], name="G", unknown_category="other")
+        term = tb.ri(cluster, scale=1.0)
+        model = lsl.Model(term)
+
+        prediction = model.predict(
+            samples=gs.Position({term.coef.name: jnp.array([[10.0, 20.0, 30.0]])}),
+            predict=[term.name],
+            newdata=gs.Position({"G": ["new", "a"]}),
+        )
+
+        assert term.coef.value.size == 3
+        assert jnp.array_equal(prediction[term.name], jnp.array([[30.0, 10.0]]))
+
     def test_full_basis(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
@@ -960,11 +1058,65 @@ class TestRITerm:
         assert term.coef.dist_node["scale"].value == pytest.approx(3.0)
 
 
+class TestRandomSlope:
+    def test_accepts_named_var_and_catvar(self) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"unused": [0.0, 1.0]}))
+        x = lsl.Var.new_obs([2.0, 3.0], name="X")
+        cluster = gam.CatVar(["a", "b"], name="G")
+
+        term = tb.rs(x, cluster, scale=1.0)
+
+        assert term.name == "rs(X|G)"
+        assert term.value.shape == (2,)
+
+    @pytest.mark.parametrize(
+        ("x", "message"),
+        (
+            (lsl.Var.new_obs([1.0, 2.0]), "named"),
+            (lsl.Var.new_obs([[1.0], [2.0]], name="X"), "one-dimensional"),
+            (lsl.Var.new_obs([1.0], name="X"), "same length"),
+            (gam.CatVar(["a", "b"], name="X"), "numeric"),
+        ),
+    )
+    def test_validates_direct_x(self, x, message: str) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"unused": [0.0, 1.0]}))
+        cluster = gam.CatVar(["a", "b"], name="G")
+
+        with pytest.raises((TypeError, ValueError), match=message):
+            tb.rs(x, cluster, scale=1.0)
+
+    def test_prefix_applies_only_to_returned_effect(self) -> None:
+        tb = gam.TermBuilder.from_df(
+            pd.DataFrame({"x": [1.0, 2.0], "group": ["a", "b"]})
+        )
+
+        term = tb.rs("x", "group", prefix="p.", scale=1.0)
+
+        assert term.name == "p.rs(x|group)"
+        assert term.value_node["cluster"].name == "ri(group)"
+
+
 class TestVaryincCoefficient:
     def test_vc(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         psx = tb.ps("x", k=20)
         tb.vc("y", by=psx)
+
+    def test_prefix_applies_to_returned_effect(self, columb) -> None:
+        tb = gb.TermBuilder.from_df(columb)
+        by = tb.ps("x", k=10)
+
+        term = tb.vc("y", by=by, prefix="p.")
+
+        assert term.name == "p.y*ps(x)"
+        assert by.name == "ps(x)"
+
+    def test_rejects_catvar_x(self, columb) -> None:
+        tb = gb.TermBuilder.from_df(columb)
+        by = tb.ps("x", k=10)
+
+        with pytest.raises(TypeError, match="numeric"):
+            tb.vc(gam.CatVar(["a"] * len(columb), name="G"), by=by)
 
 
 class TestTPTerm:

@@ -17,6 +17,7 @@ import smoothcon
 from .basis import ApproximationSpec, Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
 from .registry import CategoryMapping, DictRegistry
+from .var import CatVar
 
 InferenceTypes = Any
 
@@ -307,6 +308,30 @@ class BasisBuilder:
             raise TypeError(f"Type {type(x)} not supported for 'x'.")
 
         return x_var, x_array
+
+    def _get_categorical_input(
+        self, x: str | CatVar
+    ) -> tuple[CatVar, CategoryMapping, str]:
+        if isinstance(x, str):
+            var, mapping = self.registry.get_categorical_obs(x)
+            input_name = x
+        elif isinstance(x, CatVar):
+            if not x.name:
+                raise ValueError("A CatVar supplied to a builder must be named.")
+            var, mapping, input_name = x, x.mapping, x.name
+        else:
+            raise TypeError(
+                "Categorical builder inputs must be a registry name or CatVar."
+            )
+
+        if var.value.ndim != 1:
+            raise ValueError(
+                "Categorical builder inputs must be one-dimensional, "
+                f"got shape {var.value.shape}."
+            )
+
+        self.mappings[input_name] = mapping
+        return var, mapping, input_name
 
     def _native_basis(
         self,
@@ -1640,7 +1665,7 @@ class BasisBuilder:
 
     def ri(
         self,
-        cluster: str,
+        cluster: str | CatVar,
         basis_name: str = "B",
         penalty: ArrayLike | None = None,
     ) -> Basis:
@@ -1650,14 +1675,19 @@ class BasisBuilder:
         Parameters
         ----------
         cluster
-            Name of the cluster variable.
+            Registry name of the cluster variable or a named :class:`.CatVar`.
         basis_name
             Name of the basis variable.
         penalty
-            Custom penalty matrix to use. Default is an iid penalty.
+            Custom penalty matrix to use. Both axes must follow category-mapping code
+            order and include every declared category, including unobserved levels.
+            Default is an iid penalty.
 
         Notes
         ------
+        See the integer-code warning on :class:`.CatVar` when supplying a direct
+        variable.
+
         If the penalty is iid, then each column of the basis consists only of binary
         (0/1) entries, and each row has only one non-zero entry. In this case it is not
         necessary to store the full matrix in memory and evaluate the term as a dot
@@ -1683,18 +1713,17 @@ class BasisBuilder:
         """
         if penalty is not None:
             penalty = jnp.asarray(penalty)
-        result = self.registry.get_obs_and_mapping(cluster)
-
-        if not result.is_categorical:
-            raise TypeError(f"{cluster=} must be categorical.")
-
-        if result.mapping is not None:
-            self.mappings[cluster] = result.mapping
+        var, mapping, input_name = self._get_categorical_input(cluster)
+        n_categories = len(mapping.labels_to_integers_map)
+        if penalty is not None and penalty.shape != (n_categories, n_categories):
+            raise ValueError(
+                f"Random-intercept penalty must be {n_categories} x {n_categories}."
+            )
 
         basis = Basis(
-            value=result.var,
+            value=var,
             basis_fn=lambda x: x,
-            name=self.names.create(basis_name + "(" + cluster + ")"),
+            name=self.names.create(basis_name + "(" + input_name + ")"),
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
@@ -1704,12 +1733,12 @@ class BasisBuilder:
 
     def mrf(
         self,
-        x: str,
+        x: str | CatVar,
         k: int = -1,
-        polys: dict[str, ArrayLike] | None = None,
-        nb: Mapping[str, ArrayLike | list[str] | list[int]] | None = None,
+        polys: dict[Any, ArrayLike] | None = None,
+        nb: Mapping[Any, ArrayLike | list[Any] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
-        penalty_labels: Sequence[str] | None = None,
+        penalty_labels: Sequence[Any] | None = None,
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
@@ -1724,7 +1753,7 @@ class BasisBuilder:
         Parameters
         ----------
         x
-            Name of the region variable.
+            Registry name of the region variable or a named :class:`.CatVar`.
         k
             If ``-1``, this is a "full-rank" (up to identifiability constraint) Markov
             random field. If ``k`` is an integer smaller than the number of unique
@@ -1746,9 +1775,9 @@ class BasisBuilder:
             penalty derived from both nb and polys.
         penalty_labels
             If a penalty is supplied explicitly, labels must also be specified. The
-            labels create the association between penalty columns and region labels. The
-            values of this sequence should be the string labels of unique regions in
-            ``x``.
+            labels create the association between penalty rows and columns and region
+            labels. They must be unique and match the levels of ``x`` exactly; both
+            penalty axes are reordered together.
         absorb_cons
             Whether the default identification constraint should be applied by
             reparameterization and absorbing the reparameterization matrix into the
@@ -1776,6 +1805,15 @@ class BasisBuilder:
 
         Notes
         -----
+
+        See the integer-code warning on :class:`.CatVar` when supplying a direct
+        variable.
+
+        .. warning::
+
+            Integer entries inside ``nb`` are positional neighbor indices, even when
+            the semantic region labels are themselves integers. This preserves the
+            established MRF input convention.
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
@@ -1854,12 +1892,14 @@ class BasisBuilder:
         if polys is None and nb is None and penalty is None:
             raise ValueError("At least one of polys, nb, or penalty must be provided.")
 
-        var, mapping = self.registry.get_categorical_obs(x)
-        self.mappings[x] = mapping
+        var, mapping, input_name = self._get_categorical_input(x)
 
         # mgcv orders factor levels lexicographically. Keep that established
         # public behaviour even when pandas carries an explicit category order.
-        ordered_labels = sorted(mapping.labels_to_integers_map)
+        try:
+            ordered_labels = sorted(mapping.labels_to_integers_map)
+        except TypeError:
+            raise TypeError("MRF category labels must be mutually sortable.") from None
         labels = set(ordered_labels)
         mapping_labels = [
             mapping.integers_to_labels_map[i]
@@ -1874,9 +1914,11 @@ class BasisBuilder:
                 raise ValueError(
                     "If 'penalty' is supplied, 'penalty_labels' must also be supplied."
                 )
+            if len(set(penalty_labels)) != len(penalty_labels):
+                raise ValueError("'penalty_labels' must contain unique labels.")
             if len(penalty_labels) != len(labels):
                 raise ValueError(
-                    f"Variable {x} has {len(labels)} unique entries, but "
+                    f"Variable {input_name} has {len(labels)} unique entries, but "
                     f"'penalty_labels' has {len(penalty_labels)}. Both must match."
                 )
 
@@ -1899,6 +1941,12 @@ class BasisBuilder:
             penalty = np.asarray(penalty)
             if penalty.ndim != 2 or penalty.shape[0] != penalty.shape[1]:
                 raise ValueError(f"Penalty must be square, got {np.shape(penalty)=}")
+            if not np.issubdtype(penalty.dtype, np.number):
+                raise ValueError("Penalty must be numeric.")
+            if not np.isfinite(penalty).all():
+                raise ValueError("Penalty must contain only finite values.")
+            if not np.allclose(penalty, penalty.T):
+                raise ValueError("Penalty must be symmetric.")
             if penalty.shape[1] != len(labels):
                 raise ValueError(
                     "Dimensions of 'penalty' must correspond to the levels of 'x'."
@@ -1949,7 +1997,7 @@ class BasisBuilder:
         basis = MRFBasis(
             value=var,
             basis_fn=basis_fn,
-            name=self.names.create(basis_name + "(" + x + ")"),
+            name=self.names.create(basis_name + "(" + input_name + ")"),
             cache_basis=True,
             use_callback=False,
             penalty=smooth.penalty,
@@ -1962,7 +2010,7 @@ class BasisBuilder:
         if diagonal_penalty:
             basis.diagonalize_penalty()
 
-        label_order: list[str] | None = ordered_labels
+        label_order: list[Any] | None = ordered_labels
         if absorb_cons or diagonal_penalty or (k != -1 and k < len(labels)):
             label_order = None
         basis.mrf_spec = MRFSpec(mapping, nb_out, label_order, polys)

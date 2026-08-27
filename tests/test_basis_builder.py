@@ -14,6 +14,7 @@ from jax.typing import ArrayLike
 import liesel_gam.term_builder as gb
 from liesel_gam.registry import DictRegistry, PandasRegistry
 from liesel_gam.term_builder import BasisBuilder
+from liesel_gam.var import CatVar
 
 from .make_df import make_test_df
 from .mgcv_data import load_columb, load_columb_polys
@@ -139,6 +140,45 @@ class TestBasisBuilder:
         bases = gb.BasisBuilder(registry)
         basis = bases.ri("x")
         assert basis.value.size == 2
+
+    def test_ri_accepts_catvar(self) -> None:
+        bases = gb.BasisBuilder(gb.PandasRegistry(pd.DataFrame({"x": [1.0, 2.0]})))
+        cluster = CatVar(["b", "a"], categories=["a", "b", "unused"], name="G")
+
+        basis = bases.ri(cluster)
+
+        assert basis.x is cluster
+        assert basis.name == "B(G)"
+        assert bases.mappings["G"] is cluster.mapping
+
+    @pytest.mark.parametrize("direct", [False, True])
+    def test_categorical_builders_require_one_dimensional_inputs(
+        self, direct: bool
+    ) -> None:
+        values = np.array([["a", "b"], ["b", "a"]])
+        bases = gb.BasisBuilder(DictRegistry({"group": values}))
+        cluster = CatVar(values, name="G") if direct else "group"
+
+        with pytest.raises(ValueError, match="one-dimensional"):
+            bases.ri(cluster)
+
+        with pytest.raises(ValueError, match="one-dimensional"):
+            bases.mrf(cluster, nb={"a": ["b"], "b": ["a"]})
+
+    def test_ri_rejects_plain_var(self) -> None:
+        bases = gb.BasisBuilder(gb.PandasRegistry(pd.DataFrame({"x": [1.0, 2.0]})))
+
+        with pytest.raises(TypeError, match="CatVar"):
+            bases.ri(
+                lsl.Var.new_obs([0, 1], name="G")  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+            )
+
+    def test_ri_penalty_must_match_all_declared_categories(self) -> None:
+        bases = gb.BasisBuilder(gb.PandasRegistry(pd.DataFrame({"x": [1.0, 2.0]})))
+        cluster = CatVar(["a", "b"], categories=["a", "b", "unused"], name="G")
+
+        with pytest.raises(ValueError, match="3 x 3"):
+            bases.ri(cluster, penalty=jnp.eye(2))
 
 
 class TestFoBasisInputTypes:
@@ -715,6 +755,59 @@ def columb_polys():
 
 
 class TestMRFBasis:
+    def test_accepts_catvar(self) -> None:
+        bases = BasisBuilder(PandasRegistry(pd.DataFrame({"x": [1.0, 2.0, 3.0]})))
+        region = CatVar(["b", "a", "c"], name="region")
+        neighbors = {"a": ["b"], "b": ["a", "c"], "c": ["b"]}
+
+        basis = bases.mrf(
+            region,
+            nb=neighbors,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
+
+        assert basis.x is region
+        assert basis.name == "B(region)"
+        assert basis.mrf_spec.mapping is region.mapping
+
+    @pytest.mark.parametrize(
+        ("penalty", "labels", "message"),
+        (
+            (np.array([[1.0, 2.0], [0.0, 1.0]]), ["a", "b"], "symmetric"),
+            (np.array([[1.0, np.nan], [np.nan, 1.0]]), ["a", "b"], "finite"),
+            (np.eye(2), ["a", "a"], "unique"),
+        ),
+    )
+    def test_validates_explicit_penalty(self, penalty, labels, message: str) -> None:
+        bases = BasisBuilder(PandasRegistry(pd.DataFrame({"region": ["a", "b"]})))
+
+        with pytest.raises(ValueError, match=message):
+            bases.mrf("region", penalty=penalty, penalty_labels=labels)
+
+    def test_penalty_labels_reorder_rows_and_columns(self) -> None:
+        bases = BasisBuilder(PandasRegistry(pd.DataFrame({"x": [1.0, 2.0, 3.0]})))
+        region = CatVar(["20", "10", "30"], name="region")
+        source_penalty = np.array(
+            [[2.0, -2.0, 0.0], [-2.0, 3.0, -1.0], [0.0, -1.0, 1.0]]
+        )
+
+        basis = bases.mrf(
+            region,
+            penalty=source_penalty,
+            penalty_labels=["30", "20", "10"],
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
+
+        assert basis.penalty is not None
+        assert jnp.allclose(
+            basis.penalty.value,
+            jnp.array([[1.0, -1.0, 0.0], [-1.0, 3.0, -2.0], [0.0, -2.0, 2.0]]),
+        )
+
     def test_initialization_nb_strings(self, columb, columb_polys):
         """
         There are quite a few ways to initialize the MRF basis.
@@ -1291,7 +1384,7 @@ class TestMRFBasis:
 
         nb = {"a": [[1]], "b": ["c"], "c": ["a", "b"]}
         with pytest.raises(ValueError, match="1d"):
-            bases.mrf("district", k=-1, nb=nb)  # type: ignore
+            bases.mrf("district", k=-1, nb=nb)
 
         nb = {"a": ["c"], "b": ["c"], "d": ["a", "b"]}
         with pytest.raises(ValueError, match="Names in 'nb'"):
