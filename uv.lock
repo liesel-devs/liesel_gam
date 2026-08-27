@@ -854,7 +854,7 @@ wheels = [
 
 [[package]]
 name = "liesel"
-version = "0.5.1"
+version = "0.5.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "arviz" },
@@ -873,9 +873,9 @@ dependencies = [
     { name = "tfp-nightly" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/17/97/03b55e5096e59aea83cb9ae414859f20380cbd58fc74e6e946ff1acb6e85/liesel-0.5.1.tar.gz", hash = "sha256:b42cf68fcca40edbd495eabc1f5dc546e68382372658dea6e4eacebc108a7687", size = 7825471, upload-time = "2026-06-12T09:54:31.155Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d2/26/c02991a38396f8054b9a4dfbfd93796788f089fb6015645d103d0f2859bc/liesel-0.5.2.tar.gz", hash = "sha256:ad165dfe90fbef3984484233ed9185828ff7b146f3d4c3cfde07cf5a56636e80", size = 7876304, upload-time = "2026-08-27T14:19:42.427Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/dc/56e7e22cac4c9766e05c5b5d3c79bb603139c74c473127408caad12d83e6/liesel-0.5.1-py3-none-any.whl", hash = "sha256:9070200f0e6dabf4847721e5d2cd7c386e4e059ad6888df61786c179ed2e1497", size = 163862, upload-time = "2026-06-12T09:54:29.393Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/df/3de81806e3ec2cb88c5f4724f1f1d0ea7fae8101929a09f0f45408a276ac/liesel-0.5.2-py3-none-any.whl", hash = "sha256:19844282b03821bb21cb543bf564f17f5543ff4d89160b78282f406c3f5aeb4e", size = 169689, upload-time = "2026-08-27T14:19:40.688Z" },
 ]
 
 [[package]]
@@ -914,7 +914,7 @@ dev = [
 requires-dist = [
     { name = "formulaic", specifier = ">=1.2.1" },
     { name = "jax", specifier = ">=0.5" },
-    { name = "liesel", specifier = ">=0.5.1" },
+    { name = "liesel", specifier = ">=0.5.2" },
     { name = "matplotlib", specifier = "<3.11" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=1.4" },

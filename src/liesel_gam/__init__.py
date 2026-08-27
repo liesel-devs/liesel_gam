@@ -51,6 +51,7 @@ from .term import StrctLinTerm as StrctLinTerm
 from .term import StrctTensorProdTerm as StrctTensorProdTerm
 from .term import StrctTerm as StrctTerm
 from .term_builder import TermBuilder as TermBuilder
+from .var import CatVar as CatVar
 from .var import ScaleIG as ScaleIG
 from .var import UserVar as UserVar
 from .var import VarIGPrior as VarIGPrior
