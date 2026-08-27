@@ -795,7 +795,7 @@ class MRFTerm(StrctTerm):
     _mapping = None
 
     @property
-    def neighbors(self) -> dict[str, list[str]] | None:
+    def neighbors(self) -> dict[Any, list[Any]] | None:
         """
         Dictionary of neighborhood structure (if available).
 
@@ -821,7 +821,7 @@ class MRFTerm(StrctTerm):
         return self._neighbors
 
     @neighbors.setter
-    def neighbors(self, value: dict[str, list[str]] | None) -> None:
+    def neighbors(self, value: dict[Any, list[Any]] | None) -> None:
         """
         Set the neighborhood dictionary for the term.
 
@@ -831,7 +831,7 @@ class MRFTerm(StrctTerm):
         self._neighbors = value
 
     @property
-    def polygons(self) -> dict[str, ArrayLike] | None:
+    def polygons(self) -> dict[Any, ArrayLike] | None:
         """
         Dictionary of arrays. The keys of the dict are the region labels. The
         corresponding values define each region through a 2-D array of polygon
@@ -860,7 +860,7 @@ class MRFTerm(StrctTerm):
         return self._polygons
 
     @polygons.setter
-    def polygons(self, value: dict[str, ArrayLike] | None) -> None:
+    def polygons(self, value: dict[Any, ArrayLike] | None) -> None:
         """
         Set polygon coordinates keyed by region label.
 
@@ -869,7 +869,7 @@ class MRFTerm(StrctTerm):
         self._polygons = value
 
     @property
-    def labels(self) -> list[str] | None:
+    def labels(self) -> list[Any] | None:
         """
         Region labels.
 
@@ -892,7 +892,7 @@ class MRFTerm(StrctTerm):
         return self._labels
 
     @labels.setter
-    def labels(self, value: list[str]) -> None:
+    def labels(self, value: list[Any]) -> None:
         """
         Set the region labels.
 
@@ -935,7 +935,7 @@ class MRFTerm(StrctTerm):
         self._mapping = value
 
     @property
-    def ordered_labels(self) -> list[str] | None:
+    def ordered_labels(self) -> list[Any] | None:
         """
         Ordered labels, if they are available.
 
@@ -961,7 +961,7 @@ class MRFTerm(StrctTerm):
         return self._ordered_labels
 
     @ordered_labels.setter
-    def ordered_labels(self, value: list[str]) -> None:
+    def ordered_labels(self, value: list[Any]) -> None:
         """
         Set labels ordered like the basis and penalty columns.
 

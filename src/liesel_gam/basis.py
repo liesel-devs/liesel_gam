@@ -1126,6 +1126,6 @@ class MRFSpec(NamedTuple):
     """
 
     mapping: CategoryMapping
-    nb: dict[str, list[str]] | None
-    ordered_labels: list[str] | None
-    polys: dict[str, ArrayLike] | None
+    nb: dict[Any, list[Any]] | None
+    ordered_labels: list[Any] | None
+    polys: dict[Any, ArrayLike] | None
