@@ -2,6 +2,7 @@ import os
 
 from . import experimental as experimental
 from . import io as io
+from . import scale as scale
 from .__about__ import __version__ as __version__
 from .basis import Basis as Basis
 from .basis import LinBasis as LinBasis
@@ -27,6 +28,8 @@ from .plots import plot_polys as plot_polys
 from .plots import plot_regions as plot_regions
 from .predictor import AdditivePredictor as AdditivePredictor
 from .registry import PandasRegistry as PandasRegistry
+from .scale import scale_ig as scale_ig
+from .scale import scale_wb as scale_wb
 from .summary import polys_to_df as polys_to_df
 from .summary import summarise_1d_smooth as summarise_1d_smooth
 from .summary import summarise_1d_smooth_clustered as summarise_1d_smooth_clustered
