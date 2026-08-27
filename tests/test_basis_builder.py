@@ -12,7 +12,7 @@ from formulaic.errors import (
 from jax.typing import ArrayLike
 
 import liesel_gam.term_builder as gb
-from liesel_gam.registry import PandasRegistry
+from liesel_gam.registry import DictRegistry, PandasRegistry
 from liesel_gam.term_builder import BasisBuilder
 
 from .make_df import make_test_df
@@ -142,6 +142,12 @@ class TestBasisBuilder:
 
 
 class TestFoBasisInputTypes:
+    def test_formula_requires_one_dimensional_variables(self) -> None:
+        bases = gb.BasisBuilder(DictRegistry({"group": [["a", "b"], ["b", "a"]]}))
+
+        with pytest.raises(RuntimeError, match="one-dimensional"):
+            bases.lin("group")
+
     def test_int(self, data):
         """Int is turned into float."""
         registry = gb.PandasRegistry(data, na_action="drop")
@@ -183,6 +189,20 @@ class TestFoBasisInputTypes:
 
 
 class TestFoBasisLinearNumeric:
+    def test_formula_ignores_unrelated_heterogeneous_values(self) -> None:
+        registry = DictRegistry(
+            {
+                "x": [1.0, 2.0, 3.0],
+                "group": ["a", "b", "a"],
+                "unused": np.ones((2, 4)),
+            }
+        )
+
+        basis = BasisBuilder(registry).lin("x + group")
+
+        assert basis.value.shape == (3, 2)
+        assert basis.column_names == ["x", "group[T.b]"]
+
     def test_name(self, data) -> None:
         registry = gb.PandasRegistry(data, na_action="drop")
         bases = gb.BasisBuilder(registry)

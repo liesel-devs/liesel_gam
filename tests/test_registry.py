@@ -1,12 +1,14 @@
 """Tests for VariableRegistry."""
 
+import jax
 import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import pytest
 
-from liesel_gam.term_builder import PandasRegistry
+import liesel_gam as gam
+from liesel_gam.registry import DictRegistry, PandasRegistry
 
 
 @pytest.fixture
@@ -34,6 +36,255 @@ def sample_data():
 @pytest.fixture
 def registry(sample_data):
     return PandasRegistry(sample_data)
+
+
+def test_dict_registry_gets_and_caches_observed_values():
+    registry = DictRegistry({"x": [1.0, 2.0]}, prefix_names_by="data.")
+
+    first = registry.get_obs("x")
+
+    assert first is registry.get_obs("x")
+    assert first.name == "data.x"
+    assert first.value.tolist() == [1.0, 2.0]
+
+
+def test_pandas_registry_is_a_dict_registry(sample_data):
+    registry = PandasRegistry(sample_data)
+
+    assert isinstance(registry, DictRegistry)
+
+
+def test_pandas_registry_supports_default_value_conversion():
+    registry = PandasRegistry(
+        pd.DataFrame({"x": ["1", "2"]}),
+        convert=lambda value: jnp.asarray(value, dtype=float),
+    )
+
+    assert registry.get_numeric_obs("x").value.tolist() == [1.0, 2.0]
+
+
+def test_dict_registry_copies_mapping_but_reflects_data_mutation():
+    source = {"x": [1.0]}
+    registry = DictRegistry(source)
+    source["y"] = [2.0]
+    registry.data["z"] = [3.0]
+
+    assert list(registry.keys()) == ["x", "z"]
+    assert not hasattr(registry, "shape")
+    assert registry.get_obs("z").value.tolist() == [3.0]
+
+
+def test_dict_registry_cached_variable_survives_data_mutation():
+    registry = DictRegistry({"x": [1.0]})
+    first = registry.get_obs("x")
+    registry.data["x"] = [2.0]
+
+    assert registry.get_obs("x") is first
+    assert first.value.tolist() == [1.0]
+
+
+def test_dict_registry_rejects_unsupported_sources():
+    with pytest.raises(TypeError, match="keys must be strings"):
+        DictRegistry({1: [1.0]})  # type: ignore[arg-type]  # ty: ignore[invalid-argument-type]
+
+    with pytest.raises(TypeError, match="must not be Liesel"):
+        DictRegistry({"x": lsl.Var.new_obs([1.0])})
+
+
+def test_dict_registry_inherits_and_overrides_value_conversion():
+    def as_float(value):
+        return jnp.asarray(value, dtype=float)
+
+    def as_int(value):
+        return jnp.asarray(value, dtype=int)
+
+    registry = DictRegistry({"x": [1], "y": [1], "z": [1]}, convert=as_float)
+
+    assert jnp.issubdtype(registry.get_obs("x").value.dtype, jnp.floating)
+    assert jnp.issubdtype(
+        registry.get_obs("y", convert=as_int).value.dtype, jnp.integer
+    )
+    assert registry.get_obs("z", convert="default").value.tolist() == [1]
+
+
+def test_dict_registry_rejects_a_different_converter_after_materialization():
+    def converter(value):
+        return jnp.asarray(value)
+
+    registry = DictRegistry({"x": [1.0]}, convert=converter)
+    registry.get_obs("x")
+
+    assert registry.get_obs("x", convert=converter) is registry.get_obs("x")
+    with pytest.raises(ValueError, match="different converter"):
+        registry.get_obs("x", convert="default")
+
+
+def test_dict_registry_compares_callable_converters_by_identity():
+    class Converter:
+        def __call__(self, value):
+            return jnp.asarray(value)
+
+        def __eq__(self, other):
+            return True
+
+    first = Converter()
+    registry = DictRegistry({"x": [1.0]}, convert=first)
+    registry.get_obs("x")
+
+    assert registry.get_obs("x", convert=first) is registry.get_obs("x")
+    with pytest.raises(ValueError, match="different converter"):
+        registry.get_obs("x", convert=Converter())
+
+
+def test_dict_registry_type_checks_converted_values():
+    registry = DictRegistry(
+        {"number": ["1", "2"], "flag": [0, 1]},
+        convert=lambda value: jnp.asarray(value, dtype=float),
+    )
+
+    assert registry.get_numeric_obs("number").value.tolist() == [1.0, 2.0]
+    assert registry.get_boolean_obs(
+        "flag", convert=lambda value: jnp.asarray(value, dtype=bool)
+    ).value.tolist() == [False, True]
+
+
+def test_dict_registry_categorical_detection_supports_arbitrary_shapes():
+    registry = DictRegistry(
+        {
+            "strings": np.array([["b", "a"], ["a", "b"]], dtype=object),
+            "numeric_categories": pd.Categorical([2, 1], categories=[1, 2]),
+            "numbers": np.array([1, 2]),
+        }
+    )
+
+    strings, _ = registry.get_categorical_obs("strings")
+
+    assert isinstance(strings, gam.CatVar)
+    assert strings.value.tolist() == [[1, 0], [0, 1]]
+    assert registry.is_categorical("numbers") is False
+    with pytest.raises(TypeError, match="must not be integers"):
+        registry.get_categorical_obs("numeric_categories")
+    with pytest.raises(TypeError, match="expected categorical"):
+        registry.get_categorical_obs("numbers")
+
+
+def test_dict_registry_calculation_cache_mode_is_part_of_identity():
+    registry = DictRegistry({"x": [1.0, 2.0]})
+
+    persistent = registry.get_calc("x", jnp.square, cache=True)
+    transient = registry.get_calc("x", jnp.square, cache=False)
+
+    assert persistent is registry.get_calc("x", jnp.square, cache=True)
+    assert transient is registry.get_calc("x", jnp.square, cache=False)
+    assert persistent is not transient
+    assert isinstance(persistent.value_node, lsl.Calc)
+    assert isinstance(transient.value_node, lsl.TransientCalc)
+
+
+def test_dict_registry_matrix_cache_mode_is_part_of_identity():
+    registry = DictRegistry({"x": [1.0, 2.0], "y": [3.0, 4.0]})
+
+    persistent = registry.get_many_numeric_obs("x", "y", cache=True)
+    transient = registry.get_many_numeric_obs("x", "y", cache=False)
+
+    assert persistent is not transient
+    assert persistent.value.tolist() == [[1.0, 3.0], [2.0, 4.0]]
+    assert isinstance(persistent, lsl.Calc)
+    assert isinstance(transient, lsl.TransientCalc)
+
+
+def test_dict_registry_centered_and_standardized_calculations_accept_options():
+    def converter(value):
+        return jnp.asarray(value, dtype=float)
+
+    registry = DictRegistry({"x": ["1", "2", "3"]})
+
+    centered = registry.get_calc_centered("x", convert=converter, cache=False)
+    standardized = registry.get_calc_standardized("x", convert=converter, cache=False)
+
+    assert centered.value.tolist() == [-1.0, 0.0, 1.0]
+    assert jnp.std(standardized.value) == pytest.approx(1.0)
+    assert isinstance(centered.value_node, lsl.TransientCalc)
+    assert isinstance(standardized.value_node, lsl.TransientCalc)
+
+
+def test_dict_registry_dummy_calculation_uses_catvar_and_cache_option():
+    registry = DictRegistry({"group": [["a", "b"], ["b", "a"]]})
+
+    dummy = registry.get_calc_dummymatrix("group", cache=False)
+
+    assert dummy.value.tolist() == [[[0.0], [1.0]], [[1.0], [0.0]]]
+    assert isinstance(dummy.value_node, lsl.TransientCalc)
+
+
+def test_dict_registry_dummy_calculation_appends_axis_to_scalar():
+    registry = DictRegistry({"group": ["a", "b"]})
+    group, _ = registry.get_categorical_obs("group")
+    group.value = "b"
+
+    dummy = registry.get_calc_dummymatrix("group")
+
+    assert dummy.value.shape == (1,)
+    assert dummy.value.tolist() == [1.0]
+
+
+def test_dict_registry_dummy_calculation_keeps_invalid_code_nan_behavior():
+    registry = DictRegistry({"group": ["a", "b"]})
+    dummy = registry.get_calc_dummymatrix("group")
+    assert isinstance(dummy.value_node, lsl.Calc)
+
+    result = dummy.value_node.function(jnp.array([[0, 2]]))
+
+    assert result.shape == (1, 2, 1)
+    assert result[0, 0, 0] == 0.0
+    assert jnp.isnan(result[0, 1, 0])
+
+
+def test_dict_registry_observed_position_uses_model_converters():
+    def scale(value):
+        array = jnp.asarray(value)
+        return array if isinstance(value, jnp.ndarray) else array * 10
+
+    registry = DictRegistry(
+        {"x": [1.0, 2.0], "group": ["a", "b"]},
+        prefix_names_by="data.",
+        convert=scale,
+    )
+    x = registry.get_obs("x")
+    group, _ = registry.get_categorical_obs("group")
+    model = lsl.Model([x, group])
+
+    position = registry.observed_position(model, {"x": [3.0, 4.0], "group": ["b", "a"]})
+
+    assert position["data.x"].tolist() == [30.0, 40.0]
+    assert position["data.group"].tolist() == [1, 0]
+
+
+def test_dict_registry_observed_position_preserves_categorical_shape():
+    registry = DictRegistry({"group": [["a", "b"], ["b", "a"]]})
+    group, _ = registry.get_categorical_obs("group")
+    model = lsl.Model(group)
+
+    position = registry.observed_position(model, {"group": [["b", "a"], ["a", "b"]]})
+
+    assert position["group"].tolist() == [[1, 0], [0, 1]]
+
+
+def test_dict_registry_converter_can_support_compiled_repeated_conversion():
+    def convert(value):
+        if isinstance(value, list):
+            return jnp.asarray(value, dtype=float) * 10
+        return jnp.asarray(value, dtype=float)
+
+    variable = DictRegistry({"x": [1.0, 2.0]}, convert=convert).get_obs("x")
+    model = lsl.Model(variable)
+
+    def update(value):
+        state = model.update_state({"x": value})
+        return model.extract_position(["x"], model_state=state)["x"]
+
+    assert variable.value.tolist() == [10.0, 20.0]
+    assert jax.jit(update)(jnp.array([30.0, 40.0])).tolist() == [30.0, 40.0]
 
 
 def test_basic_get_var(sample_data):
@@ -234,7 +485,13 @@ def test_get_numeric_var_failure(registry: PandasRegistry):
 
 def test_get_categorical_var_success(registry: PandasRegistry):
     result, codes = registry.get_categorical_obs("cat_str")
+    result_again, codes_again = registry.get_categorical_obs("cat_str")
+
+    assert isinstance(result, gam.CatVar)
     assert result.name == "cat_str"
+    assert result.mapping is codes
+    assert result_again is result
+    assert codes_again is codes
     assert codes.labels_to_integers_map == {"a": 0, "b": 1}
     assert codes.integers_to_labels_map == {0: "a", 1: "b"}
 
@@ -244,16 +501,8 @@ def test_get_categorical_var_success(registry: PandasRegistry):
     computed_labels = codes.integers_to_labels([0, 1])
     assert np.all(computed_labels == np.array(["a", "b"]))
 
-    result2, codes2 = registry.get_categorical_obs("cat_num")
-    assert result2.name == "cat_num"
-    assert codes2.labels_to_integers_map == {1: 0, 2: 1}
-    assert codes2.integers_to_labels_map == {0: 1, 1: 2}
-
-    computed_codes = codes2.labels_to_integers([1, 2])
-    assert np.all(computed_codes == np.array([0, 1]))
-
-    computed_labels = codes2.integers_to_labels([0, 1])
-    assert np.all(computed_labels == np.array([1, 2]))
+    with pytest.raises(TypeError, match="must not be integers"):
+        registry.get_categorical_obs("cat_num")
 
 
 def test_get_obs_and_mapping(registry: PandasRegistry):
@@ -425,7 +674,7 @@ def test_get_calc_cache_across_base_variables(registry: PandasRegistry):
 
 
 def test_dummy_vars_unknown_category_values():
-    """test behavior when categorical data contains codes not in original codebook."""
+    """Categorical variables reject codes outside their mapping."""
     # create data with known categories A, B (codes 0, 1)
     data = pd.DataFrame({"cat": pd.Categorical(["A", "B", "A", "B"])})
 
@@ -449,22 +698,5 @@ def test_dummy_vars_unknown_category_values():
     # now simulate what happens when the base variable contains an unknown code
     base_var = original_dummy.value_node.inputs[0].var
     assert base_var is not None
-    base_var.value = jnp.array([0, 1, 0, 2])  # introduce unknown code 2
-
-    # update the dummy matrix
-    original_dummy.update()
-
-    # unknown codes should map to nan
-    expected_with_unknown = jnp.array(
-        [
-            [0],  # A (code 0, reference)
-            [1],  # B (code 1)
-            [0],  # A (code 0, reference)
-            [jnp.nan],  # unknown code 2 should produce nan
-        ]
-    )
-
-    # since NaN != NaN, we need to check using isnan for the last element
-    result = original_dummy.value
-    assert jnp.array_equal(result[:3], expected_with_unknown[:3])  # check non-nan parts
-    assert jnp.isnan(result[3, 0])  # check that unknown code produces nan
+    with pytest.raises(ValueError, match="Unknown integer codes"):
+        base_var.value = jnp.array([0, 1, 0, 2])
