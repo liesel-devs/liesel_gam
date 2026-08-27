@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import jax
 import jax.numpy as jnp
@@ -12,6 +12,7 @@ from jax.typing import ArrayLike
 
 from .registry import CategoryMapping
 from .summary import (
+    _normalise_sample_dims,
     polys_to_df,
     summarise_1d_smooth,
     summarise_1d_smooth_clustered,
@@ -38,6 +39,7 @@ def _as_array_dict(data: Mapping[str, Any]) -> dict[str, ArrayLike]:
     return {key: jnp.asarray(value) for key, value in data.items()}
 
 
+@overload
 def plot_1d_smooth(
     term: StrctTerm,
     samples: dict[str, ArrayLike],
@@ -47,7 +49,32 @@ def plot_1d_smooth(
     show_n_samples: int | None = 50,
     seed: int | KeyArray = 1,
     ngrid: int = 150,
-):
+) -> p9.ggplot: ...
+
+
+@overload
+def plot_1d_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
+    hdi_prob: float | None = None,
+    show_n_samples: int | None = 50,
+    seed: int | KeyArray = 1,
+    ngrid: int = 150,
+) -> p9.ggplot: ...
+
+
+def plot_1d_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    ci_quantiles: tuple[float, float] | None = (0.05, 0.95),
+    hdi_prob: float | None = None,
+    show_n_samples: int | None = 50,
+    seed: int | KeyArray = 1,
+    ngrid: int = 150,
+) -> p9.ggplot:
     """
     Plots a posterior summary for a one-dimensional smooth.
 
@@ -56,8 +83,9 @@ def plot_1d_smooth(
     term
         The term to plot.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Optional dictionary of covariate data at which to plot the term.
         If ``None``, a grid of length ``ngrid`` will be created internally, using the
@@ -75,6 +103,9 @@ def plot_1d_smooth(
         Number of covariate values in the grid used for plotting, if ``newdata=None``.
 
     """
+    if not isinstance(term, StrctTerm):
+        raise TypeError(f"'term' must be a StrctTerm, got {type(term).__name__}.")
+
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that term.basis.x is
         # a strong node.
@@ -87,7 +118,9 @@ def plot_1d_smooth(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = term.predict(samples, newdata=newdata_x)
+    term_samples = _normalise_sample_dims(
+        term.predict(samples, newdata=newdata_x), term.value.ndim
+    )
 
     term_summary = summarise_1d_smooth(
         term=term,
@@ -131,13 +164,14 @@ def plot_1d_smooth(
 
     if show_n_samples is not None and show_n_samples > 0:
         key = jax.random.key(seed) if isinstance(seed, int) else seed
+        n_samples = min(show_n_samples, term_samples.shape[0] * term_samples.shape[1])
 
         summary_samples_df = summarise_by_samples(
-            key=key, a=term_samples, name=term.name, n=show_n_samples
+            key=key, a=term_samples, name=term.name, n=n_samples
         )
 
         summary_samples_df[term.basis.input_name] = np.tile(
-            np.squeeze(xgrid), show_n_samples
+            np.squeeze(xgrid), n_samples
         )
 
         p = p + p9.geom_line(
@@ -162,6 +196,7 @@ PlotVars = Literal[
 ]
 
 
+@overload
 def plot_2d_smooth(
     term: StrctInteractionTerm | StrctTensorProdTerm | StrctTerm,
     samples: dict[str, ArrayLike],
@@ -171,7 +206,32 @@ def plot_2d_smooth(
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
-):
+) -> p9.ggplot: ...
+
+
+@overload
+def plot_2d_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    ngrid: int = 20,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    newdata_meshgrid: bool = False,
+) -> p9.ggplot: ...
+
+
+def plot_2d_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    ngrid: int = 20,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    newdata_meshgrid: bool = False,
+) -> p9.ggplot:
     """
     Plots a posterior summary for a two-dimensional smooth function.
 
@@ -180,8 +240,9 @@ def plot_2d_smooth(
     term
         The term to plot.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Optional dictionary of covariate data at which to plot the term.
         If ``None``, a grid  will be created internally, using the
@@ -201,6 +262,12 @@ def plot_2d_smooth(
         If *True*, then the function will create a large grid of all combinations of
         covariate values in ``newdata`` that correspond to this term.
     """
+    if not isinstance(term, StrctInteractionTerm | StrctTensorProdTerm | StrctTerm):
+        raise TypeError(
+            "'term' must be a StrctInteractionTerm, StrctTensorProdTerm, or "
+            f"StrctTerm, got {type(term).__name__}."
+        )
+
     if isinstance(term, StrctInteractionTerm | StrctTensorProdTerm):
         names = list(term.input_obs)
         if len(names) != 2:
@@ -317,8 +384,40 @@ def plot_polys(
     return p
 
 
+@overload
 def plot_regions(
     term: RITerm | MRFTerm | StrctTerm,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    polys: Mapping[str, ArrayLike] | None = None,
+    labels: CategoryMapping | None = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
+    observed_color: str = "none",
+    unobserved_color: str = "red",
+) -> p9.ggplot: ...
+
+
+@overload
+def plot_regions(
+    term: lsl.Var | lsl.Node,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    polys: Mapping[str, ArrayLike] | None = None,
+    labels: CategoryMapping | None = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
+    observed_color: str = "none",
+    unobserved_color: str = "red",
+) -> p9.ggplot: ...
+
+
+def plot_regions(
+    term: lsl.Var | lsl.Node,
     samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -340,8 +439,9 @@ def plot_regions(
     term
         The term to plot.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Dictionary of covariate data at which to plot the term. If ``None``, plots the
         term for the unique regions known to the term.
@@ -370,6 +470,12 @@ def plot_regions(
     unobserved_color
         Border color for unobserved regions.
     """
+    if not isinstance(term, RITerm | MRFTerm | StrctTerm):
+        raise TypeError(
+            "'term' must be a RITerm, MRFTerm, or StrctTerm, "
+            f"got {type(term).__name__}."
+        )
+
     plot_df = summarise_regions(
         term=term,
         samples=samples,
@@ -398,8 +504,42 @@ def plot_regions(
     return p
 
 
+@overload
 def plot_forest(
     term: RITerm | MRFTerm | LinTerm | StrctLinTerm,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    labels: CategoryMapping | None = None,
+    ymin: str = "hdi_low",
+    ymax: str = "hdi_high",
+    ci_quantiles: tuple[float, float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
+    highlight_unobserved: bool = True,
+    unobserved_color: str = "red",
+    indices: Sequence[int] | None = None,
+) -> p9.ggplot: ...
+
+
+@overload
+def plot_forest(
+    term: lsl.Var | lsl.Node,
+    samples: dict[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    labels: CategoryMapping | None = None,
+    ymin: str = "hdi_low",
+    ymax: str = "hdi_high",
+    ci_quantiles: tuple[float, float] = (0.05, 0.95),
+    hdi_prob: float = 0.9,
+    show_unobserved: bool = True,
+    highlight_unobserved: bool = True,
+    unobserved_color: str = "red",
+    indices: Sequence[int] | None = None,
+) -> p9.ggplot: ...
+
+
+def plot_forest(
+    term: lsl.Var | lsl.Node,
     samples: dict[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     labels: CategoryMapping | None = None,
@@ -420,8 +560,9 @@ def plot_forest(
     term
         The term to plot.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         If the plotted term is a linear term, this is ignored. Otherwise, dictionary of
         covariate data at which to plot the term. If ``None``, plots the term for the
@@ -476,7 +617,10 @@ def plot_forest(
             indices=indices,
         )
     else:
-        raise TypeError(f"term has unsupported type {type(term)}.")
+        raise TypeError(
+            "'term' must be a RITerm, MRFTerm, LinTerm, or StrctLinTerm, "
+            f"got {type(term).__name__}."
+        )
 
 
 def plot_forest_lin(
@@ -496,8 +640,9 @@ def plot_forest_lin(
     term
         The term to plot.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     ymin, ymax
         Which quantities to use for the plotted interval.
     ci_quantiles
@@ -557,8 +702,9 @@ def plot_forest_clustered(
     term
         The term to plot.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Dictionary of covariate data at which to plot the term. If ``None``, plots the
         term for the unique clusters known to the term.
@@ -657,8 +803,9 @@ def plot_1d_smooth_clustered(
         The term to plot. Must be a weak :class:`liesel.model.Var` with named inputs
         ``"x"`` (the function) and ``"cluster"`` (the cluster).
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Dictionary of covariate data at which to plot the term. If ``None``, plots the
         term for the unique clusters known to the term, and uses a grid of length

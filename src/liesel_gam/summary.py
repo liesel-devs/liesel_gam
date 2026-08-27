@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, overload
 
 import jax
 import jax.numpy as jnp
@@ -27,6 +27,23 @@ KeyArray = Any
 
 def _as_array_dict(data: Mapping[str, Any]) -> dict[str, ArrayLike]:
     return {key: jnp.asarray(value) for key, value in data.items()}
+
+
+def _normalise_sample_dims(a: ArrayLike, value_ndim: int) -> Array:
+    a = jnp.asarray(a)
+    sample_ndim = a.ndim - value_ndim
+
+    if sample_ndim == 0:
+        return a[None, None, ...]
+    if sample_ndim == 1:
+        return a[None, ...]
+    if sample_ndim == 2:
+        return a
+
+    raise ValueError(
+        "Expected zero, one, or two leading sample dimensions, "
+        f"got shape {a.shape} for a value with {value_ndim} dimensions."
+    )
 
 
 def _summarise_which(which: str | Sequence[str] | None) -> Sequence[SummaryQuantities]:
@@ -58,7 +75,7 @@ def summarise_by_samples(
     name
         Column name for the value column in the returned dataframe.
     n
-        Number of subsamples to draw from ``a``.
+        Maximum number of subsamples to draw from ``a``.
 
     Returns
     -------
@@ -76,7 +93,8 @@ def summarise_by_samples(
     iterations = a.shape[1]
 
     a = np.concatenate(a, axis=0)
-    idx = jax.random.choice(key, a.shape[0], shape=(n,), replace=True)
+    n = min(n, a.shape[0])
+    idx = jax.random.choice(key, a.shape[0], shape=(n,), replace=False)
 
     a_column = a[idx, :].ravel()
     sample_column = np.repeat(np.arange(n), a.shape[-1])
@@ -93,8 +111,30 @@ def summarise_by_samples(
     return df
 
 
+@overload
 def summarise_1d_smooth(
     term: StrctTerm,
+    samples: Mapping[str, ArrayLike],
+    newdata: None | Mapping[str, ArrayLike] = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    ngrid: int = 150,
+) -> pd.DataFrame: ...
+
+
+@overload
+def summarise_1d_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: Mapping[str, ArrayLike],
+    newdata: None | Mapping[str, ArrayLike] = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    ngrid: int = 150,
+) -> pd.DataFrame: ...
+
+
+def summarise_1d_smooth(
+    term: lsl.Var | lsl.Node,
     samples: Mapping[str, ArrayLike],
     newdata: None | Mapping[str, ArrayLike] = None,
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -109,8 +149,9 @@ def summarise_1d_smooth(
     term
         The term to summarise.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Optional dictionary of covariate data at which to summarise the term.
         If ``None``, a grid of length ``ngrid`` will be created internally, using the
@@ -122,6 +163,9 @@ def summarise_1d_smooth(
     ngrid
         Number of covariate values in the grid used for summary, if ``newdata=None``.
     """
+    if not isinstance(term, StrctTerm):
+        raise TypeError(f"'term' must be a StrctTerm, got {type(term).__name__}.")
+
     if newdata is None:
         # TODO: Currently, this branch of the function assumes that term.basis.x is
         # a strong node.
@@ -134,7 +178,9 @@ def summarise_1d_smooth(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = term.predict(dict(samples), newdata=newdata_x)
+    term_samples = _normalise_sample_dims(
+        term.predict(dict(samples), newdata=newdata_x), term.value.ndim
+    )
     term_summary = (
         gs.SamplesSummary.from_array(
             term_samples,
@@ -225,6 +271,7 @@ def _normalise_which(which: PlotVars | Sequence[PlotVars]) -> Sequence[PlotVars]
     return which
 
 
+@overload
 def summarise_nd_smooth(
     term: StrctTerm | StrctInteractionTerm | StrctTensorProdTerm,
     samples: Mapping[str, ArrayLike],
@@ -234,6 +281,34 @@ def summarise_nd_smooth(
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
+    marginals: Sequence[StrctTerm] = (),
+) -> pd.DataFrame: ...
+
+
+@overload
+def summarise_nd_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: Mapping[str, ArrayLike],
+    newdata: None | Mapping[str, ArrayLike] = None,
+    ngrid: int = 20,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    newdata_meshgrid: bool = False,
+    marginals: Sequence[lsl.Var | lsl.Node] = (),
+) -> pd.DataFrame: ...
+
+
+def summarise_nd_smooth(
+    term: lsl.Var | lsl.Node,
+    samples: Mapping[str, ArrayLike],
+    newdata: None | Mapping[str, ArrayLike] = None,
+    ngrid: int = 20,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    newdata_meshgrid: bool = False,
+    marginals: Sequence[lsl.Var | lsl.Node] = (),
 ) -> pd.DataFrame:
     """
     Summarises an n-dimensional smooth.
@@ -243,8 +318,9 @@ def summarise_nd_smooth(
     term
         The term to summarise,  a :class:`.StrctTerm` or :class:`.StrctTensorProdTerm`.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Optional dictionary of covariate data at which to summarise the term. If
         ``None``, a grid  will be created internally, using the minimum and maximum
@@ -258,7 +334,17 @@ def summarise_nd_smooth(
     newdata_meshgrid
         If *True*, then the function will create a large grid of all combinations of
         covariate values in ``newdata`` that correspond to this term.
+    marginals
+        Univariate smooth terms to add to ``term`` before computing posterior
+        summaries. Each marginal's input must be present in the primary evaluation
+        grid. Only explicitly supplied marginals are added.
     """
+    if not isinstance(term, StrctTerm | StrctInteractionTerm | StrctTensorProdTerm):
+        raise TypeError(
+            "'term' must be a StrctTerm, StrctInteractionTerm, or "
+            f"StrctTensorProdTerm, got {type(term).__name__}."
+        )
+
     which = _normalise_which(which)
 
     if newdata is None:
@@ -271,7 +357,31 @@ def summarise_nd_smooth(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = term.predict(dict(samples), newdata=newdata_x)
+    term_samples = _normalise_sample_dims(
+        term.predict(dict(samples), newdata=newdata_x), term.value.ndim
+    )
+    for marginal in marginals:
+        if not isinstance(marginal, StrctTerm):
+            raise TypeError(
+                "'marginals' must contain only StrctTerm instances, "
+                f"got {type(marginal).__name__}."
+            )
+
+        input_name = marginal.basis.input_name
+        if input_name not in newdata_x:
+            raise ValueError(
+                f"Marginal input {input_name!r} is not present in the primary "
+                "evaluation grid."
+            )
+
+        marginal_samples = _normalise_sample_dims(
+            marginal.predict(
+                dict(samples),  # type: ignore[arg-type]
+                newdata={input_name: newdata_x[input_name]},  # type: ignore[arg-type]
+            ),
+            marginal.value.ndim,
+        )
+        term_samples = term_samples + marginal_samples
 
     ci_quantiles_ = (0.05, 0.95) if quantiles is None else quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
@@ -352,8 +462,34 @@ def _convert_to_integers(
     return grid
 
 
+@overload
 def summarise_cluster(
     term: RITerm | MRFTerm | StrctTerm,
+    samples: Mapping[str, ArrayLike],
+    newdata: gs.Position
+    | None
+    | Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = None,
+    labels: CategoryMapping | Sequence[str] | None = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+) -> pd.DataFrame: ...
+
+
+@overload
+def summarise_cluster(
+    term: lsl.Var | lsl.Node,
+    samples: Mapping[str, ArrayLike],
+    newdata: gs.Position
+    | None
+    | Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = None,
+    labels: CategoryMapping | Sequence[str] | None = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+) -> pd.DataFrame: ...
+
+
+def summarise_cluster(
+    term: lsl.Var | lsl.Node,
     samples: Mapping[str, ArrayLike],
     newdata: gs.Position
     | None
@@ -370,8 +506,9 @@ def summarise_cluster(
     term
         The term to summarise.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Dictionary of covariate data at which to summarise the term. If ``None``, uses
         the unique clusters known to the term.
@@ -382,6 +519,12 @@ def summarise_cluster(
     hdi_prob
         Probability level for highest posterior density interval.
     """
+    if not isinstance(term, RITerm | MRFTerm | StrctTerm):
+        raise TypeError(
+            "'term' must be a RITerm, MRFTerm, or StrctTerm, "
+            f"got {type(term).__name__}."
+        )
+
     if labels is None:
         try:
             labels = term.mapping  # type: ignore
@@ -406,7 +549,9 @@ def summarise_cluster(
         newdata_x = {term.basis.input_name: grid}
 
     newdata_x = _as_array_dict(newdata_x)
-    predictions = term.predict(samples=dict(samples), newdata=newdata_x)
+    predictions = _normalise_sample_dims(
+        term.predict(samples=dict(samples), newdata=newdata_x), term.value.ndim
+    )
     predictions_summary = (
         gs.SamplesSummary.from_array(
             predictions,
@@ -441,8 +586,34 @@ def summarise_cluster(
     return predictions_summary
 
 
+@overload
 def summarise_regions(
     term: RITerm | MRFTerm | StrctTerm,
+    samples: Mapping[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    polys: Mapping[str, ArrayLike] | None = None,
+    labels: CategoryMapping | Sequence[str] | None = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+) -> pd.DataFrame: ...
+
+
+@overload
+def summarise_regions(
+    term: lsl.Var | lsl.Node,
+    samples: Mapping[str, ArrayLike],
+    newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
+    which: PlotVars | Sequence[PlotVars] = "mean",
+    polys: Mapping[str, ArrayLike] | None = None,
+    labels: CategoryMapping | Sequence[str] | None = None,
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+) -> pd.DataFrame: ...
+
+
+def summarise_regions(
+    term: lsl.Var | lsl.Node,
     samples: Mapping[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
     which: PlotVars | Sequence[PlotVars] = "mean",
@@ -459,8 +630,9 @@ def summarise_regions(
     term
         The term to summarise, a :class:`.RITerm` or :class:`.MRFTerm`.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Dictionary of covariate data at which to summarise the term. If ``None``, uses
         the unique clusters known to the term.
@@ -477,6 +649,12 @@ def summarise_regions(
     hdi_prob
         Probability level for highest posterior density interval.
     """
+    if not isinstance(term, RITerm | MRFTerm | StrctTerm):
+        raise TypeError(
+            "'term' must be a RITerm, MRFTerm, or StrctTerm, "
+            f"got {type(term).__name__}."
+        )
+
     polygons = None
     if polys is not None:
         polygons = polys
@@ -532,8 +710,28 @@ def summarise_regions(
     return plot_df
 
 
+@overload
 def summarise_lin(
     term: LinTerm | StrctLinTerm,
+    samples: Mapping[str, ArrayLike],
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    indices: Sequence[int] | None = None,
+) -> pd.DataFrame: ...
+
+
+@overload
+def summarise_lin(
+    term: lsl.Var | lsl.Node,
+    samples: Mapping[str, ArrayLike],
+    quantiles: Sequence[float] = (0.05, 0.5, 0.95),
+    hdi_prob: float = 0.9,
+    indices: Sequence[int] | None = None,
+) -> pd.DataFrame: ...
+
+
+def summarise_lin(
+    term: lsl.Var | lsl.Node,
     samples: Mapping[str, ArrayLike],
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
@@ -547,8 +745,9 @@ def summarise_lin(
     term
         The term to summarise.
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     quantiles
         Probability levels of quantiles to include.
     hdi_prob
@@ -557,11 +756,16 @@ def summarise_lin(
         Sequence of integers, selects coefficients or clusters to be included in the
         plot. If ``None``, all coefficients/clusters are plotted.
     """
+    if not isinstance(term, LinTerm | StrctLinTerm):
+        raise TypeError(
+            f"'term' must be a LinTerm or StrctLinTerm, got {type(term).__name__}."
+        )
+
+    coef_samples = _normalise_sample_dims(samples[term.coef.name], term.coef.value.ndim)
     if indices is not None:
-        coef_samples = jnp.asarray(samples[term.coef.name])[..., indices]
+        coef_samples = coef_samples[..., indices]
         colnames = [term.column_names[i] for i in indices]
     else:
-        coef_samples = jnp.asarray(samples[term.coef.name])
         colnames = term.column_names
 
     df = (
@@ -603,8 +807,9 @@ def summarise_1d_smooth_clustered(
         The term to plot. Must be a weak :class:`liesel.model.Var` with named inputs
         ``"x"`` (the function) and ``"cluster"`` (the cluster).
     samples
-        Dictionary of posterior samples. Must contain samples for the term's
-        coefficient.
+        Either a Model position or Posterior samples. Values may have zero, one (draws),
+        or two (chains, draws) leading sample dimensions. Must contain values for
+        the term's coefficient.
     newdata
         Dictionary of covariate data at which to plot the term. If ``None``, plots the
         term for the unique clusters known to the term, and uses a grid of length
@@ -725,7 +930,10 @@ def summarise_1d_smooth_clustered(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = clustered_term.predict(dict(samples), newdata=newdata_x)
+    term_samples = _normalise_sample_dims(
+        clustered_term.predict(dict(samples), newdata=newdata_x),
+        clustered_term.value.ndim,
+    )
     term_summary = (
         gs.SamplesSummary.from_array(
             term_samples,

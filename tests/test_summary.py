@@ -50,6 +50,12 @@ class TestSummariseBySamples:
         nsamples = 5
         assert su.shape[0] == (coef_dim * nsamples)
 
+    def test_caps_samples_without_replacement(self) -> None:
+        su = summarise_by_samples(key=jkey(1), a=jnp.arange(3).reshape((1, 3, 1)), n=10)
+
+        assert su.shape[0] == 3
+        assert su["index"].nunique() == 3
+
 
 class Test1dSmoothSummary:
     def test_runs(self, tb: gam.TermBuilder) -> None:
@@ -108,6 +114,32 @@ class Test1dSmoothSummary:
         samples = term.coef.sample((4, 20), jkey(0))
         su1 = gam.summarise_1d_smooth(term=term, samples=samples, ngrid=40)
         assert su1.shape[0] == 40
+
+    @pytest.mark.parametrize(
+        ("batch_shape", "sample_size"),
+        [((), 1), ((3,), 3), ((2, 3), 6)],
+    )
+    def test_sample_batch_shapes(
+        self,
+        tb: gam.TermBuilder,
+        batch_shape: tuple[int, ...],
+        sample_size: int,
+    ) -> None:
+        term = tb._s("x", k=10, bs="ps")
+        _ = lsl.Model([term])
+        samples = {term.coef.name: jnp.zeros(batch_shape + term.coef.value.shape)}
+
+        su = gam.summarise_1d_smooth(term, samples, ngrid=2)
+
+        assert su["sample_size"].eq(sample_size).all()
+
+    def test_rejects_more_than_two_sample_dimensions(self, tb: gam.TermBuilder) -> None:
+        term = tb._s("x", k=10, bs="ps")
+        _ = lsl.Model([term])
+        samples = {term.coef.name: jnp.zeros((2, 3, 4) + term.coef.value.shape)}
+
+        with pytest.raises(ValueError, match="zero, one, or two"):
+            gam.summarise_1d_smooth(term, samples, ngrid=2)
 
 
 class Test1dSmoothClusteredSummary:
@@ -453,6 +485,143 @@ class TestNDSmoothSummary:
         su = gam.summarise_nd_smooth(term=term, samples=samples)
         assert su.shape[0] == 400
 
+    def test_empty_marginals_preserve_output(self, tb: gam.TermBuilder) -> None:
+        term = tb.tx(tb.ps("x", k=5), tb.ps("area", k=5))
+        _ = lsl.Model([term])
+        samples = {term.coef.name: normal(jkey(1), (2, 5) + term.coef.value.shape)}
+
+        default = gam.summarise_nd_smooth(term, samples, ngrid=3)
+        explicit = gam.summarise_nd_smooth(term, samples, ngrid=3, marginals=())
+
+        pd.testing.assert_frame_equal(default, explicit)
+
+    def test_explicit_marginals_are_added_before_summary(
+        self, tb: gam.TermBuilder
+    ) -> None:
+        x = tb.ps("x", k=5)
+        area = tb.ps("area", k=5)
+        term = tb.tx(x, area)
+        _ = lsl.Model([term, x, area])
+        samples: dict[str, ArrayLike] = {
+            term.coef.name: normal(jkey(1), (2, 10) + term.coef.value.shape),
+            x.coef.name: normal(jkey(2), (2, 10) + x.coef.value.shape),
+            area.coef.name: normal(jkey(3), (2, 10) + area.coef.value.shape),
+        }
+        newdata: dict[str, ArrayLike] = {
+            "x": jnp.linspace(-1.0, 1.0, 4),
+            "area": jnp.linspace(0.1, 0.9, 4),
+        }
+
+        for marginals in ((x,), (x, area)):
+            summary = gam.summarise_nd_smooth(
+                term,
+                samples,
+                newdata=newdata,
+                which=["mean", "sd", "q_0.05", "q_0.95"],
+                marginals=marginals,
+            )
+            direct = np.asarray(
+                term.predict(
+                    dict(samples),
+                    newdata=newdata,
+                )
+            )
+            for marginal in marginals:
+                input_name = marginal.basis.input_name
+                direct = direct + np.asarray(
+                    marginal.predict(
+                        dict(samples),
+                        newdata={input_name: newdata[input_name]},
+                    )
+                )
+
+            expected = {
+                "mean": direct.mean(axis=(0, 1)),
+                "sd": direct.std(axis=(0, 1)),
+                "q_0.05": np.quantile(direct, 0.05, axis=(0, 1)),
+                "q_0.95": np.quantile(direct, 0.95, axis=(0, 1)),
+            }
+            for variable, values in expected.items():
+                actual = summary.loc[summary["variable"] == variable, "value"]
+                np.testing.assert_allclose(actual, values, rtol=1e-6)
+
+    def test_marginals_use_paired_and_meshgrid_newdata(
+        self, tb: gam.TermBuilder
+    ) -> None:
+        x = tb.ps("x", k=5)
+        area = tb.ps("area", k=5)
+        term = tb.tx(x, area)
+        _ = lsl.Model([term, x, area])
+        samples: dict[str, ArrayLike] = {
+            term.coef.name: normal(jkey(1), (2, 5) + term.coef.value.shape),
+            x.coef.name: normal(jkey(2), (2, 5) + x.coef.value.shape),
+            area.coef.name: normal(jkey(3), (2, 5) + area.coef.value.shape),
+        }
+        cases: tuple[tuple[bool, dict[str, ArrayLike]], ...] = (
+            (
+                False,
+                {"x": jnp.array([-0.5, 0.0, 0.5]), "area": jnp.array([0.2, 0.4, 0.8])},
+            ),
+            (True, {"x": jnp.array([-0.5, 0.5]), "area": jnp.array([0.2, 0.8])}),
+        )
+
+        for meshgrid, newdata in cases:
+            summary = gam.summarise_nd_smooth(
+                term,
+                samples,
+                newdata=newdata,
+                newdata_meshgrid=meshgrid,
+                marginals=(x, area),
+            )
+            evaluation_grid: dict[str, ArrayLike]
+            if meshgrid:
+                arrays = [values.flatten() for values in np.meshgrid(*newdata.values())]
+                evaluation_grid = dict(zip(newdata, arrays))
+            else:
+                evaluation_grid = newdata
+
+            direct = np.asarray(
+                term.predict(
+                    dict(samples),
+                    newdata=evaluation_grid,
+                )
+            )
+            direct = direct + np.asarray(
+                x.predict(
+                    dict(samples),
+                    newdata={"x": evaluation_grid["x"]},
+                )
+            )
+            direct = direct + np.asarray(
+                area.predict(
+                    dict(samples),
+                    newdata={"area": evaluation_grid["area"]},
+                )
+            )
+            np.testing.assert_allclose(
+                summary["value"], direct.mean(axis=(0, 1)), rtol=1e-6
+            )
+
+    def test_marginal_input_must_be_in_primary_grid(self, tb: gam.TermBuilder) -> None:
+        term = tb.tx(tb.ps("x", k=5), tb.ps("area", k=5))
+        income = tb.ps("income", k=5)
+        _ = lsl.Model([term, income])
+        samples = {
+            term.coef.name: normal(jkey(1), (2, 5) + term.coef.value.shape),
+            income.coef.name: normal(jkey(2), (2, 5) + income.coef.value.shape),
+        }
+
+        with pytest.raises(ValueError, match="Marginal input 'income'"):
+            gam.summarise_nd_smooth(term, samples, ngrid=3, marginals=(income,))
+
+    def test_marginal_must_be_univariate_strct_term(self, tb: gam.TermBuilder) -> None:
+        term = tb.tx(tb.ps("x", k=5), tb.ps("area", k=5))
+        _ = lsl.Model([term])
+        samples = {term.coef.name: normal(jkey(1), (2, 5) + term.coef.value.shape)}
+
+        with pytest.raises(TypeError, match="StrctTerm"):
+            gam.summarise_nd_smooth(term, samples, ngrid=3, marginals=(term,))
+
     def test_newdata_meshgrid(self, tb: gam.TermBuilder) -> None:
         term = tb.tx(tb.ps("x", k=20), tb.ps("area", k=20))
         _ = lsl.Model([term])
@@ -535,10 +704,10 @@ class TestNDSmoothSummary:
         assert "q_0.95" in su1.variable.to_list()
         assert "q_0.5" in su1.variable.to_list()
 
-        su2 = gam.summarise_nd_smooth(
+        su2 = gam.summarise_nd_smooth(  # ty: ignore[no-matching-overload]
             term=term,
             samples=samples,
-            which=["q_0.1", "q_0.9"],  # type: ignore
+            which=["q_0.1", "q_0.9"],
             quantiles=(0.1, 0.9),
         )
         assert "q_0.1" in su2.variable.to_list()
@@ -554,6 +723,15 @@ class TestNDSmoothSummary:
 
 
 class TestLinSummary:
+    def test_position(self, tb: gam.TermBuilder) -> None:
+        term = tb.lin("x + area", prior=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0))
+        _ = lsl.Model([term])
+        samples = {term.coef.name: jnp.zeros(term.coef.value.shape)}
+
+        su = gam.summarise_lin(term, samples)
+
+        assert su["sample_size"].eq(1).all()
+
     def test_runs(self, tb: gam.TermBuilder) -> None:
         term = tb.lin("x + area", prior=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0))
         _ = lsl.Model([term])

@@ -10,7 +10,7 @@ from .var import UserVar
 
 Array = Any
 
-term_types = lsl.Var
+term_types = lsl.Var | lsl.Node
 
 
 class AdditivePredictor(UserVar):
@@ -235,7 +235,7 @@ class AdditivePredictor(UserVar):
         for term in terms:
             self.append(term)
 
-    def __getitem__(self, name) -> lsl.Var:
+    def __getitem__(self, name) -> term_types:
         return self.terms[name]
 
     def __repr__(self) -> str:
