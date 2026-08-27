@@ -349,6 +349,14 @@ class BasisBuilder:
         input_name: str | None = None,
     ) -> Basis:
         """Wrap and transform a raw native smooth in the standard order."""
+        setup_values = value.value
+        if scale_penalty:
+            smooth = smooth.scale_penalty(values=setup_values)
+        if absorb_cons and not skip_constraint:
+            smooth = smooth.constrain("sumzero_term", values=setup_values)
+        if diagonal_penalty:
+            smooth = smooth.diagonalize_penalty(values=setup_values)
+
         basis = Basis(
             value,
             name=self.names.create(basis_name + "(" + xname + ")"),
@@ -362,12 +370,8 @@ class BasisBuilder:
         # Native constructors know the mathematical rank before float32
         # roundoff. Preserve it for the mixed-model reparameterization.
         basis._penalty_rank = smooth.rank
-        if scale_penalty:
-            basis.scale_penalty()
         if absorb_cons and not skip_constraint:
-            basis.constrain("sumzero_term")
-        if diagonal_penalty:
-            basis.diagonalize_penalty()
+            basis._constraint = "sumzero_term"
         return self._maybe_approximate(
             basis,
             approximation,
@@ -1987,6 +1991,12 @@ class BasisBuilder:
 
         region_codes = code_to_region[np.asarray(var.value, dtype=np.int32)]
         smooth = smoothcon.mrf(region_codes, penalty=penalty_array, k=k)
+        if scale_penalty:
+            smooth = smooth.scale_penalty(values=region_codes)
+        if absorb_cons:
+            smooth = smooth.constrain("sumzero_term", values=region_codes)
+        if diagonal_penalty:
+            smooth = smooth.diagonalize_penalty(values=region_codes)
         native_basis_fn = smooth.basis
         code_to_region_jax = jnp.asarray(code_to_region)
 
@@ -2003,12 +2013,8 @@ class BasisBuilder:
             penalty=smooth.penalty,
         )
         basis._penalty_rank = smooth.rank
-        if scale_penalty:
-            basis.scale_penalty()
         if absorb_cons:
-            basis.constrain("sumzero_term")
-        if diagonal_penalty:
-            basis.diagonalize_penalty()
+            basis._constraint = "sumzero_term"
 
         label_order: list[Any] | None = ordered_labels
         if absorb_cons or diagonal_penalty or (k != -1 and k < len(labels)):

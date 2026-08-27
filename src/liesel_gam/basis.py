@@ -708,6 +708,10 @@ class Basis(UserVar):
         The basis function is likewise updated to evaluate to the reparamterized basis
         matrix during prediction.
 
+        This design-free transformation leaves null-space directions unscaled. Native
+        smooth builders instead use :meth:`smoothcon.Smooth.diagonalize_penalty`,
+        which balances those directions using the basis setup sample.
+
         References
         ----------
 
