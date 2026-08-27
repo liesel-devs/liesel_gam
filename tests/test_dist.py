@@ -55,6 +55,18 @@ class TestMultivariateNormalSingular:
         x2 = mvnd.sample((1,), seed=jrd.key(1))
         assert jnp.allclose(x1, x2)
 
+    def test_jitted_samples(self) -> None:
+        pen = splines.pspline_penalty(d=10, diff=2)
+
+        @jax.jit
+        def sample(rank):
+            mvns = gam.MultivariateNormalSingular(
+                loc=0.0, scale=1.0, penalty=pen, penalty_rank=rank
+            )
+            return mvns.sample((1,), seed=jrd.key(1))
+
+        assert sample(jnp.array(8)).shape == (1, 10)
+
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2):
     """
