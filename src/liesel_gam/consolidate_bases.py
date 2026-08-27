@@ -1,8 +1,6 @@
 """
 Instances of :class:`.Basis` may use non-jittable basis functions.
 In batched optimization, this may lead to inefficient repeated basis evaluation.
-If the basis functions depend on ryp for interfacing to R, which many do, this will
-not only be inefficient but fail completely, because R is not thread-safe.
 
 To solve these issues, this module provides utility functions to create models that
 can be safely and efficiently used in batched operations:

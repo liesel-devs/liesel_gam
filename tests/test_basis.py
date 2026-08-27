@@ -9,12 +9,12 @@ from liesel.contrib.splines import basis_matrix, equidistant_knots
 
 import liesel_gam as gam
 
-from .r_data import columb_to_pandas
+from .mgcv_data import load_columb
 
 
 @pytest.fixture(scope="module")
 def columb():
-    return columb_to_pandas()
+    return load_columb()
 
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:
@@ -339,7 +339,9 @@ class TestBasisReparameterization:
         b2 = basis.value
         pen2 = basis.penalty.value
 
-        assert jnp.linalg.norm(pen2, ord=jnp.inf) == pytest.approx(1.0)
+        assert jnp.linalg.norm(pen2, ord=1) == pytest.approx(
+            float(jnp.linalg.norm(b2, ord=jnp.inf) ** 2)
+        )
         assert not jnp.allclose(pen1, pen2, atol=1e-5)
         assert jnp.allclose(b1, b2, atol=1e-5)
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping, Sequence
-from math import ceil
 from typing import Any, Literal, cast, get_args
 
 import formulaic as fo
@@ -11,22 +11,7 @@ import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
-
-try:
-    # readthedocs safeguard: R is not installed in the readthedocs build environment
-    import smoothcon as scon
-    from ryp import r, to_py, to_r
-except RuntimeError:
-    import os
-
-    on_rtd = os.environ.get("READTHEDOCS", "False") == "True"
-    if on_rtd:
-        scon = cast(Any, None)
-        r = cast(Any, None)
-        to_py = cast(Any, None)
-        to_r = cast(Any, None)
-    else:
-        raise
+import smoothcon
 
 from .basis import Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
@@ -254,6 +239,38 @@ class BasisBuilder:
 
         return x_var, x_array
 
+    def _native_basis(
+        self,
+        value: lsl.Var | lsl.Node,
+        *,
+        xname: str,
+        smooth: smoothcon.Smooth,
+        absorb_cons: bool,
+        diagonal_penalty: bool,
+        scale_penalty: bool,
+        basis_name: str,
+        skip_constraint: bool = False,
+    ) -> Basis:
+        """Wrap and transform a raw native smooth in the standard order."""
+        basis = Basis(
+            value,
+            name=self.names.create(basis_name + "(" + xname + ")"),
+            basis_fn=smooth.basis,
+            penalty=smooth.penalty,
+            use_callback=False,
+            cache_basis=True,
+        )
+        # Native constructors know the mathematical rank before float32
+        # roundoff. Preserve it for the mixed-model reparameterization.
+        basis._penalty_rank = smooth.rank
+        if scale_penalty:
+            basis.scale_penalty()
+        if absorb_cons and not skip_constraint:
+            basis.constrain("sumzero_term")
+        if diagonal_penalty:
+            basis.diagonalize_penalty()
+        return basis
+
     def _get_matrix(
         self, *x: str | lsl.Var, cache: bool = False
     ) -> lsl.Calc | lsl.TransientCalc:
@@ -342,9 +359,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -353,10 +369,10 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
+        The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -388,35 +404,23 @@ class BasisBuilder:
 
         """
         _validate_penalty_order(penalty_order)
-        if knots is not None:
-            knots = np.asarray(knots)
-
         x_var, x_array = self._get_var_and_value(x)
-        spec = (
-            f"s({x_var.name}, bs='ps', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
-        )
-
-        smooth = scon.SmoothCon(
-            spec,
-            data={x_var.name: x_array},
+        smooth = smoothcon.pspline(
+            x_array,
+            k=k,
+            degree=basis_degree,
+            penalty_order=penalty_order,
             knots=knots,
+        )
+        return self._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        basis = Basis(
-            x_var,
-            name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def cr(
         self,
@@ -457,9 +461,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -473,11 +476,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
 
         References
@@ -497,31 +500,17 @@ class BasisBuilder:
         Basis(name="B(x_nonlin)")
         """
         _validate_penalty_order(penalty_order)
-        if knots is not None:
-            knots = np.asarray(knots)
         x_var, x_array = self._get_var_and_value(x)
-        spec = f"s({x_var.name}, bs='cr', k={k}, m=c({penalty_order}))"
-        smooth = scon.SmoothCon(
-            spec,
-            data={x_var.name: x_array},
-            knots=knots,
+        smooth = smoothcon.cubic_regression(x_array, k=k, knots=knots)
+        return self._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        basis = Basis(
-            x_var,
-            name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def cs(
         self,
@@ -562,9 +551,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -573,11 +561,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -596,31 +584,17 @@ class BasisBuilder:
         Basis(name="B(x_nonlin)")
         """
         _validate_penalty_order(penalty_order)
-        if knots is not None:
-            knots = np.asarray(knots)
         x_var, x_array = self._get_var_and_value(x)
-        spec = f"s({x_var.name}, bs='cs', k={k}, m=c({penalty_order}))"
-        smooth = scon.SmoothCon(
-            spec,
-            data={x_var.name: x_array},
-            knots=knots,
+        smooth = smoothcon.cubic_regression(x_array, k=k, knots=knots, shrinkage=True)
+        return self._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        basis = Basis(
-            x_var,
-            name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def cc(
         self,
@@ -664,9 +638,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -675,12 +648,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
         Cyclicity is enforced by matching the function and its derivatives at the domain
-        boundaries. This method internally calls the R package mgcv to set up the basis
-        and penalty. The mgcv documentation provides further details.
+        boundaries. The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -699,31 +671,17 @@ class BasisBuilder:
         Basis(name="B(x_nonlin)")
         """
         _validate_penalty_order(penalty_order)
-        if knots is not None:
-            knots = np.asarray(knots)
         x_var, x_array = self._get_var_and_value(x)
-        spec = f"s({x_var.name}, bs='cc', k={k}, m=c({penalty_order}))"
-        smooth = scon.SmoothCon(
-            spec,
-            data={x_var.name: x_array},
-            knots=knots,
+        smooth = smoothcon.cyclic_cubic(x_array, k=k, knots=knots)
+        return self._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        basis = Basis(
-            x_var,
-            name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def bs(
         self,
@@ -769,9 +727,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -780,11 +737,10 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis
-        and penalty. The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -802,41 +758,32 @@ class BasisBuilder:
         >>> bb.bs("x_nonlin", k=20)
         Basis(name="B(x_nonlin)")
         """
-        if knots is not None:
-            knots = np.asarray(knots)
-        if isinstance(penalty_order, int):
-            _validate_penalty_order(penalty_order)
-            penalty_order_seq: Sequence[str] = [str(penalty_order)]
-        else:
-            [_validate_penalty_order(p) for p in penalty_order]
-            penalty_order_seq = [str(p) for p in penalty_order]
+        if not isinstance(penalty_order, int):
+            for order in penalty_order:
+                _validate_penalty_order(order)
+            raise ValueError(
+                "Multiple B-spline penalties are not supported by the current "
+                "liesel-gam public API."
+            )
+        _validate_penalty_order(penalty_order)
 
         x_var, x_array = self._get_var_and_value(x)
-        spec = (
-            f"s({x_var.name}, bs='bs', k={k}, "
-            f"m=c({basis_degree}, {', '.join(penalty_order_seq)}))"
-        )
-        smooth = scon.SmoothCon(
-            spec,
-            data={x_var.name: x_array},
+        smooth = smoothcon.bspline(
+            x_array,
+            k=k,
+            degree=basis_degree,
+            penalty_order=penalty_order,
             knots=knots,
+        )
+        return self._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        basis = Basis(
-            x_var,
-            name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def cp(
         self,
@@ -883,9 +830,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -894,11 +840,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -919,33 +865,23 @@ class BasisBuilder:
         Basis(name="B(x_nonlin)")
         """
         _validate_penalty_order(penalty_order)
-        if knots is not None:
-            knots = np.asarray(knots)
         x_var, x_array = self._get_var_and_value(x)
-        spec = (
-            f"s({x_var.name}, bs='cp', k={k}, m=c({basis_degree - 1}, {penalty_order}))"
-        )
-        smooth = scon.SmoothCon(
-            spec,
-            data={x_var.name: x_array},
+        smooth = smoothcon.cyclic_pspline(
+            x_array,
+            k=k,
+            degree=basis_degree,
+            penalty_order=penalty_order,
             knots=knots,
+        )
+        return self._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        basis = Basis(
-            x_var,
-            name=self.names.create(basis_name + "(" + x_var.name + ")"),
-            basis_fn=lambda x_: jnp.asarray(smooth.predict({x_var.name: x_})),
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def _s(
         self,
@@ -959,51 +895,88 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
     ) -> Basis:
-        if knots is not None:
-            knots = np.asarray(knots)
         _validate_bs(bs)
-        bs_arg = f"'{bs}'"
+        if not x:
+            raise ValueError("At least one covariate is required.")
+        obs_vars = [self._get_var_and_value(item)[0] for item in x]
+        obs_names = [variable.name for variable in obs_vars]
+        xname = ",".join(obs_names)
+        if len(obs_vars) > 1:
+            xvar: lsl.Calc | lsl.TransientCalc | lsl.Var = self._get_matrix(*x)
+            values = jnp.column_stack([variable.value for variable in obs_vars])
+        else:
+            xvar = obs_vars[0]
+            values = jnp.asarray(obs_vars[0].value)
+        if knots is not None and len(obs_vars) > 1:
+            raise ValueError("Multidimensional custom knots are not supported.")
 
-        obs_vars = {}
-        for xname in x:
-            obs_var = self._get_var_and_value(xname)[0]
-            obs_vars[obs_var.name] = obs_var
+        numbers = [
+            float(value) for value in re.findall(r"[-+]?(?:\d*\.\d+|\d+)", str(m))
+        ]
+        if bs in ("tp", "ts"):
+            order = int(numbers[0]) if numbers else 0
+            smooth = smoothcon.thin_plate(
+                values,
+                k=k,
+                penalty_order=order,
+                knots=knots,
+                shrinkage=bs == "ts",
+            )
+        elif bs == "gp":
+            kernel_codes = {
+                1: "spherical",
+                2: "power_exponential",
+                3: "matern1.5",
+                4: "matern2.5",
+                5: "matern3.5",
+            }
+            code = int(numbers[0]) if numbers else 3
+            smooth = smoothcon.gaussian_process(
+                values,
+                k=k,
+                kernel_name=kernel_codes[abs(code)],
+                linear_trend=code >= 0,
+                range_=numbers[1] if len(numbers) > 1 and numbers[1] > 0 else None,
+                power=numbers[2] if len(numbers) > 2 else 1.0,
+                knots=knots,
+            )
+        elif len(obs_vars) != 1:
+            raise ValueError(f"The {bs!r} basis only supports one covariate.")
+        elif bs == "cr":
+            smooth = smoothcon.cubic_regression(values, k=k, knots=knots)
+        elif bs == "cs":
+            smooth = smoothcon.cubic_regression(
+                values, k=k, knots=knots, shrinkage=True
+            )
+        elif bs == "cc":
+            smooth = smoothcon.cyclic_cubic(values, k=k, knots=knots)
+        elif bs in ("ps", "bs", "cp"):
+            degree = int(numbers[0]) + 1 if numbers else 3
+            penalty_order = int(numbers[1]) if len(numbers) > 1 else 2
+            constructor = {
+                "ps": smoothcon.pspline,
+                "bs": smoothcon.bspline,
+                "cp": smoothcon.cyclic_pspline,
+            }[bs]
+            smooth = constructor(
+                values,
+                k=k,
+                degree=degree,
+                penalty_order=penalty_order,
+                knots=knots,
+            )
+        else:
+            raise ValueError(f"Unsupported native smooth family {bs!r}.")
 
-        obs_values = {k: np.asarray(v.value) for k, v in obs_vars.items()}
-        obs_names = [v.name for v in obs_vars.values()]
-
-        spec = f"s({','.join(obs_names)}, bs={bs_arg}, k={k}, m={m})"
-
-        smooth = scon.SmoothCon(
-            spec,
-            data=pd.DataFrame.from_dict(obs_values),
-            knots=knots,
+        return self._native_basis(
+            xvar,
+            xname=xname,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
+            basis_name=basis_name,
         )
-
-        xname = ",".join([v.name for v in obs_vars.values()])
-        if len(obs_vars) > 1:
-            xvar: lsl.Calc | lsl.TransientCalc | lsl.Var = self._get_matrix(*x)
-        else:
-            xvar = obs_vars[xname]
-
-        def basis_fn(x):
-            df = pd.DataFrame(x, columns=list(obs_vars))
-            return jnp.asarray(smooth.predict(df))
-
-        basis = Basis(
-            xvar,
-            name=self.names.create(basis_name + "(" + xname + ")"),
-            basis_fn=basis_fn,
-            penalty=smooth.penalty,
-            use_callback=True,
-            cache_basis=True,
-        )
-        if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
-        return basis
 
     def tp(
         self,
@@ -1045,9 +1018,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -1059,11 +1031,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -1082,36 +1054,37 @@ class BasisBuilder:
         >>> bb.tp("x_nonlin", k=20)
         Basis(name="B(x_nonlin)")
         """
-        d = len(x)
-        m_args = []
-        if penalty_order is None:
-            penalty_order_default = ceil((d + 1) / 2)
-            i = 0
-            while not 2 * penalty_order_default > (d + 1) and i < 20:
-                penalty_order_default += 1
-                i += 1
-
-            m_args.append(str(penalty_order_default))
-        else:
+        if penalty_order is not None:
             _validate_penalty_order(penalty_order)
-            m_args.append(str(penalty_order))
-
-        if remove_null_space_completely:
-            m_args.append("0")
-        m_str = "c(" + ", ".join(m_args) + ")"
-
-        basis = self._s(
-            *x,
+        if not x:
+            raise ValueError("At least one covariate is required.")
+        obs_vars = [self._get_var_and_value(item)[0] for item in x]
+        xname = ",".join(variable.name for variable in obs_vars)
+        if len(obs_vars) > 1:
+            xvar: lsl.Calc | lsl.TransientCalc | lsl.Var = self._get_matrix(*x)
+            values = jnp.column_stack([variable.value for variable in obs_vars])
+            if knots is not None:
+                raise ValueError("Multidimensional custom knots are not supported.")
+        else:
+            xvar = obs_vars[0]
+            values = jnp.asarray(obs_vars[0].value)
+        smooth = smoothcon.thin_plate(
+            values,
             k=k,
-            bs="tp",
-            m=m_str,
+            penalty_order=penalty_order or 0,
             knots=knots,
+            remove_null_space=remove_null_space_completely,
+        )
+        return self._native_basis(
+            xvar,
+            xname=xname,
+            smooth=smooth,
             absorb_cons=absorb_cons,
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            skip_constraint=remove_null_space_completely,
         )
-        return basis
 
     def ts(
         self,
@@ -1152,9 +1125,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -1163,11 +1135,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -1186,15 +1158,11 @@ class BasisBuilder:
         >>> bb.ts("x_nonlin", k=20)
         Basis(name="B(x_nonlin)")
         """
-        d = len(x)
-        m_args = []
-        if not penalty_order:
-            m_args.append(str(ceil((d + 1) / 2)))
+        if penalty_order is None:
+            m_str = "NA"
         else:
             _validate_penalty_order(penalty_order)
-            m_args.append(str(penalty_order))
-
-        m_str = "c(" + ", ".join(m_args) + ")"
+            m_str = f"c({penalty_order})"
 
         basis = self._s(
             *x,
@@ -1259,9 +1227,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -1270,11 +1237,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -1466,7 +1433,12 @@ class BasisBuilder:
         if not include_intercept:
             column_names = column_names[1:]
 
-        required = sorted(str(var) for var in spec.required_variables)
+        required_set = {str(var) for var in spec.required_variables}
+        # Formulaic 1.2 does not expose the data variable wrapped by Patsy's Q()
+        # through ``required_variables``. It is nevertheless a genuine input node.
+        quoted = re.findall(r"\bQ\(\s*(['\"])(.*?)\1\s*\)", formula)
+        required_set.update(name for _, name in quoted)
+        required = sorted(required_set)
         df_subset = self.data.loc[:, required]
         df_colnames = df_subset.columns
 
@@ -1645,9 +1617,8 @@ class BasisBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will be
@@ -1662,11 +1633,11 @@ class BasisBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         Returns
         -------
@@ -1742,7 +1713,17 @@ class BasisBuilder:
         var, mapping = self.registry.get_categorical_obs(x)
         self.mappings[x] = mapping
 
-        labels = set(mapping.labels_to_integers_map)
+        # mgcv orders factor levels lexicographically. Keep that established
+        # public behaviour even when pandas carries an explicit category order.
+        ordered_labels = sorted(mapping.labels_to_integers_map)
+        labels = set(ordered_labels)
+        mapping_labels = [
+            mapping.integers_to_labels_map[i]
+            for i in range(len(mapping.integers_to_labels_map))
+        ]
+        code_to_region = np.asarray(
+            [ordered_labels.index(label) for label in mapping_labels], dtype=np.int32
+        )
 
         if penalty is not None:
             if penalty_labels is None:
@@ -1755,47 +1736,32 @@ class BasisBuilder:
                     f"'penalty_labels' has {len(penalty_labels)}. Both must match."
                 )
 
-        xt_args = []
-        pass_to_r: dict[str, np.typing.NDArray | dict[str, np.typing.NDArray]] = {}
-        if polys is not None:
-            xt_args.append("polys=polys")
-            if not labels == set(polys):
-                raise ValueError(
-                    "Names in 'polys' must correspond to the levels of 'x'."
-                )
-            pass_to_r["polys"] = {key: np.asarray(val) for key, val in polys.items()}
+        if polys is not None and labels != set(polys):
+            raise ValueError("Names in 'polys' must correspond to the levels of 'x'.")
+        if nb is not None and labels != set(nb):
+            raise ValueError("Names in 'nb' must correspond to the levels of 'x'.")
 
-        if nb is not None:
-            xt_args.append("nb=nb")
-            if not labels == set(nb):
-                raise ValueError("Names in 'nb' must correspond to the levels of 'x'.")
-
-            nb_processed = {}
-            for key, val in nb.items():
-                val_arr = np.asarray(val)
-                if val_arr.ndim != 1:
-                    raise ValueError(
-                        f"Expected 1d arrays in 'nb', got {val_arr.ndim=} for {key}."
-                    )
-                if np.isdtype(val_arr.dtype, np.dtype("int")):
-                    # add one to convert to 1-based indexing for R
-                    # and cast to float for R
-                    val_arr = np.astype(val_arr + 1, float)
-                    # val_arr = np.astype(val_arr, float)
-                elif np.isdtype(val_arr.dtype, np.dtype("float")):
-                    # add one to convert to 1-based indexing for R
-                    val_arr = np.astype(np.astype(val_arr, int) + 1, float)
-                elif val_arr.dtype.kind == "U":  # must be unicode strings then
-                    pass
-                else:
-                    raise TypeError(f"Unsupported dtype: {val_arr.dtype!r}")
-
-                nb_processed[key] = val_arr
-
-            pass_to_r["nb"] = nb_processed
+        nb_out = (
+            # Numeric neighbor entries index the insertion order of the mapping,
+            # exactly like positions in mgcv's named R list.
+            smoothcon.normalize_neighbors(nb, ordered_labels, list(nb))
+            if nb is not None
+            else None
+        )
+        if nb_out is None and polys is not None and penalty is None:
+            nb_out = smoothcon.infer_neighbors_from_polygons(polys)
 
         if penalty is not None:
             penalty = np.asarray(penalty)
+            if penalty.ndim != 2 or penalty.shape[0] != penalty.shape[1]:
+                raise ValueError(f"Penalty must be square, got {np.shape(penalty)=}")
+            if penalty.shape[1] != len(labels):
+                raise ValueError(
+                    "Dimensions of 'penalty' must correspond to the levels of 'x'."
+                )
+            assert penalty_labels is not None
+            if set(penalty_labels) != labels:
+                raise ValueError("'penalty_labels' must match the levels of 'x'.")
             pen_rank = np.linalg.matrix_rank(penalty)
             pen_dim = penalty.shape[-1]
             if (pen_dim - pen_rank) != 1:
@@ -1810,123 +1776,51 @@ class BasisBuilder:
                     "Otherwise, please only continue if you are certain that you "
                     "know what is happening."
                 )
+            indices = [list(penalty_labels).index(label) for label in ordered_labels]
+            penalty_array = penalty[np.ix_(indices, indices)]
+        else:
+            assert nb_out is not None
+            penalty_array = smoothcon.build_mrf_penalty(nb_out, ordered_labels)
 
-            xt_args.append("penalty=penalty")
-            if not np.shape(penalty)[0] == np.shape(penalty)[1]:
-                raise ValueError(f"Penalty must be square, got {np.shape(penalty)=}")
-
-            if not np.shape(penalty)[1] == len(labels):
-                raise ValueError(
-                    "Dimensions of 'penalty' must correspond to the levels of 'x'."
-                )
-            pass_to_r["penalty"] = penalty
-
-        if "nb" in pass_to_r and "penalty" in pass_to_r:
+        if nb is not None and penalty is not None:
             logger.warning(
                 "Both 'nb' and 'penalty' were supplied. 'penalty' will be used to "
                 "setup this basis."
             )
-
-        if "polys" in pass_to_r and "penalty" in pass_to_r:
+        if polys is not None and penalty is not None:
             logger.warning(
                 "Both 'polys' and 'penalty' were supplied. 'penalty' will be used "
                 "to setup this basis."
             )
 
-        xt = "list("
-        xt += ",".join(xt_args)
-        xt += ")"
+        region_codes = code_to_region[np.asarray(var.value, dtype=np.int32)]
+        smooth = smoothcon.mrf(region_codes, penalty=penalty_array, k=k)
+        native_basis_fn = smooth.basis
+        code_to_region_jax = jnp.asarray(code_to_region)
 
-        if penalty is not None:
-            # removing penalty from the pass_to_r dict, because we are giving it
-            # special treatment here.
-            # specifically, we have to equip it with row and column names to make
-            # sure that penalty entries get correctly matched to clusters by mgcv
-            penalty_prelim_arr = np.asarray(pass_to_r.pop("penalty"))
-            to_r(penalty_prelim_arr, "penalty")
-            to_r(np.array(penalty_labels), "penalty_labels")
-            r("colnames(penalty) <- penalty_labels")
-            r("rownames(penalty) <- penalty_labels")
-
-        spec = f"s({x}, k={k}, bs='mrf', xt={xt})"
-
-        observed = mapping.integers_to_labels(var.value)
-        regions = list(mapping.labels_to_integers_map)
-        df = pd.DataFrame({x: pd.Categorical(observed, categories=regions)})
-
-        smooth = scon.SmoothCon(
-            spec,
-            data=df,
-            diagonal_penalty=diagonal_penalty,
-            absorb_cons=absorb_cons,
-            scale_penalty=scale_penalty,
-            pass_to_r=pass_to_r,
-        )
-
-        x_name = x
-
-        def basis_fun(x):
-            """
-            The array outputted by this smooth contains column names.
-            Here, we remove these column names and convert to jax.
-            """
-            # disabling warnings about "mrf should be a factor"
-            r("old_warn <- getOption('warn')")
-            r("options(warn = -1)")
-            labels = mapping.integers_to_labels(x)
-            df = pd.DataFrame({x_name: pd.Categorical(labels, categories=regions)})
-            basis = jnp.asarray(np.astype(smooth.predict(df)[:, 1:], "float"))
-            r("options(warn = old_warn)")
-            return basis
-
-        smooth_penalty = smooth.penalty
-        if (
-            np.shape(smooth_penalty)[1] > len(labels)
-            or np.shape(smooth_penalty)[0] < np.shape(smooth_penalty)[1]
-        ):
-            smooth_penalty = smooth_penalty[:, 1:]
-
-        try:
-            penalty_arr = jnp.asarray(np.astype(smooth_penalty, "float"))
-        except ValueError:
-            penalty_arr = jnp.asarray(np.astype(smooth_penalty[:, 1:], "float"))
+        def basis_fn(values: Array) -> Array:
+            codes = jnp.asarray(values, dtype=jnp.int32)
+            return native_basis_fn(code_to_region_jax[codes])
 
         basis = MRFBasis(
             value=var,
-            basis_fn=basis_fun,
+            basis_fn=basis_fn,
             name=self.names.create(basis_name + "(" + x + ")"),
             cache_basis=True,
-            use_callback=True,
-            penalty=penalty_arr,
+            use_callback=False,
+            penalty=smooth.penalty,
         )
+        basis._penalty_rank = smooth.rank
+        if scale_penalty:
+            basis.scale_penalty()
         if absorb_cons:
-            basis._constraint = "absorbed_via_mgcv"
+            basis.constrain("sumzero_term")
+        if diagonal_penalty:
+            basis.diagonalize_penalty()
 
-        try:
-            nb_out = to_py(f"{smooth._smooth_r_name}[[1]]$xt$nb", format="numpy")
-        except TypeError:
-            nb_out = None
-        # nb_out = {key: np.astype(val, "int") for key, val in nb_out.items()}
-
-        if absorb_cons:
+        label_order: list[str] | None = ordered_labels
+        if absorb_cons or diagonal_penalty or (k != -1 and k < len(labels)):
             label_order = None
-        else:
-            label_order = list(
-                to_py(f"{smooth._smooth_r_name}[[1]]$X", format="pandas").columns
-            )
-            label_order = [lab[1:] for lab in label_order]  # removes leading x from R
-
-        if nb_out is not None:
-
-            def to_label(code):
-                try:
-                    label_array = mapping.integers_to_labels(code - 1)
-                except TypeError:
-                    label_array = code
-                return np.atleast_1d(label_array).tolist()
-
-            nb_out = {k: to_label(v) for k, v in nb_out.items()}
-
         basis.mrf_spec = MRFSpec(mapping, nb_out, label_order, polys)
 
         return basis

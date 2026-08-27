@@ -422,13 +422,12 @@ class Basis(UserVar):
 
         .. math::
 
-            \\mathbf{Z} = \\mathbf{U} \\boldsymbol{\\Lambda}^{-1/2},
+            \\mathbf{Z} = \\mathbf{U}
+            \\operatorname{diag}(\\lambda_1^{-1/2}, \\dots,
+            \\lambda_r^{-1/2}, \\mathbf{1}_{d-r}^\\top),
 
-        where :math:`\\boldsymbol{\\Lambda}^{-1/2} =
-        \\operatorname{diag}(\\lambda_1^{-1/2}, \\dots, \\lambda_r^{-1/2},
-        \\mathbf{0}_{d-r}^\\top)`. The element :math:`\\mathbf{0}_{d-r}^\\top` is a
-        zero-vector of length :math:`d-r`, corresponding to the zero eigenvalues of the
-        penalty matrix.
+        so penalized directions receive inverse-square-root scaling while null-space
+        directions are retained without rescaling.
 
         The basis matrix :math:`\\mathbf{B}` is then updated as :math:`\\mathbf{B}_Z =
         \\mathbf{B} \\mathbf{Z}`, and the penalty matrix is updated to
@@ -453,10 +452,23 @@ class Basis(UserVar):
         basis_fn = self.value_node.function
 
         K = self.penalty.value
-        if is_diagonal(K, atol=atol):
+        known_rank = getattr(self, "_penalty_rank", None)
+        rank = (
+            jnp.linalg.matrix_rank(K)
+            if known_rank is None
+            else jnp.minimum(jnp.asarray(known_rank), K.shape[0])
+        )
+        target_diagonal = jnp.where(
+            jnp.arange(K.shape[0]) < rank,
+            jnp.ones(K.shape[0], dtype=K.dtype),
+            jnp.zeros(K.shape[0], dtype=K.dtype),
+        )
+        already_unit_diagonal = is_diagonal(K, atol=atol) & jnp.allclose(
+            jnp.diag(K), target_diagonal, atol=atol, rtol=0.0
+        )
+        if bool(already_unit_diagonal):
             return self
 
-        rank = jnp.linalg.matrix_rank(K)
         Z = penalty_to_unit_design(K, rank=rank)
 
         def reparam_basis(*args, **kwargs):
@@ -464,19 +476,20 @@ class Basis(UserVar):
 
         self.value_node.function = reparam_basis
         self.update()
-        penalty = jnp.eye(Z.shape[-1])  # practically equal to: penalty = Z.T @ K @ Z
-        penalty = penalty.at[rank:, rank:].set(0.0)
+        penalty = jnp.diag(target_diagonal)
         self.update_penalty(penalty)
+        self._penalty_rank = rank
 
         return self
 
     def scale_penalty(self) -> Self:
         """
-        Scale the penalty matrix by its infinite norm.
+        Scale the penalty relative to the size of the basis matrix.
 
-        The penalty matrix is divided by its infinity norm (max absolute row sum) so
-        that its values are numerically well-conditioned for downstream use. The updated
-        penalty replaces the previous one.
+        This uses the scaling convention from :func:`mgcv::smoothCon`: the penalty
+        one-norm is matched to the squared infinity-norm of the design matrix. This
+        convention is invariant to an equivalent reciprocal rescaling of the basis and
+        its coefficients.
 
         Returns
         -------
@@ -485,7 +498,13 @@ class Basis(UserVar):
         if self.penalty is None:
             raise TypeError("Basis.penalty is None, cannot apply transformation.")
         K = self.penalty.value
-        scale = jnp.linalg.norm(K, ord=jnp.inf)
+        design_size = jnp.linalg.norm(self.value, ord=jnp.inf) ** 2
+        penalty_size = jnp.linalg.norm(K, ord=1)
+        if not bool(jnp.isfinite(design_size)) or float(design_size) <= 0.0:
+            raise ValueError("Cannot scale a penalty for a zero or non-finite basis.")
+        if not bool(jnp.isfinite(penalty_size)) or float(penalty_size) <= 0.0:
+            raise ValueError("Cannot scale a zero or non-finite penalty matrix.")
+        scale = penalty_size / design_size
         penalty = K / scale
         self.update_penalty(penalty)
         return self

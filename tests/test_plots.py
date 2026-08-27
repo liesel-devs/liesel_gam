@@ -8,11 +8,10 @@ import numpy as np
 import pandas as pd
 import pytest
 from jax.random import key as jkey
-from ryp import r, to_py
 
 import liesel_gam as gam
 
-from .r_data import columb_to_pandas
+from .mgcv_data import load_columb, load_columb_polys
 
 
 @pytest.fixture(scope="module")
@@ -21,14 +20,12 @@ def columb() -> pd.DataFrame:
     'area', 'home.value', 'income', 'crime', 'open.space', 'district',
     'x', 'y', 'home_value'
     """
-    return columb_to_pandas(reset_index=True)
+    return load_columb().reset_index()
 
 
 @pytest.fixture(scope="module")
-def polys() -> np.typing.NDArray:
-    r("library(mgcv)")
-    r("data(columb.polys)")
-    return to_py("columb.polys", format="numpy")
+def polys() -> dict[str, np.ndarray]:
+    return load_columb_polys()
 
 
 @pytest.fixture

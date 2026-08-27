@@ -791,9 +791,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -813,8 +812,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
 
         References
@@ -930,9 +929,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -952,8 +950,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
 
         References
@@ -1069,9 +1067,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -1092,8 +1089,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
 
         References
@@ -1214,9 +1211,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -1236,8 +1232,7 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis
-        and penalty. The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -1358,9 +1353,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -1381,10 +1375,10 @@ class TermBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        The native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
+        The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -1515,9 +1509,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -1538,10 +1531,10 @@ class TermBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        The native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
+        The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -1670,9 +1663,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -1693,10 +1685,10 @@ class TermBuilder:
         Notes
         -----
 
-        This basis is initialized with ``use_callback=True`` and ``cache_basis=True``.
+        The native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
         See :class:`.Basis` for details.
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
+        The basis and penalty are constructed natively in JAX.
 
         References
         ----------
@@ -2175,9 +2167,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -2197,8 +2188,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         Returns
         -------
@@ -2513,9 +2504,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -2534,8 +2524,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -2655,9 +2645,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -2679,8 +2668,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -2797,9 +2786,8 @@ class TermBuilder:
             reparameterized accordingly. This can be beneficial for posterior geometry,
             which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
         scale_penalty
-            Whether the penalty matrix should be scaled such that its infinity norm is
-            one. This can improve numerical stability, which is why it is done by
-            default. Also see :meth:`.Basis.scale_penalty`.
+            Whether to use design-aware penalty scaling. Also see
+            :meth:`.Basis.scale_penalty`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -2821,8 +2809,8 @@ class TermBuilder:
         Notes
         -----
 
-        This method internally calls the R package mgcv to set up the basis and penalty.
-        The mgcv documentation provides further details.
+        The basis and penalty are constructed natively in JAX. The mgcv
+        documentation describes the corresponding mathematical smooth family.
 
         References
         ----------
@@ -3401,7 +3389,9 @@ class TermBuilder:
                     this_subterm.basis.var_value_node.name
                 )
 
-        first_order_bases = [term_.basis for term_ in term.marginals]
+        first_order_bases = []
+        for term_ in term.terms_by_order[1]:
+            first_order_bases.append(term_.basis)
 
         for i in term.order:
             if i == 1:
@@ -3418,16 +3408,6 @@ class TermBuilder:
             for subterm in subterms:
                 subterm.coef.name = self.names.create(subterm.coef.name)
                 subterm.name = self.names.create(subterm.name)
-
-        if group_terms_by_order:
-            for group in term.term_groups.values():
-                group.name = self.names.create(group.name)
-                group.value_node.name = self.names.create(
-                    group.name + "_value_node", apply_prefix=False
-                )
-                group.var_value_node.name = self.names.create(
-                    group.name + "_var_value_node", apply_prefix=False
-                )
 
         if not common_scale:
             for scale in term.scales:

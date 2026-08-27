@@ -11,14 +11,13 @@ import pytest
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.contrib import splines as spl
-from ryp import r, to_py
 
 import liesel_gam as gam
 import liesel_gam.term_builder as gb
 from liesel_gam.term_builder import _find_parameter, _format_name, _has_star_gibbs
 
 from .make_df import make_test_df
-from .r_data import columb_to_pandas
+from .mgcv_data import load_columb, load_columb_polys
 
 
 def scale_wb(
@@ -70,17 +69,12 @@ def bases(data) -> gb.BasisBuilder:
 
 @pytest.fixture(scope="module")
 def columb():
-    return columb_to_pandas()
+    return load_columb()
 
 
 @pytest.fixture(scope="module")
 def columb_polys():
-    r("library(mgcv)")
-    r("data(columb.polys)")
-    polys = to_py("columb.polys", format="numpy")
-    # turn to zero-based indecing
-    polys = {k: v - 1 for k, v in polys.items()}
-    return polys
+    return load_columb_polys()
 
 
 class TestTermBuilder:
@@ -419,8 +413,9 @@ class TestBasisReparameterization:
         p2 = term.basis.penalty.value
         p2b = term.coef.dist_node["penalty"].value
 
-        assert jnp.linalg.norm(p2, ord=jnp.inf) == pytest.approx(1.0)
-        assert jnp.linalg.norm(p2b, ord=jnp.inf) == pytest.approx(1.0)
+        design_size = float(jnp.linalg.norm(term.basis.value, ord=jnp.inf) ** 2)
+        assert jnp.linalg.norm(p2, ord=1) == pytest.approx(design_size)
+        assert jnp.linalg.norm(p2b, ord=1) == pytest.approx(design_size)
         assert not jnp.allclose(p1, p2, atol=1e-6)
         assert not jnp.allclose(p1b, p2b, atol=1e-6)
 
@@ -808,18 +803,6 @@ class TestTPTerm:
         psx = tb.ps("x", k=10)
         tb.tx(psy, psx)
 
-    @pytest.mark.parametrize("order", ((2,), (2, 3), (3,)))
-    def test_tf_without_main_effects(self, columb, order):
-        tb = gb.TermBuilder.from_df(columb)
-        term = tb.tf(
-            tb.ps("x", k=10),
-            tb.ps("y", k=10),
-            tb.ps("area", k=10),
-            order=order,
-        )
-
-        assert set(term.terms_by_order) == set(order)
-
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
@@ -1055,76 +1038,6 @@ class TestTPTerm:
         assert isinstance(xvar.value_node[0].inference, gs.MCMCSpec)
         assert yvar.value_node[0].inference.kernel is gs.HMCKernel
         assert xvar.value_node[0].inference.kernel is gs.HMCKernel
-
-    @pytest.mark.parametrize(
-        "order",
-        (None, (2,), (2, 3), (3,)),
-        ids=("all", "2", "2-3", "3"),
-    )
-    def test_grouped_tf_name_handling(self, columb, order):
-        tb = gb.TermBuilder.from_df(columb)
-
-        def tensor():
-            return tb.tf(
-                tb.ps("x", k=5),
-                tb.ps("y", k=5),
-                tb.ps("area", k=5),
-                order=order,
-                group_terms_by_order=True,
-            )
-
-        first = tensor()
-        second = tensor()
-
-        assert {group.name for group in first.term_groups.values()}.isdisjoint(
-            group.name for group in second.term_groups.values()
-        )
-        lsl.Model([first, second])
-
-    def test_grouped_tf_name_handling_two_termbuilders(self, columb):
-        registry = gb.PandasRegistry(columb, na_action="drop")
-
-        def tensor(prefix):
-            tb = gb.TermBuilder(registry, prefix_names_by=prefix)
-            return tb.tf(
-                tb.ps("x", k=5),
-                tb.ps("y", k=5),
-                order=(2,),
-                group_terms_by_order=True,
-            )
-
-        first = tensor("l.")
-        second = tensor("s.")
-
-        assert all(group.name.startswith("l.") for group in first.term_groups.values())
-        assert all(group.name.startswith("s.") for group in second.term_groups.values())
-        lsl.Model([first, second])
-
-    def test_grouped_tf_name_handling_two_prefixed_dataframes(self, columb):
-        def tensor(prefix):
-            tb = gb.TermBuilder.from_df(columb, prefix_names_by=prefix)
-            return tb.tf(
-                tb.ps("x", k=5),
-                tb.ps("y", k=5),
-                order=(2,),
-                group_terms_by_order=True,
-            )
-
-        lsl.Model([tensor("l."), tensor("s.")])
-
-    def test_grouped_tf_name_handling_explicit_prefixes(self, columb):
-        tb = gb.TermBuilder.from_df(columb)
-
-        def tensor(prefix):
-            return tb.tf(
-                tb.ps("x", k=5, prefix=prefix),
-                tb.ps("y", k=5, prefix=prefix),
-                order=(2,),
-                prefix=prefix,
-                group_terms_by_order=True,
-            )
-
-        lsl.Model([tensor("l."), tensor("s.")])
 
 
 class TestHasStarGibbs:

@@ -7,10 +7,10 @@ def penalty_to_unit_design(penalty: Array, rank: Array | int | None = None) -> A
     Convert a (semi-)definite penalty matrix into the design matrix
     projector used by mixed-model reparameterizations.
 
-    The routine performs an eigenvalue decomposition of `penalty`, keeps the
-    first `rank` eigenvectors (default: numerical rank of `penalty`), rescales
-    them to have unit marginal variance (1 / sqrt(lambda)), and returns the
-    resulting loading matrix.
+    The routine performs an eigenvalue decomposition of ``penalty``. Penalized
+    directions are rescaled by ``1 / sqrt(lambda)`` and null-space directions
+    are retained without rescaling. The returned square matrix therefore maps
+    the penalty to a diagonal matrix containing ones followed by zeros.
 
     Parameters
     ----------
@@ -22,25 +22,29 @@ def penalty_to_unit_design(penalty: Array, rank: Array | int | None = None) -> A
 
     Returns
     -------
-    A matrix whose columns span the penalized subspace and are scaled for
-    mixed-model formulations.
+    A square reparameterization matrix containing both the penalized and the
+    null-space directions.
     """
     if rank is None:
         rank = jnp.linalg.matrix_rank(penalty)
 
     evalues, evectors = jnp.linalg.eigh(penalty)
-    evalues = evalues[::-1]  # put in decreasing order
-    evectors = evectors[:, ::-1]  # make order correspond to eigenvalues
-    rank = jnp.linalg.matrix_rank(penalty)
+    evalues = evalues[::-1]
+    evectors = evectors[:, ::-1]
 
-    if evectors[0, 0] < 0:
-        evectors = -evectors
+    # Eigenvectors have arbitrary signs. Canonicalizing each column separately
+    # makes the transformation repeatable across calls and prediction updates.
+    pivots = jnp.argmax(jnp.abs(evectors), axis=0)
+    pivot_values = jnp.take_along_axis(
+        evectors, jnp.expand_dims(pivots, axis=0), axis=0
+    ).squeeze(axis=0)
+    signs = jnp.where(pivot_values < 0.0, -1.0, 1.0)
+    evectors = evectors * signs
 
-    U = evectors
-    D = 1 / jnp.sqrt(jnp.ones_like(evalues).at[:rank].set(evalues[:rank]))
-    D = D.at[rank:].set(0.0)
-    Z = (U.T * jnp.expand_dims(D, 1)).T
-    return Z
+    penalized = jnp.arange(evalues.shape[0]) < rank
+    safe_evalues = jnp.where(penalized, evalues, 1.0)
+    scales = jnp.where(penalized, 1.0 / jnp.sqrt(safe_evalues), 1.0)
+    return evectors * scales
 
 
 class LinearConstraintEVD:

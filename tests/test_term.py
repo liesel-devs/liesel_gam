@@ -8,7 +8,7 @@ from jax import Array
 
 import liesel_gam as gam
 
-from .r_data import columb_to_pandas
+from .mgcv_data import load_columb
 
 
 def _as_interaction(
@@ -20,7 +20,7 @@ def _as_interaction(
 
 @pytest.fixture(scope="module")
 def columb():
-    return columb_to_pandas()
+    return load_columb()
 
 
 def pspline_penalty(nparam: int, random_walk_order: int = 2) -> Array:

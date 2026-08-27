@@ -684,11 +684,10 @@ class StrctTerm(UserVar):
 
     def scale_penalty(self) -> Self:
         """
-        Scale the penalty matrix by its infinity norm.
+        Scale the penalty relative to the size of the basis matrix.
 
-        The penalty matrix is divided by its infinity norm (max absolute row sum) so
-        that its values are numerically well-conditioned for downstream use. The updated
-        penalty replaces the previous one.
+        This delegates to the design-aware scaling convention implemented by
+        :meth:`.Basis.scale_penalty`.
 
         Returns
         -------
@@ -708,8 +707,8 @@ class StrctTerm(UserVar):
         ...     penalty=2.0 * jnp.eye(2),
         ... )
         >>> term = StrctTerm.f(basis, scale=1.0).scale_penalty()
-        >>> float(jnp.max(term.basis.penalty.value))
-        1.0
+        >>> float(jnp.linalg.norm(term.basis.penalty.value, ord=1))
+        4.0
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.scale_penalty()

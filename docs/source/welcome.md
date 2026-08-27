@@ -8,9 +8,9 @@ by this Python library. We could also say:
 
 This library provides functionality to make the setup of generalized additive models
 in [Liesel](https://github.com/liesel-devs/liesel) convenient.
-It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty matrices
-from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html),
-nd relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse Wilkinson
+Its smooth bases and penalties are implemented natively with
+[JAX](https://github.com/jax-ml/jax), and it relies on
+[formulaic](https://github.com/matthewwardrop/formulaic) to parse Wilkinson
 formulas, known to many from the formula syntax in R.
 
 Some technical highlights:

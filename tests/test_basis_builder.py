@@ -10,14 +10,13 @@ from formulaic.errors import (
     FormulaSyntaxError,
 )
 from jax.typing import ArrayLike
-from ryp import r, to_py
 
 import liesel_gam.term_builder as gb
 from liesel_gam.registry import PandasRegistry
 from liesel_gam.term_builder import BasisBuilder
 
 from .make_df import make_test_df
-from .r_data import columb_to_pandas
+from .mgcv_data import load_columb, load_columb_polys
 
 
 @pytest.fixture(scope="module")
@@ -589,17 +588,12 @@ class TestFoBasisLinearCategorical:
 
 @pytest.fixture(scope="module")
 def columb():
-    return columb_to_pandas()
+    return load_columb()
 
 
 @pytest.fixture(scope="module")
 def columb_polys():
-    r("library(mgcv)")
-    r("data(columb.polys)")
-    polys = to_py("columb.polys", format="numpy")
-    # turn to zero-based indecing
-    polys = {k: v - 1 for k, v in polys.items()}
-    return polys
+    return load_columb_polys()
 
 
 class TestMRFBasis:

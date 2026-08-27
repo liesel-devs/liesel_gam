@@ -13,12 +13,7 @@ The library can be installed from PYPI:
 
     $ pip install liesel_gam
 
-Since liesel-GAM interfaces with R via ``ryp`` under the hood,
-you also need the R packages ``{arrow}`` and ``{svglite}`` to be available on your system:
-
-.. code:: bash
-
-    $ Rscript -e "install.packages(c('arrow', 'svglite'))"
+No R installation or R package is required.
 
 
 Demo Notebooks
@@ -53,8 +48,8 @@ Relevant Literature
 
 Fahrmeier et al. (2013) is a textbook that introduces structured additive
 regression concepts from the ground up. Wood (2017) is another seminal textbook on
-generalized additive models. The R package mgcv provides many basis functions and
-penalty matrices that we use in ``liesel_gam``.
+generalized additive models. The R package mgcv provides many basis and penalty
+constructions implemented by the standalone ``smoothcon`` dependency.
 
 
 - Fahrmeir, L., Kneib, T., Lang, S., & Marx, B. (2013). Regression—Models, methods and
@@ -215,14 +210,6 @@ future.
     :nosignatures:
 
     ~liesel_gam.experimental.BSplineApprox
-
-
-.. toctree::
-   :hidden:
-   :caption: Help
-   :maxdepth: 1
-
-   troubleshooting
 
 
 Acknowledgements and Funding

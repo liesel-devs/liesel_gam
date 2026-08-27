@@ -15,7 +15,7 @@ This title is short and catchy, but does not convey the full range of models cov
 
 ![Panel of GAM summary plots](img/plots3.png)
 
-This library provides functionality to make the setup of generalized additive models in [Liesel](https://github.com/liesel-devs/liesel) convenient. It uses [ryp](https://github.com/Wainberg/ryp) to obtain basis and penalty matrices from the R package [mgcv](https://cran.r-project.org/web/packages/mgcv/index.html), and relies on [formulaic](https://github.com/matthewwardrop/formulaic) to parse Wilkinson formulas, known to many from the formula syntax in R.
+This library provides functionality to make the setup of generalized additive models in [Liesel](https://github.com/liesel-devs/liesel) convenient. Smooth bases and penalties are implemented natively with [JAX](https://github.com/jax-ml/jax), while [formulaic](https://github.com/matthewwardrop/formulaic) parses Wilkinson formulas known to many from R.
 
 A little syntax teaser:
 
@@ -80,12 +80,10 @@ You can also install the development version from GitHub via pip:
 pip install git+https://github.com/liesel-devs/liesel_gam.git
 ```
 
-Since liesel-GAM interfaces with R via `ryp` under the hood,
-you also need the R packages `{arrow}` and `{svglite}` to be available on your system:
+No R installation or R package is required.
 
-```bash
-Rscript -e "install.packages(c('arrow', 'svglite'))"
-```
+JAX-native smooth basis and penalty construction is provided by the standalone
+[`smoothcon`](https://pypi.org/project/smoothcon/) package.
 
 ## Contents
 
