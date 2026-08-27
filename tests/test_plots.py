@@ -3,15 +3,38 @@ These tests are just smoke tests, ensuring that the plotting functions
 run without error.
 """
 
+from typing import TYPE_CHECKING
+
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import pytest
 from jax.random import key as jkey
+from jax.typing import ArrayLike
 
 import liesel_gam as gam
 
 from .mgcv_data import load_columb, load_columb_polys
+
+if TYPE_CHECKING:
+
+    def _accepts_erased_terms(
+        model: lsl.Model,
+        predictor: gam.AdditivePredictor,
+        samples: dict[str, ArrayLike],
+    ) -> None:
+        model_term = model.vars["term"]
+        predictor_term = predictor.terms["term"]
+
+        gam.summarise_1d_smooth(model_term, samples)
+        gam.summarise_nd_smooth(predictor_term, samples, marginals=(predictor_term,))
+        gam.summarise_cluster(model_term, samples)
+        gam.summarise_regions(predictor_term, samples)
+        gam.summarise_lin(model_term, samples)
+        gam.plot_1d_smooth(predictor_term, samples)
+        gam.plot_2d_smooth(model_term, samples)
+        gam.plot_regions(predictor_term, samples)
+        gam.plot_forest(model_term, samples)
 
 
 @pytest.fixture(scope="module")
@@ -44,6 +67,18 @@ class TestPlots:
 
         gam.plot_1d_smooth(term, samples)
         gam.plot_1d_smooth(term, samples, hdi_prob=0.7)
+
+    def test_plot_1d_smooth_with_erased_terms(self, columb):
+        term = gam.TermBuilder.from_df(columb).ps("x", k=10)
+        predictor = gam.AdditivePredictor("loc")
+        predictor += term
+        model = lsl.Model([predictor])
+        samples: dict[str, ArrayLike] = {
+            term.coef.name: np.zeros(term.coef.value.shape)
+        }
+
+        gam.plot_1d_smooth(model.vars[term.name], samples, ngrid=2)
+        gam.plot_1d_smooth(predictor.terms[term.name], samples, ngrid=2)
 
     def test_plot_2d_smooth(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -104,3 +139,24 @@ class TestPlots:
 
         term._mapping = None
         gam.plot_1d_smooth_clustered(term3, samples)
+
+
+@pytest.mark.parametrize(
+    "func",
+    [
+        gam.summarise_1d_smooth,
+        gam.summarise_nd_smooth,
+        gam.summarise_cluster,
+        gam.summarise_regions,
+        gam.summarise_lin,
+        gam.plot_1d_smooth,
+        gam.plot_2d_smooth,
+        gam.plot_regions,
+        gam.plot_forest,
+    ],
+)
+def test_public_term_functions_reject_incompatible_vars(func) -> None:
+    term = lsl.Var.new_value(0.0, name="not_a_term")
+
+    with pytest.raises(TypeError, match="'term' must be"):
+        func(term, {})
