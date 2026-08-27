@@ -370,7 +370,7 @@ class DictRegistry:
             self._matrix_cache[key] = node_type(
                 lambda *args: jnp.vstack(args).T,
                 *vars_,
-                _name=full_name,
+                _name=f"[{full_name}]",
             )
         return self._matrix_cache[key]
 

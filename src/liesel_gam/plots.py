@@ -80,10 +80,10 @@ def plot_1d_smooth(
         # a strong node.
         # That is not necessarily always the case.
         xgrid = np.linspace(term.basis.x.value.min(), term.basis.x.value.max(), 150)
-        newdata_x: Mapping[str, ArrayLike] = {term.basis.x.name: xgrid}
+        newdata_x: Mapping[str, ArrayLike] = {term.basis.input_name: xgrid}
     else:
         newdata_x = newdata
-        xgrid = np.asarray(newdata[term.basis.x.name])
+        xgrid = np.asarray(newdata[term.basis.input_name])
 
     newdata_x = _as_array_dict(newdata_x)
 
@@ -100,14 +100,14 @@ def plot_1d_smooth(
 
     p = p9.ggplot(term_summary) + p9.labs(
         title=f"Posterior summary of {term.name}",
-        x=term.basis.x.name,
+        x=term.basis.input_name,
         y=term.name,
     )
 
     if ci_quantiles is not None:
         p = p + p9.geom_ribbon(
             p9.aes(
-                term.basis.x.name,
+                term.basis.input_name,
                 ymin=f"q_{ci_quantiles[0]!s}",
                 ymax=f"q_{ci_quantiles[1]!s}",
             ),
@@ -118,13 +118,13 @@ def plot_1d_smooth(
 
     if hdi_prob is not None:
         p = p + p9.geom_line(
-            p9.aes(term.basis.x.name, "hdi_low"),
+            p9.aes(term.basis.input_name, "hdi_low"),
             linetype="dashed",
             data=term_summary,
         )
 
         p = p + p9.geom_line(
-            p9.aes(term.basis.x.name, "hdi_high"),
+            p9.aes(term.basis.input_name, "hdi_high"),
             linetype="dashed",
             data=term_summary,
         )
@@ -136,19 +136,19 @@ def plot_1d_smooth(
             key=key, a=term_samples, name=term.name, n=show_n_samples
         )
 
-        summary_samples_df[term.basis.x.name] = np.tile(
+        summary_samples_df[term.basis.input_name] = np.tile(
             np.squeeze(xgrid), show_n_samples
         )
 
         p = p + p9.geom_line(
-            p9.aes(term.basis.x.name, term.name, group="sample"),
+            p9.aes(term.basis.input_name, term.name, group="sample"),
             color="grey",
             data=summary_samples_df,
             alpha=0.3,
         )
 
     p = p + p9.geom_line(
-        p9.aes(term.basis.x.name, "mean"), data=term_summary, size=1.3, color="blue"
+        p9.aes(term.basis.input_name, "mean"), data=term_summary, size=1.3, color="blue"
     )
 
     return p
@@ -597,7 +597,7 @@ def plot_forest_clustered(
         quantiles=ci_quantiles,
         hdi_prob=hdi_prob,
     )
-    cluster = term.basis.x.name
+    cluster = term.basis.input_name
 
     if labels is None:
         xlab = cluster + " (indices)"
@@ -699,9 +699,9 @@ def plot_1d_smooth_clustered(
     )
 
     if labels is None:
-        clab = cluster.basis.x.name + " (indices)"
+        clab = cluster.basis.input_name + " (indices)"
     else:
-        clab = cluster.basis.x.name + " (labels)"
+        clab = cluster.basis.input_name + " (labels)"
 
     if isinstance(term, StrctTerm):
         x = term.basis.x
@@ -710,8 +710,8 @@ def plot_1d_smooth_clustered(
 
     p = (
         p9.ggplot(term_summary)
-        + p9.aes(x.name, "mean", group=cluster.basis.x.name)
-        + p9.aes(color=cluster.basis.x.name)
+        + p9.aes(x.name, "mean", group=cluster.basis.input_name)
+        + p9.aes(color=cluster.basis.input_name)
         + p9.labs(
             title=f"Posterior summary of {clustered_term.name}", x=x.name, color=clab
         )

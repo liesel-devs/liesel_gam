@@ -195,6 +195,158 @@ class TestTermBuilder:
 
 
 class TestLinTerm:
+    def test_lin_accepts_lin_basis(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(
+            columb[["x", "y"]].to_numpy(),
+            xname="design",
+            name="V",
+            penalty=None,
+        )
+
+        term = tb.lin(basis)
+
+        assert term.basis is basis
+        assert term.name == "lin(V)"
+        assert term.column_names == ["V[0]", "V[1]"]
+        assert term.value.shape == (len(columb),)
+        with pytest.raises(ValueError, match="No model spec"):
+            _ = term.model_spec
+        with pytest.raises(ValueError, match="No mappings"):
+            _ = term.mappings
+
+        basis.column_names = ["x", "y"]
+        assert term.column_names == ["V[0]", "V[1]"]
+
+    def test_lin_preserves_lin_basis_metadata(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = tb.bases.lin("x + y")
+
+        term = tb.lin(basis)
+
+        assert term.model_spec is basis.model_spec
+        assert term.mappings == basis.mappings
+        assert term.column_names == basis.column_names
+
+    def test_lin_rejects_penalized_lin_basis(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(columb[["x", "y"]].to_numpy(), xname="design", name="V")
+
+        with pytest.raises(ValueError, match="without a penalty"):
+            tb.lin(basis)
+
+    def test_slin_accepts_penalized_lin_basis(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+        penalty = jnp.diag(jnp.array([1.0, 4.0]))
+        basis = gam.LinBasis(
+            columb[["x", "y"]].to_numpy(),
+            xname="design",
+            name="V",
+            penalty=penalty,
+        )
+
+        term = tb.slin(basis, scale=1.0)
+
+        assert term.basis is basis
+        assert term.name == "slin(V)"
+        assert term.column_names == ["V[0]", "V[1]"]
+        assert term.coef.dist_node is not None
+        assert jnp.array_equal(term.coef.dist_node["penalty"].value, penalty)
+
+    def test_slin_rejects_unpenalized_lin_basis(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(
+            columb[["x", "y"]].to_numpy(),
+            xname="design",
+            name="V",
+            penalty=None,
+        )
+
+        with pytest.raises(ValueError, match='penalty="identity"'):
+            tb.slin(basis)
+
+    @pytest.mark.parametrize(
+        ("method", "penalty"), (("lin", None), ("slin", "identity"))
+    )
+    def test_rejects_unnamed_lin_basis(self, columb, method, penalty):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(
+            columb[["x", "y"]].to_numpy(),
+            xname="design",
+            name="",
+            penalty=penalty,
+        )
+
+        with pytest.raises(ValueError, match="must be named"):
+            getattr(tb, method)(basis)
+
+    @pytest.mark.parametrize(
+        ("value", "message"),
+        (
+            (jnp.ones(3), "two-dimensional"),
+            (jnp.ones((0, 2)), "nonempty"),
+            (jnp.ones((3, 0)), "nonempty"),
+        ),
+        ids=("one-dimensional", "no-rows", "no-columns"),
+    )
+    @pytest.mark.parametrize(
+        ("method", "penalty"), (("lin", None), ("slin", "identity"))
+    )
+    def test_rejects_invalid_lin_basis_shape(
+        self, columb, method, penalty, value, message
+    ):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(value, xname="design", name="V", penalty=penalty)
+
+        with pytest.raises(ValueError, match=message):
+            getattr(tb, method)(basis)
+
+    @pytest.mark.parametrize(
+        ("method", "penalty"), (("lin", None), ("slin", "identity"))
+    )
+    def test_rejects_nonnumeric_lin_basis(self, columb, method, penalty):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(
+            jnp.ones((len(columb), 2), dtype=bool),
+            xname="design",
+            name="V",
+            penalty=penalty,
+        )
+
+        with pytest.raises(ValueError, match="numeric"):
+            getattr(tb, method)(basis)
+
+    @pytest.mark.parametrize(
+        ("kwargs", "argument"),
+        (
+            ({"include_intercept": True}, "include_intercept"),
+            ({"context": {}}, "context"),
+        ),
+    )
+    @pytest.mark.parametrize(
+        ("method", "penalty"), (("lin", None), ("slin", "identity"))
+    )
+    def test_rejects_formula_options_with_lin_basis(
+        self, columb, method, penalty, kwargs, argument
+    ):
+        tb = gam.TermBuilder.from_df(columb)
+        basis = gam.LinBasis(
+            columb[["x", "y"]].to_numpy(),
+            xname="design",
+            name="V",
+            penalty=penalty,
+        )
+
+        with pytest.raises(ValueError, match=argument):
+            getattr(tb, method)(basis, **kwargs)
+
+    @pytest.mark.parametrize("method", ("lin", "slin"))
+    def test_rejects_unsupported_linear_input(self, columb, method):
+        tb = gam.TermBuilder.from_df(columb)
+
+        with pytest.raises(TypeError, match="str or LinBasis"):
+            getattr(tb, method)(jnp.ones((len(columb), 2)))
+
     def test_slin(self, columb):
         tb = gam.TermBuilder.from_df(columb)
 

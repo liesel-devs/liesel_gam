@@ -213,6 +213,7 @@ class Basis(UserVar):
             raise TypeError("row_wise must be a bool or None.")
         self._validate_xname(value, xname)
         value_var = _ensure_var_or_node(value, xname)
+        self._input_name = value_var.name
 
         if use_callback:
             value_ar = jnp.asarray(value_var.value)
@@ -291,6 +292,11 @@ class Basis(UserVar):
     def x(self) -> lsl.Var | lsl.Node:
         """The input variable (observations) used to construct the basis."""
         return self.value_node[0]
+
+    @property
+    def input_name(self) -> str:
+        """Public name of the observed input or inputs."""
+        return self._input_name
 
     @property
     def constraint(self) -> str | None:
@@ -1033,6 +1039,14 @@ class LinBasis(Basis):
     """
     Dedicated basis object for linear effects.
 
+    Parameters
+    ----------
+    column_names
+        Optional names for the columns of the basis matrix. By default, names are
+        generated from the basis name, for example ``V[0]`` and ``V[1]`` for a
+        two-column basis named ``V``. Column names can also be replaced later through
+        :attr:`.column_names`.
+
     See :class:`.Basis` for general usage information. This class additionally offers
 
     - :attr:`.model_spec`: The model spec used internally by ``formulaic`` to set up
@@ -1040,11 +1054,41 @@ class LinBasis(Basis):
     - :attr:`.mappings`: A dictionary of label-integer mappings for all categorical
       variables in this basis.
     - :attr:`.column_names`: List of column names for this basis.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel_gam as gam
+    >>> basis = gam.LinBasis(jnp.ones((3, 2)), xname="x", name="V")
+    >>> basis.column_names
+    ['V[0]', 'V[1]']
+
+    Column names can be supplied during initialization or replaced later.
+
+    >>> basis = gam.LinBasis(
+    ...     jnp.ones((3, 2)),
+    ...     xname="x",
+    ...     name="V",
+    ...     column_names=["intercept", "slope"],
+    ... )
+    >>> basis.column_names = ["constant", "gradient"]
+    >>> basis.column_names
+    ['constant', 'gradient']
     """
 
     _model_spec: ModelSpec | None = None
     _mappings: dict[str, CategoryMapping] | None = None
     _column_names: list[str] | None = None
+
+    def __init__(
+        self,
+        *args,
+        column_names: Sequence[str] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        ncols = self.value.shape[-1] if self.value.ndim else 1
+        self.column_names = column_names or [f"{self.name}[{i}]" for i in range(ncols)]
 
     @property
     def model_spec(self) -> ModelSpec:

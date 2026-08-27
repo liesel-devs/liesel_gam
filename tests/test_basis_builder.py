@@ -208,7 +208,10 @@ class TestFoBasisLinearNumeric:
         bases = gb.BasisBuilder(registry)
         basis = bases.lin("y + x_float", xname="y,x", basis_name="B")
 
+        model = lsl.Model([basis])
         assert basis.name == "B(y,x)"
+        assert basis.x.name != "y,x"
+        assert set(model.vars).isdisjoint(model.nodes)
 
     def test_removing_intercept_manually_is_forbidden(self, data):
         registry = gb.PandasRegistry(data, na_action="drop")

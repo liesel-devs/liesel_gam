@@ -12,7 +12,7 @@ import pandas as pd
 import tensorflow_probability.substrates.jax.bijectors as tfb
 from liesel.model.model import TemporaryModel
 
-from .basis import ApproximationSpec
+from .basis import ApproximationSpec, LinBasis
 from .basis_builder import BasisBuilder
 from .names import NameManager
 from .registry import CategoryMapping, DictRegistry, PandasRegistry
@@ -327,6 +327,28 @@ class TermBuilder:
         else:
             return inference
 
+    @staticmethod
+    def _validate_lin_basis(
+        basis: LinBasis,
+        *,
+        context: dict[str, Any] | None,
+        include_intercept: bool,
+    ) -> None:
+        if not basis.name:
+            raise ValueError("A LinBasis supplied to a TermBuilder must be named.")
+        if basis.value.ndim != 2:
+            raise ValueError("A supplied LinBasis must be two-dimensional.")
+        if 0 in basis.value.shape:
+            raise ValueError("A supplied LinBasis must be nonempty.")
+        if not jnp.issubdtype(basis.value.dtype, jnp.number):
+            raise ValueError("A supplied LinBasis must contain numeric values.")
+        if context is not None:
+            raise ValueError("context is only supported when formula is a string.")
+        if include_intercept:
+            raise ValueError(
+                "include_intercept is only supported when formula is a string."
+            )
+
     def init_scale(
         self,
         scale: lsl.Var | ScaleIG | float | Literal["default"] | VarIGPrior,
@@ -463,7 +485,7 @@ class TermBuilder:
     # formula
     def lin(
         self,
-        formula: str,
+        formula: str | LinBasis,
         prior: lsl.Dist | None = None,
         inference: InferenceTypes | None | Literal["default"] = "default",
         context: dict[str, Any] | None = None,
@@ -477,8 +499,9 @@ class TermBuilder:
         Parameters
         ----------
         formula
-            Right-hand side of a model formula, as understood by formulaic_. Most of
-            formulaic's grammar_ is supported. See notes for details.
+            Right-hand side of a model formula, as understood by formulaic_, or a
+            named, unpenalized :class:`.LinBasis`. Most of formulaic's grammar_ is
+            supported. See notes for details.
         prior
             An optional prior for this term's coefficient. The default is a constant
             prior.
@@ -491,14 +514,16 @@ class TermBuilder:
         context
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
-            ``formulaic.ModelSpec.get_model_matrix()``.
+            ``formulaic.ModelSpec.get_model_matrix()``. Only supported when ``formula``
+            is a string.
         prefix
             A string prefix to be added to the returned term's name.
         name
             Manually defined name of the term. If a prefix is specified, the prefix
             will be added to this name.
         include_intercept
-            Whether to include an intercept column in the design matrix.
+            Whether to include an intercept column in a formula-generated design
+            matrix. Only supported when ``formula`` is a string.
 
         See Also
         --------
@@ -574,19 +599,43 @@ class TermBuilder:
         >>> bb.lin("x_lin * x_cat")
         LinBasis(name="X")
 
+        Using an existing linear basis:
+
+        >>> basis = gam.LinBasis(
+        ...     df[["x_lin", "x_nonlin"]].to_numpy(),
+        ...     xname="design",
+        ...     name="V",
+        ...     penalty=None,
+        ... )
+        >>> tb = gam.TermBuilder.from_df(df)
+        >>> tb.lin(basis)
+        LinTerm(name="lin(V)")
+
 
         .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
         .. _formulaic_categorical: https://matthew.wardrop.casa/formulaic/latest/guides/contrasts/#contrast-codings
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
 
-        basis = self.bases.lin(
-            formula,
-            xname="",
-            basis_name="X",
-            include_intercept=include_intercept,
-            context=context,
-        )
+        if isinstance(formula, LinBasis):
+            basis = formula
+            self._validate_lin_basis(
+                basis, context=context, include_intercept=include_intercept
+            )
+            if basis.penalty is not None:
+                raise ValueError(
+                    "A LinBasis supplied to lin must be without a penalty."
+                )
+        elif isinstance(formula, str):
+            basis = self.bases.lin(
+                formula,
+                xname="",
+                basis_name="X",
+                include_intercept=include_intercept,
+                context=context,
+            )
+        else:
+            raise TypeError("formula must be a str or LinBasis.")
 
         term_name = self.names.create(prefix + "lin" + "(" + basis.name + ")")
         term_name = prefix + name if name is not None else term_name
@@ -601,15 +650,17 @@ class TermBuilder:
             coef_name=coef_name,
         )
 
-        term.model_spec = basis.model_spec
-        term.mappings = basis.mappings
+        if basis._model_spec is not None:
+            term.model_spec = basis.model_spec
+        if basis._mappings is not None:
+            term.mappings = basis.mappings
         term.column_names = basis.column_names
 
         return term
 
     def slin(
         self,
-        formula: str,
+        formula: str | LinBasis,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         context: dict[str, Any] | None = None,
@@ -619,13 +670,16 @@ class TermBuilder:
         include_intercept: bool = False,
     ) -> StrctLinTerm:
         """
-        Linear term with an identity penalty matrix, leading to a ridge prior.
+        Structured linear term with an identity penalty by default.
 
         Parameters
         ----------
         formula
-            Right-hand side of a model formula, as understood by formulaic_. Most of
-            formulaic's grammar_ is supported. See notes for details.
+            Right-hand side of a model formula, as understood by formulaic_, or a
+            named, penalized :class:`.LinBasis`. A formula-generated basis receives an
+            identity penalty, leading to a ridge prior. A supplied basis keeps its
+            existing penalty. Most of formulaic's grammar_ is supported. See notes for
+            details.
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
@@ -654,14 +708,16 @@ class TermBuilder:
         context
             Dictionary of additional Python objects that should be made available to
             formulaic when constructing the design matrix. Gets passed to
-            ``formulaic.ModelSpec.get_model_matrix()``.
+            ``formulaic.ModelSpec.get_model_matrix()``. Only supported when ``formula``
+            is a string.
         prefix
             A string prefix to be added to the returned term's name.
         name
             Manually defined name of the term. If a prefix is specified, the prefix
             will be added to this name.
         include_intercept
-            Whether to include an intercept column in the design matrix.
+            Whether to include an intercept column in a formula-generated design
+            matrix. Only supported when ``formula`` is a string.
 
         See Also
         --------
@@ -712,19 +768,44 @@ class TermBuilder:
         >>> tb.slin("x_lin")
         StrctLinTerm(name="slin(X)")
 
+        A supplied basis must already have a penalty. Use ``penalty="identity"`` for
+        a ridge prior.
+
+        >>> basis = gam.LinBasis(
+        ...     df[["x_lin", "x_nonlin"]].to_numpy(),
+        ...     xname="design",
+        ...     name="V",
+        ...     penalty="identity",
+        ... )
+        >>> tb.slin(basis, scale=1.0)
+        StrctLinTerm(name="slin(V)")
+
 
         .. _formulaic: https://matthewwardrop.github.io/formulaic/latest/
         .. _formulaic_categorical: https://matthew.wardrop.casa/formulaic/latest/guides/contrasts/#contrast-codings
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
-        basis = self.bases.lin(
-            formula,
-            xname="",
-            basis_name="X",
-            include_intercept=include_intercept,
-            context=context,
-        )
-        basis._penalty = lsl.Value(jnp.eye(basis.nbases))
+        if isinstance(formula, LinBasis):
+            basis = formula
+            self._validate_lin_basis(
+                basis, context=context, include_intercept=include_intercept
+            )
+            if basis.penalty is None:
+                raise ValueError(
+                    "A LinBasis supplied to slin must have a penalty; use "
+                    'penalty="identity" for a ridge penalty.'
+                )
+        elif isinstance(formula, str):
+            basis = self.bases.lin(
+                formula,
+                xname="",
+                basis_name="X",
+                include_intercept=include_intercept,
+                context=context,
+            )
+            basis._penalty = lsl.Value(jnp.eye(basis.nbases))
+        else:
+            raise TypeError("formula must be a str or LinBasis.")
 
         fname = self.names.create(prefix + "slin" + "(" + basis.name + ")")
         term_name = prefix + name if name is not None else fname
@@ -741,8 +822,10 @@ class TermBuilder:
         if factor_scale:
             term.factor_scale()
 
-        term.model_spec = basis.model_spec
-        term.mappings = basis.mappings
+        if basis._model_spec is not None:
+            term.model_spec = basis.model_spec
+        if basis._mappings is not None:
+            term.mappings = basis.mappings
         term.column_names = basis.column_names
 
         return term
@@ -870,7 +953,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "cr", basis.x.name)
+        fname = self.names.fname(prefix + "cr", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -1010,7 +1093,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "cs", basis.x.name)
+        fname = self.names.fname(prefix + "cs", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -1151,7 +1234,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "cc", basis.x.name)
+        fname = self.names.fname(prefix + "cc", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -1295,7 +1378,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "bs", basis.x.name)
+        fname = self.names.fname(prefix + "bs", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -1455,7 +1538,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "ps", basis.x.name)
+        fname = self.names.fname(prefix + "ps", basis.input_name)
         term_name = prefix + name if name is not None else fname
 
         coef_name = self.names.beta(term_name)
@@ -1610,7 +1693,7 @@ class TermBuilder:
             basis.diagonalize_penalty()
         basis = self.bases._maybe_approximate(basis, approximation)
 
-        fname = self.names.fname(prefix + "np", basis.x.name)
+        fname = self.names.fname(prefix + "np", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -1760,7 +1843,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "cp", basis.x.name)
+        fname = self.names.fname(prefix + "cp", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -1866,7 +1949,7 @@ class TermBuilder:
         """
         basis = self.bases.ri(cluster=cluster, basis_name="B", penalty=penalty)
 
-        fname = self.names.fname(prefix + "ri", basis.x.name)
+        fname = self.names.fname(prefix + "ri", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
         coef_name = self.names.beta(fname)
@@ -2103,7 +2186,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + bs, basis.x.name)
+        fname = self.names.fname(prefix + bs, basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -2288,7 +2371,7 @@ class TermBuilder:
             basis_name="B",
         )
 
-        fname = self.names.fname(prefix + "mrf", basis.x.name)
+        fname = self.names.fname(prefix + "mrf", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
         coef_name = self.names.beta(fname)
@@ -2457,7 +2540,7 @@ class TermBuilder:
             row_wise=row_wise,
         )
 
-        fname = self.names.fname(prefix + "f", basis.x.name)
+        fname = self.names.fname(prefix + "f", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
         coef_name = self.names.beta(fname)
@@ -2610,7 +2693,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "kriging", basis.x.name)
+        fname = self.names.fname(prefix + "kriging", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
         coef_name = self.names.beta(fname)
@@ -2753,7 +2836,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "tp", basis.x.name)
+        fname = self.names.fname(prefix + "tp", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
@@ -2895,7 +2978,7 @@ class TermBuilder:
             approximation=approximation,
         )
 
-        fname = self.names.fname(prefix + "ts", basis.x.name)
+        fname = self.names.fname(prefix + "ts", basis.input_name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
 
