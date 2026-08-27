@@ -554,3 +554,7 @@ Liesel is being developed by Paul Wiemann, Hannes Riebl, Johannes
 Brachem and Gianmarco Callegher with support from Thomas Kneib. We are
 grateful to the German Research Foundation (DFG) for funding the
 development through grant KN 922/11-1.
+
+`liesel_gam` is licensed under GPL-3.0-or-later. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for historical notices and
+third-party attribution.

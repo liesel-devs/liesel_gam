@@ -4,6 +4,8 @@ dynamic = ["version"]
 description = "Functionality for Generalized Additive Models in Liesel"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
     "formulaic>=1.2.1",
     "liesel>=0.5.1",
@@ -20,7 +22,7 @@ authors = [
 ]
 keywords = ["statistics", "machine-learning"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Intended Audience :: Science/Research",
