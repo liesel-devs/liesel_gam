@@ -134,7 +134,9 @@ def summarise_1d_smooth(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = term.predict(dict(samples), newdata=newdata_x)
+    term_samples = term.predict(
+        gs.Position(dict(samples)), newdata=gs.Position(newdata_x)
+    )
     term_summary = (
         gs.SamplesSummary.from_array(
             term_samples,
@@ -271,7 +273,9 @@ def summarise_nd_smooth(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = term.predict(dict(samples), newdata=newdata_x)
+    term_samples = term.predict(
+        gs.Position(dict(samples)), newdata=gs.Position(newdata_x)
+    )
 
     ci_quantiles_ = (0.05, 0.95) if quantiles is None else quantiles
     hdi_prob_ = 0.9 if hdi_prob is None else hdi_prob
@@ -406,7 +410,9 @@ def summarise_cluster(
         newdata_x = {term.basis.x.name: grid}
 
     newdata_x = _as_array_dict(newdata_x)
-    predictions = term.predict(samples=dict(samples), newdata=newdata_x)
+    predictions = term.predict(
+        samples=gs.Position(dict(samples)), newdata=gs.Position(newdata_x)
+    )
     predictions_summary = (
         gs.SamplesSummary.from_array(
             predictions,
@@ -725,7 +731,9 @@ def summarise_1d_smooth_clustered(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = clustered_term.predict(dict(samples), newdata=newdata_x)
+    term_samples = clustered_term.predict(
+        gs.Position(dict(samples)), newdata=gs.Position(newdata_x)
+    )
     term_summary = (
         gs.SamplesSummary.from_array(
             term_samples,

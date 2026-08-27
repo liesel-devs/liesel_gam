@@ -87,7 +87,7 @@ def plot_1d_smooth(
 
     newdata_x = _as_array_dict(newdata_x)
 
-    term_samples = term.predict(samples, newdata=newdata_x)
+    term_samples = term.predict(gs.Position(samples), newdata=gs.Position(newdata_x))
 
     term_summary = summarise_1d_smooth(
         term=term,
