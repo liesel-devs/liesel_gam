@@ -15,7 +15,7 @@ from liesel.model.model import TemporaryModel
 from .basis import ApproximationSpec, LinBasis
 from .basis_builder import BasisBuilder
 from .names import NameManager
-from .registry import CategoryMapping, PandasRegistry
+from .registry import CategoryMapping, DictRegistry, PandasRegistry
 from .term import (
     LinTerm,
     MRFTerm,
@@ -64,7 +64,8 @@ class TermBuilder:
     Parameters
     ----------
     registry
-        Provides an interface to a data frame used to set up the model terms.
+        A :class:`.DictRegistry` or :class:`.PandasRegistry` providing named source
+        values used to set up the model terms.
     prefix_names_by
         Names created by this TermBuilder will be prefixed by the string supplied here.
     default_inference
@@ -301,7 +302,7 @@ class TermBuilder:
 
     def __init__(
         self,
-        registry: PandasRegistry,
+        registry: DictRegistry,
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
@@ -419,7 +420,7 @@ class TermBuilder:
     @classmethod
     def from_dict(
         cls,
-        data: dict[str, ArrayLike],
+        data: Mapping[str, Any],
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
@@ -428,13 +429,17 @@ class TermBuilder:
         """
         Initializes a TermBuilder from a dictionary that holds the data.
 
-        Internally, this will create a :class:`.PandasRegistry` with
-        ``na_action="drop"``.
+        Internally, this creates a :class:`.DictRegistry`. Values may have unrelated
+        shapes and no missing-data policy is applied. Construct a :class:`.DictRegistry`
+        or :class:`.PandasRegistry` directly for custom conversion or pandas missing-
+        data handling. Nested mappings are not aligned; use :meth:`from_df` for a
+        DataFrame or ``dataframe.to_dict("list")`` when converting one manually.
 
         The other arguments are passed on to the init.
         """
-        return cls.from_df(
-            pd.DataFrame(data),
+        registry = DictRegistry(data, prefix_names_by=prefix_names_by)
+        return cls(
+            registry,
             prefix_names_by=prefix_names_by,
             default_inference=default_inference,
             default_scale_fn=default_scale_fn,

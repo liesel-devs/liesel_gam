@@ -192,6 +192,7 @@ Other
     :caption: Other
     :nosignatures:
 
+    ~liesel_gam.DictRegistry
     ~liesel_gam.PandasRegistry
     ~liesel_gam.CategoryMapping
     ~liesel_gam.MRFSpec

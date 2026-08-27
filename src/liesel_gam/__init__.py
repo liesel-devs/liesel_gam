@@ -28,6 +28,7 @@ from .plots import plot_forest as plot_forest
 from .plots import plot_polys as plot_polys
 from .plots import plot_regions as plot_regions
 from .predictor import AdditivePredictor as AdditivePredictor
+from .registry import DictRegistry as DictRegistry
 from .registry import PandasRegistry as PandasRegistry
 from .scale import scale_ig as scale_ig
 from .scale import scale_wb as scale_wb

@@ -157,7 +157,12 @@ class TestTermBuilder:
         lsl.Model([sx, sy])
 
     def test_from_dict(self, data):
-        gb.TermBuilder.from_dict(data.to_dict())
+        tb = gb.TermBuilder.from_dict(
+            {"x": np.linspace(0.0, 1.0, 20), "unrelated": np.ones((2, 3))}
+        )
+
+        assert isinstance(tb.registry, gam.DictRegistry)
+        assert tb.ps("x", k=5).value.shape == (20,)
 
     def test_default_scale(self, columb):
         tb = gb.TermBuilder.from_df(

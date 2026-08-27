@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -15,7 +16,7 @@ import smoothcon
 
 from .basis import ApproximationSpec, Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
-from .registry import CategoryMapping, PandasRegistry
+from .registry import CategoryMapping, DictRegistry
 
 InferenceTypes = Any
 
@@ -26,6 +27,8 @@ BasisTypes = Literal["tp", "ts", "cr", "cs", "cc", "bs", "ps", "cp", "gp"]
 
 
 logger = logging.getLogger(__name__)
+
+_QUOTED_FORMULA_VARIABLE = re.compile(r"""\bQ\(\s*(['"])(.*?)\1\s*\)""")
 
 
 def _validate_bs(bs):
@@ -67,12 +70,13 @@ def _validate_penalty_order(penalty_order: int):
 
 class BasisBuilder:
     """
-    Initializes :class:`.Basis` objects from data in a :class:`.PandasRegistry`.
+    Initializes :class:`.Basis` objects from data in a :class:`.DictRegistry`.
 
     Parameters
     ----------
     registry
-        A pandas registry, giving access to the data.
+        A :class:`.DictRegistry` or :class:`.PandasRegistry` giving access to named
+        source values.
     names
         A name manager for creating unique names.
     approximation
@@ -108,7 +112,7 @@ class BasisBuilder:
 
     def __init__(
         self,
-        registry: PandasRegistry,
+        registry: DictRegistry,
         names: NameManager | None = None,
         approximation: bool | ApproximationSpec = False,
     ) -> None:
@@ -128,11 +132,11 @@ class BasisBuilder:
         self.approximation = approximation
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}(data_shape={self.registry.data.shape})"
+        return f"{type(self).__name__}(keys={list(self.registry.keys())!r})"
 
     @property
-    def data(self) -> pd.DataFrame:
-        """The dataframe wrapped by this builder's registry."""
+    def data(self) -> Any:
+        """The source values wrapped by this builder's registry."""
         return self.registry.data
 
     def basis(
@@ -291,8 +295,8 @@ class BasisBuilder:
 
     def _get_var_and_value(self, x: str | lsl.Var) -> tuple[lsl.Var, jax.Array]:
         if isinstance(x, str):
-            x_array = jnp.asarray(self.registry.data[x].to_numpy())
             x_var = self.registry.get_numeric_obs(x)
+            x_array = jnp.asarray(x_var.value)
 
         elif isinstance(x, lsl.Var):
             if not x.name:
@@ -1450,6 +1454,7 @@ class BasisBuilder:
 
         - String literals
         - Numeric literals
+        - Multidimensional registry values
         - Wildcard ``"."``
         - ``\\|`` for splitting a formula
         - ``"~"`` in formula, since this method supports only the right-hand side of a
@@ -1501,14 +1506,64 @@ class BasisBuilder:
         if not isinstance(parsed_formula, fo.SimpleFormula):
             raise ValueError("Structured formulas are not supported.")
 
-        spec = fo.ModelSpec(parsed_formula, output="numpy")
+        spec = fo.ModelSpec(
+            parsed_formula,
+            output="numpy",
+            materializer="pandas",
+        )
+
+        required_variables = set()
+        for term in parsed_formula:
+            for factor in term.factors:
+                if factor.eval_method.value == "lookup":
+                    required_variables.add(factor.expr)
+                elif factor.eval_method.value == "python":
+                    required_variables.update(
+                        node.id
+                        for node in ast.walk(ast.parse(factor.expr, mode="eval"))
+                        if isinstance(node, ast.Name)
+                    )
+        quoted_variables = {
+            match.group(2) for match in _QUOTED_FORMULA_VARIABLE.finditer(formula)
+        }
+        required_variables.update(quoted_variables)
+        required = sorted(
+            variable
+            for variable in required_variables
+            if variable in self.registry.keys() or variable in quoted_variables
+        )
+        for variable in required:
+            self.registry.is_categorical(variable)
 
         # evaluate model matrix once to get a spec with structure information
         # also necessary to populate spec with the correct information for
         # transformations like center, scale, standardize
         try:
+            variables = {}
+            mappings = {}
+            formula_data = {}
+            for variable in required:
+                result = self.registry.get_obs_and_mapping(variable)
+                variables[variable] = result.var
+                if result.var.value.ndim != 1:
+                    raise ValueError(
+                        f"Formula variable {variable!r} must be one-dimensional, "
+                        f"got shape {result.var.value.shape}."
+                    )
+                if result.mapping is None:
+                    formula_data[variable] = np.asarray(result.var.value)
+                    continue
+
+                mapping = result.mapping
+                self.mappings[variable] = mapping
+                mappings[variable] = mapping
+                formula_data[variable] = pd.Categorical(
+                    mapping.integers_to_labels(result.var.value),
+                    categories=list(mapping.labels_to_integers_map),
+                )
+
             evaluated_spec = spec.get_model_matrix(
-                self.data, context=context
+                formula_data, context=context
             ).model_spec
             if evaluated_spec is None:
                 raise RuntimeError("Formulaic did not return a model specification.")
@@ -1516,7 +1571,7 @@ class BasisBuilder:
             raise RuntimeError(
                 "Could not build model matrix. This could be caused by "
                 "unsupported data dtypes like dates. Please check your input data. "
-                "Also check the original error message, included above."
+                f"Original error: {e}"
             ) from e
         spec = evaluated_spec
 
@@ -1524,32 +1579,18 @@ class BasisBuilder:
         # that does not require building the model matrix a second time, but this
         # works robustly for now: we take the names that formulaic creates
         column_names = list(
-            fo.ModelSpec(parsed_formula, output="pandas")
-            .get_model_matrix(self.data, context=context)
+            fo.ModelSpec(
+                parsed_formula,
+                output="pandas",
+                materializer="pandas",
+            )
+            .get_model_matrix(formula_data, context=context)
             .columns
         )
         if not include_intercept:
             column_names = column_names[1:]
 
-        required_set = {str(var) for var in spec.required_variables}
-        # Formulaic 1.2 does not expose the data variable wrapped by Patsy's Q()
-        # through ``required_variables``. It is nevertheless a genuine input node.
-        quoted = re.findall(r"\bQ\(\s*(['\"])(.*?)\1\s*\)", formula)
-        required_set.update(name for _, name in quoted)
-        required = sorted(required_set)
-        df_subset = self.data.loc[:, required]
-        df_colnames = df_subset.columns
-
-        variables = {}
-
-        mappings = {}
-        for col in df_colnames:
-            result = self.registry.get_obs_and_mapping(col)
-            variables[col] = result.var
-
-            if result.mapping is not None:
-                self.mappings[col] = result.mapping
-                mappings[col] = result.mapping
+        df_colnames = required
 
         xvar = lsl.TransientCalc(  # for memory-efficiency
             lambda *args: jnp.vstack(args).T,
@@ -1563,9 +1604,13 @@ class BasisBuilder:
             # for categorical variables: convert integer representation back to
             # labels
             for col in df_colnames:
-                if col in self.mappings:
+                if col in mappings:
                     integers = df[col].to_numpy()
-                    df[col] = self.mappings[col].integers_to_labels(integers)
+                    mapping = mappings[col]
+                    df[col] = pd.Categorical(
+                        mapping.integers_to_labels(integers),
+                        categories=list(mapping.labels_to_integers_map),
+                    )
 
             basis = np.asarray(spec.get_model_matrix(df, context=context))
             if not include_intercept:
