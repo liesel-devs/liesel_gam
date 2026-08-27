@@ -127,10 +127,10 @@ def summarise_1d_smooth(
         # a strong node.
         # That is not necessarily always the case.
         xgrid = np.linspace(term.basis.x.value.min(), term.basis.x.value.max(), ngrid)
-        newdata_x: Mapping[str, ArrayLike] = {term.basis.x.name: xgrid}
+        newdata_x: Mapping[str, ArrayLike] = {term.basis.input_name: xgrid}
     else:
         newdata_x = newdata
-        xgrid = np.asarray(newdata[term.basis.x.name])
+        xgrid = np.asarray(newdata[term.basis.input_name])
 
     newdata_x = _as_array_dict(newdata_x)
 
@@ -147,7 +147,7 @@ def summarise_1d_smooth(
         .reset_index()
     )
 
-    term_summary[term.basis.x.name] = xgrid
+    term_summary[term.basis.input_name] = xgrid
     return term_summary
 
 
@@ -391,19 +391,19 @@ def summarise_cluster(
     if newdata is None and isinstance(labels, CategoryMapping):
         grid = np.asarray(list(labels.integers_to_labels_map))
         unique_x = np.unique(term.basis.x.value)
-        newdata_x: Mapping[str, ArrayLike] = {term.basis.x.name: grid}
+        newdata_x: Mapping[str, ArrayLike] = {term.basis.input_name: grid}
         observed = [x in unique_x for x in grid]
     elif newdata is None:
         grid = np.unique(term.basis.x.value)
-        newdata_x = {term.basis.x.name: grid}
+        newdata_x = {term.basis.input_name: grid}
         observed = [True for _ in grid]
     else:
         unique_x = np.unique(term.basis.x.value)
-        grid = np.asarray(newdata[term.basis.x.name])
+        grid = np.asarray(newdata[term.basis.input_name])
         grid = _convert_to_integers(grid, labels, term)
 
         observed = [x in unique_x for x in grid]
-        newdata_x = {term.basis.x.name: grid}
+        newdata_x = {term.basis.input_name: grid}
 
     newdata_x = _as_array_dict(newdata_x)
     predictions = term.predict(samples=dict(samples), newdata=newdata_x)
@@ -419,20 +419,20 @@ def summarise_cluster(
     )
 
     if isinstance(labels, CategoryMapping):
-        codes = newdata_x[term.basis.x.name]
+        codes = newdata_x[term.basis.input_name]
         labels_str = list(labels.integers_to_labels(codes))
         categories = list(labels.labels_to_integers_map)
-        predictions_summary[term.basis.x.name] = pd.Categorical(
+        predictions_summary[term.basis.input_name] = pd.Categorical(
             labels_str, categories=categories
         )
     elif labels is not None:
         labels_str = list(labels)
         categories = sorted(set(labels_str))
-        predictions_summary[term.basis.x.name] = pd.Categorical(
+        predictions_summary[term.basis.input_name] = pd.Categorical(
             labels_str, categories=categories
         )
     else:
-        predictions_summary[term.basis.x.name] = pd.Categorical(
+        predictions_summary[term.basis.input_name] = pd.Categorical(
             np.asarray(term.basis.x.value)
         )
 
@@ -502,10 +502,10 @@ def summarise_regions(
         quantiles=quantiles,
         hdi_prob=hdi_prob,
     )
-    region = term.basis.x.name
+    region = term.basis.input_name
     which = _normalise_which(which)
 
-    unique_labels_in_df = df[term.basis.x.name].unique().tolist()
+    unique_labels_in_df = df[term.basis.input_name].unique().tolist()
     assert polygons is not None
     for region_label in polygons:
         if region_label not in unique_labels_in_df:
@@ -671,7 +671,7 @@ def summarise_1d_smooth_clustered(
             )
 
         grid: Mapping[str, ArrayLike | Sequence[int] | Sequence[str]] = dict(xgrid) | {
-            cluster.basis.x.name: cgrid
+            cluster.basis.input_name: cgrid
         }
 
         # code : bool
@@ -694,7 +694,7 @@ def summarise_1d_smooth_clustered(
                 term, ngrid=int(np.pow(ngrid, 1 / ncols))
             )
 
-        grid = xgrid | {cluster.basis.x.name: cgrid}
+        grid = xgrid | {cluster.basis.input_name: cgrid}
 
         # code : bool
         observed = {x: True for x in cgrid}
@@ -702,18 +702,18 @@ def summarise_1d_smooth_clustered(
         pass
 
     if newdata is not None and newdata_meshgrid:
-        cgrid = np.asarray(newdata[cluster.basis.x.name])
+        cgrid = np.asarray(newdata[cluster.basis.input_name])
         cgrid = _convert_to_integers(cgrid, labels, cluster)
 
-        grid = {x.name: newdata[x.name], cluster.basis.x.name: cgrid}
+        grid = {x.name: newdata[x.name], cluster.basis.input_name: cgrid}
         full_grid_arrays = [v.flatten() for v in np.meshgrid(*grid.values())]
         newdata_x: Mapping[str, ArrayLike] = dict(zip(grid.keys(), full_grid_arrays))
 
         observed = {x: x in cluster.basis.x.value for x in cgrid}
     elif newdata is not None:
-        cgrid = np.asarray(newdata[cluster.basis.x.name])
+        cgrid = np.asarray(newdata[cluster.basis.input_name])
         cgrid = _convert_to_integers(cgrid, labels, cluster)
-        newdata_x = {x.name: newdata[x.name], cluster.basis.x.name: cgrid}
+        newdata_x = {x.name: newdata[x.name], cluster.basis.input_name: cgrid}
         # code : bool
         if isinstance(labels, CategoryMapping):
             observed = {x: x in cluster.basis.x.value for x in cgrid}
@@ -742,16 +742,16 @@ def summarise_1d_smooth_clustered(
 
     if labels is not None:
         if isinstance(labels, CategoryMapping):
-            labels_long = labels.to_labels(newdata_x[cluster.basis.x.name])
+            labels_long = labels.to_labels(newdata_x[cluster.basis.input_name])
             categories = list(labels.labels_to_integers_map)
-            term_summary[cluster.basis.x.name] = pd.Categorical(
+            term_summary[cluster.basis.input_name] = pd.Categorical(
                 labels_long, categories=categories
             )
         else:
-            term_summary[cluster.basis.x.name] = labels
+            term_summary[cluster.basis.input_name] = labels
 
     term_summary["observed"] = [
-        observed[x] for x in np.asarray(newdata_x[cluster.basis.x.name])
+        observed[x] for x in np.asarray(newdata_x[cluster.basis.input_name])
     ]
 
     term_summary.reset_index(inplace=True)

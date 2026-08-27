@@ -246,7 +246,7 @@ class BasisBuilder:
         Xvar = lsl.TransientCalc(
             lambda *x: jnp.column_stack(x),
             *x_vars,
-            _name=Xname,
+            _name=self.names.create(f"[{Xname}]"),
         )
 
         basis = Basis(
@@ -258,6 +258,7 @@ class BasisBuilder:
             penalty=penalty,
             row_wise=row_wise,
         )
+        basis._input_name = Xname
 
         return self._maybe_approximate(
             basis,
@@ -316,6 +317,7 @@ class BasisBuilder:
         skip_constraint: bool = False,
         approximation: bool | ApproximationSpec | None = None,
         approximation_eligible: bool = True,
+        input_name: str | None = None,
     ) -> Basis:
         """Wrap and transform a raw native smooth in the standard order."""
         basis = Basis(
@@ -327,6 +329,7 @@ class BasisBuilder:
             cache_basis=True,
             row_wise=True,
         )
+        basis._input_name = input_name or xname
         # Native constructors know the mathematical rank before float32
         # roundoff. Preserve it for the mixed-model reparameterization.
         basis._penalty_rank = smooth.rank
@@ -1062,6 +1065,7 @@ class BasisBuilder:
             basis_name=basis_name,
             approximation=approximation,
             approximation_eligible=len(obs_vars) == 1,
+            input_name=xname if all(isinstance(item, str) for item in x) else xvar.name,
         )
 
     def tp(
@@ -1173,6 +1177,7 @@ class BasisBuilder:
             skip_constraint=remove_null_space_completely,
             approximation=approximation,
             approximation_eligible=len(obs_vars) == 1,
+            input_name=xname if all(isinstance(item, str) for item in x) else xvar.name,
         )
 
     def ts(
@@ -1549,7 +1554,7 @@ class BasisBuilder:
         xvar = lsl.TransientCalc(  # for memory-efficiency
             lambda *args: jnp.vstack(args).T,
             *list(variables.values()),
-            _name=self.names.create(xname) if xname else xname,
+            _name=self.names.create(f"[{xname}]") if xname else xname,
         )
 
         def basis_fn(x):
@@ -1568,7 +1573,7 @@ class BasisBuilder:
             return jnp.asarray(basis, dtype=float)
 
         if xname:
-            bname = self.names.create(basis_name + "(" + xvar.name + ")")
+            bname = self.names.create(basis_name + "(" + xname + ")")
         else:
             bname = self.names.create(basis_name)
 
@@ -1580,6 +1585,7 @@ class BasisBuilder:
             name=bname,
             penalty=None,
         )
+        basis._input_name = xname or xvar.name
 
         basis.model_spec = spec
         basis.mappings = mappings
