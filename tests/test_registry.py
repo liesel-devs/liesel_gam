@@ -1,6 +1,7 @@
 """Tests for VariableRegistry."""
 
 import jax.numpy as jnp
+import liesel.model as lsl
 import numpy as np
 import pandas as pd
 import pytest
@@ -46,6 +47,46 @@ def test_basic_get_var(sample_data):
     # test caching
     var2 = registry.get_obs("x1")
     assert var1 is var2
+
+
+def test_observed_position_encodes_only_model_observations():
+    setup = pd.DataFrame(
+        {
+            "x": [1.0, 2.0],
+            "group": pd.Categorical(["a", "b"]),
+            "y": [3.0, 4.0],
+        }
+    )
+    registry = PandasRegistry(setup, prefix_names_by="loc.")
+    x = registry.get_obs("x")
+    group, _ = registry.get_categorical_obs("group")
+    y = lsl.Var.new_obs(setup["y"].to_numpy(), name="y")
+    model = lsl.Model([x, group, y])
+    full = pd.DataFrame(
+        {
+            "x": [5.0, 6.0, 7.0],
+            "group": ["b", "a", "b"],
+            "y": [8.0, 9.0, 10.0],
+            "unused": [11.0, 12.0, 13.0],
+        }
+    )
+
+    position = registry.observed_position(model, full)
+
+    assert set(position) == {"loc.x", "loc.group", "y"}
+    assert position["loc.x"].tolist() == [5.0, 6.0, 7.0]
+    assert position["loc.group"].tolist() == [1, 0, 1]
+    assert position["y"].tolist() == [8.0, 9.0, 10.0]
+
+
+@pytest.mark.parametrize("bad_value", [np.nan, np.inf])
+def test_observed_position_rejects_missing_or_nonfinite_values(bad_value):
+    setup = pd.DataFrame({"x": [1.0, 2.0]})
+    registry = PandasRegistry(setup)
+    model = lsl.Model([registry.get_obs("x")])
+
+    with pytest.raises(ValueError, match="missing or non-finite"):
+        registry.observed_position(model, pd.DataFrame({"x": [3.0, bad_value]}))
 
 
 def test_variable_not_found(registry: PandasRegistry):

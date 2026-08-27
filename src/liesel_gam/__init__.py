@@ -8,6 +8,8 @@ from .basis import LinBasis as LinBasis
 from .basis import MRFBasis as MRFBasis
 from .basis import MRFSpec as MRFSpec
 from .basis_builder import BasisBuilder as BasisBuilder
+from .batching import basis_setup_sample as basis_setup_sample
+from .batching import category_coverage_indices as category_coverage_indices
 from .category_mapping import CategoryMapping as CategoryMapping
 from .category_mapping import series_is_categorical as series_is_categorical
 from .constraint import LinearConstraintEVD as LinearConstraintEVD
