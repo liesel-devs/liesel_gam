@@ -919,7 +919,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=1.4" },
     { name = "plotnine", specifier = ">=0.14.5" },
-    { name = "smoothcon", editable = "../smoothcon2" },
+    { name = "smoothcon", specifier = ">=0.3.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1823,26 +1823,15 @@ wheels = [
 
 [[package]]
 name = "smoothcon"
-version = "0.1.0"
-source = { editable = "../smoothcon2" }
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jax" },
     { name = "numpy" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "jax", specifier = ">=0.7.1" },
-    { name = "numpy", specifier = ">=2.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy", specifier = ">=1.15.0" },
-    { name = "pre-commit", specifier = ">=4.2.0" },
-    { name = "pytest", specifier = ">=8.3.5" },
-    { name = "ruff", specifier = ">=0.11.4" },
-    { name = "ty", specifier = ">=0.0.63" },
+sdist = { url = "https://files.pythonhosted.org/packages/a9/8e/aae2d79cb941fa324da2300ea4ff6d156aa0648fa7e466e7bbd1d2d0e15f/smoothcon-0.3.0.tar.gz", hash = "sha256:7d3887ba07013829e1d6033cb6b3f8e218158e9bd9f7dc3e65755be873b0289a", size = 152085, upload-time = "2026-08-27T14:55:47.696Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/90/78/7929c063f9b2f4a5f6219534f42ec5f6392d8554992717913cbfe41546cc/smoothcon-0.3.0-py3-none-any.whl", hash = "sha256:9e0155a4f60b8ce85e007a16daa9378cdafaee077faf04edc58e9d6ec4bee65d", size = 37056, upload-time = "2026-08-27T14:55:46.462Z" },
 ]
 
 [[package]]

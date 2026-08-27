@@ -108,7 +108,3 @@ exclude = ["tests/", "notebooks/"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
-
-[tool.uv.sources]
-# ponytail: local source until smoothcon 0.1.0 is published; then remove this table.
-smoothcon = { path = "../smoothcon2", editable = true }
