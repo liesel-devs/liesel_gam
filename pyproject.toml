@@ -8,12 +8,15 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
     "formulaic>=1.2.1",
+    "jax>=0.5",
     "liesel>=0.5.1",
     # arviz-plots currently imports matplotlib.style.core, which is not
     # available in matplotlib 3.11.
     "matplotlib<3.11",
-    "smoothcon>=0.0.10",
-    "plotnine>=0.14.5"
+    "numpy>=2.0",
+    "pandas>=1.4",
+    "plotnine>=0.14.5",
+    "smoothcon>=0.3.0",
 ]
 authors = [
     { name = "Johannes Brachem" },
@@ -105,3 +108,7 @@ exclude = ["tests/", "notebooks/"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.sources]
+# ponytail: local source until smoothcon 0.1.0 is published; then remove this table.
+smoothcon = { path = "../smoothcon2", editable = true }

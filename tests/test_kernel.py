@@ -8,12 +8,12 @@ import liesel_gam as gam
 import liesel_gam.term_builder as gb
 from liesel_gam.kernel import init_star_ig_gibbs_factored
 
-from .r_data import columb_to_pandas
+from .mgcv_data import load_columb
 
 
 @pytest.fixture(scope="module")
 def columb():
-    return columb_to_pandas()
+    return load_columb()
 
 
 class TestGibbsKernel:
