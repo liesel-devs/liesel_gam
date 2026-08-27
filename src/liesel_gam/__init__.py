@@ -2,6 +2,7 @@ from . import experimental as experimental
 from . import io as io
 from . import scale as scale
 from .__about__ import __version__ as __version__
+from .basis import ApproximationSpec as ApproximationSpec
 from .basis import Basis as Basis
 from .basis import LinBasis as LinBasis
 from .basis import MRFBasis as MRFBasis

@@ -491,6 +491,43 @@ The `Basis` object then gives you access to its own value through `Basis.value`,
 the basis function through `Basis.value_node.function`, and to its penalty
 through `Basis.penalty`.
 
+### Approximate changing univariate bases
+
+For minibatches or other workflows where covariate values change repeatedly,
+eligible univariate continuous bases can use a regular-grid approximation:
+
+```python
+tb = gam.TermBuilder.from_df(data, approximation=True)
+term = tb.ps("x5", k=20)
+```
+
+The builder setting applies to eligible terms and can be disabled or customized
+per call:
+
+```python
+term = tb.ps("x5", k=20, approximation=False)
+term = tb.ps(
+    "x5",
+    k=20,
+    approximation=gam.ApproximationSpec(bounds=(0.0, 10.0)),
+)
+```
+
+`Basis.approximate()` provides the same functionality directly. The default uses a
+fixed grid of 1,000 nodes. Set `grid_size` to choose a different number of nodes, or
+supply `rtol` or `atol` to refine the grid iteratively from that size:
+
+```python
+basis.approximate(gam.ApproximationSpec(grid_size=500))
+basis.approximate(gam.ApproximationSpec(grid_size=65, rtol=1e-3, atol=1e-5))
+```
+
+Custom evaluators are checked for row-wise behavior by default. Pass
+`row_wise=True` when the evaluator is known to satisfy that requirement.
+Explicit bounds must contain the construction data; a future batch containing any
+out-of-bounds value is evaluated exactly. Approximation applies to values only and
+does not guarantee exact input derivatives.
+
 ### Extract a column from the data frame as a variable
 
 If you simply want to turn a column of your data frame into a `lsl.Var` object,

@@ -78,6 +78,27 @@ def columb_polys():
 
 
 class TestTermBuilder:
+    def test_init_approximation_reaches_basis_builder(self, data) -> None:
+        builder = gam.TermBuilder.from_df(data, approximation=True)
+
+        term = builder.f(
+            "x_int",
+            basis_fn=lambda value: jnp.column_stack((value[:, 0], value[:, 0] ** 2)),
+            use_callback=False,
+            row_wise=True,
+        )
+
+        assert term.basis.approximation is not None
+        assert term.basis.row_wise is True
+
+    def test_init_approximation_applies_after_np_transformations(self, data) -> None:
+        builder = gam.TermBuilder.from_df(data, approximation=True)
+
+        term = builder.np("x_int", k=10)
+
+        assert term.basis.approximation is not None
+        assert term.basis.constraint == "constant_and_linear"
+
     def test_init(self, data) -> None:
         gb.TermBuilder.from_df(data)
 

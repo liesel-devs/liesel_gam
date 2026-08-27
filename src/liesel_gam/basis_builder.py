@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import smoothcon
 
-from .basis import Basis, LinBasis, MRFBasis, MRFSpec
+from .basis import ApproximationSpec, Basis, LinBasis, MRFBasis, MRFSpec
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
 
@@ -75,6 +75,12 @@ class BasisBuilder:
         A pandas registry, giving access to the data.
     names
         A name manager for creating unique names.
+    approximation
+        Default approximation policy for eligible univariate continuous bases.
+        ``False`` keeps exact evaluation, ``True`` uses
+        :class:`.ApproximationSpec` defaults, and an ``ApproximationSpec`` supplies
+        shared tolerances and the grid-size guard. Builder-level specifications
+        cannot define bounds because bounds belong to individual covariates.
 
     See Also
     --------
@@ -83,6 +89,12 @@ class BasisBuilder:
     .Basis : Basic basis class.
     .LinBasis : Specialized basis for linear effects.
     .MRFBasis : Specialized basis for Gaussian Markov random fields.
+
+    Notes
+    -----
+    Eligible methods accept a per-call ``approximation`` override. ``None``
+    inherits the builder policy. Multivariate, linear, categorical, random-effect,
+    and MRF bases remain exact.
 
     Examples
     --------
@@ -95,11 +107,25 @@ class BasisBuilder:
     """
 
     def __init__(
-        self, registry: PandasRegistry, names: NameManager | None = None
+        self,
+        registry: PandasRegistry,
+        names: NameManager | None = None,
+        approximation: bool | ApproximationSpec = False,
     ) -> None:
+        if not isinstance(approximation, bool | ApproximationSpec):
+            raise TypeError("approximation must be a bool or ApproximationSpec.")
+        if (
+            isinstance(approximation, ApproximationSpec)
+            and approximation.bounds is not None
+        ):
+            raise ValueError(
+                "Builder-level approximation bounds must be None; "
+                "set bounds on an individual basis."
+            )
         self.registry = registry
         self.mappings: dict[str, CategoryMapping] = {}
         self.names = NameManager() if names is None else names
+        self.approximation = approximation
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(data_shape={self.registry.data.shape})"
@@ -117,6 +143,8 @@ class BasisBuilder:
         cache_basis: bool = True,
         penalty: ArrayLike | lsl.Value | None = None,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
+        row_wise: bool | None = None,
     ) -> Basis:
         """
         Initializes a general basis given a basis function.
@@ -143,6 +171,14 @@ class BasisBuilder:
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
             of the variable ``"x"``, the full name of the :class:`.Basis` object will
             be ``"B(x)"``. Names are made unique by appending a counter if necessary.
+        approximation
+            ``None`` inherits the builder policy, ``False`` keeps exact evaluation,
+            ``True`` uses default approximation settings, and an
+            :class:`.ApproximationSpec` supplies custom settings. Approximation
+            requires exactly one scalar covariate.
+        row_wise
+            Whether each output row depends only on the corresponding input row.
+            Passed on to :class:`.Basis`.
 
         Examples
         --------
@@ -220,9 +256,37 @@ class BasisBuilder:
             use_callback=use_callback,
             cache_basis=cache_basis,
             penalty=penalty,
+            row_wise=row_wise,
         )
 
-        return basis
+        return self._maybe_approximate(
+            basis,
+            approximation,
+            eligible=len(x) == 1,
+        )
+
+    def _maybe_approximate(
+        self,
+        basis: Basis,
+        approximation: bool | ApproximationSpec | None,
+        *,
+        eligible: bool = True,
+    ) -> Basis:
+        if not eligible:
+            if approximation is not None and approximation is not False:
+                raise ValueError(
+                    "Basis approximation requires exactly one scalar covariate."
+                )
+            return basis
+
+        setting = self.approximation if approximation is None else approximation
+        if setting is False:
+            return basis
+        if setting is True:
+            return basis.approximate()
+        if isinstance(setting, ApproximationSpec):
+            return basis.approximate(setting)
+        raise TypeError("approximation must be None, a bool, or ApproximationSpec.")
 
     def _get_var_and_value(self, x: str | lsl.Var) -> tuple[lsl.Var, jax.Array]:
         if isinstance(x, str):
@@ -250,6 +314,8 @@ class BasisBuilder:
         scale_penalty: bool,
         basis_name: str,
         skip_constraint: bool = False,
+        approximation: bool | ApproximationSpec | None = None,
+        approximation_eligible: bool = True,
     ) -> Basis:
         """Wrap and transform a raw native smooth in the standard order."""
         basis = Basis(
@@ -259,6 +325,7 @@ class BasisBuilder:
             penalty=smooth.penalty,
             use_callback=False,
             cache_basis=True,
+            row_wise=True,
         )
         # Native constructors know the mathematical rank before float32
         # roundoff. Preserve it for the mixed-model reparameterization.
@@ -269,7 +336,11 @@ class BasisBuilder:
             basis.constrain("sumzero_term")
         if diagonal_penalty:
             basis.diagonalize_penalty()
-        return basis
+        return self._maybe_approximate(
+            basis,
+            approximation,
+            eligible=approximation_eligible,
+        )
 
     def _get_matrix(
         self, *x: str | lsl.Var, cache: bool = False
@@ -326,6 +397,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         B-spline basis with a discrete (P-spline) penalty matrix.
@@ -420,6 +492,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
     def cr(
@@ -433,6 +506,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Cubic regression spline basis and penalty matrix.
@@ -510,6 +584,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
     def cs(
@@ -523,6 +598,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Cubic regression spline basis and penalty matrix with null space penalty.
@@ -594,6 +670,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
     def cc(
@@ -607,6 +684,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Cyclic cubic regression spline basis and penalty matrix.
@@ -681,6 +759,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
     def bs(
@@ -695,6 +774,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         B-spline basis with integrated squared derivative penalties.
@@ -783,6 +863,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
     def cp(
@@ -797,6 +878,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Cyclic P-spline basis and penalty matrix.
@@ -881,6 +963,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
     def _s(
@@ -894,6 +977,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         _validate_bs(bs)
         if not x:
@@ -976,6 +1060,8 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
+            approximation_eligible=len(obs_vars) == 1,
         )
 
     def tp(
@@ -989,6 +1075,7 @@ class BasisBuilder:
         scale_penalty: bool = True,
         basis_name: str = "B",
         remove_null_space_completely: bool = False,
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Thin plate spline basis and penalty matrix.
@@ -1084,6 +1171,8 @@ class BasisBuilder:
             scale_penalty=scale_penalty,
             basis_name=basis_name,
             skip_constraint=remove_null_space_completely,
+            approximation=approximation,
+            approximation_eligible=len(obs_vars) == 1,
         )
 
     def ts(
@@ -1096,6 +1185,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Thin plate spline basis and penalty matrix with null space penalty.
@@ -1174,6 +1264,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
         return basis
 
@@ -1196,6 +1287,7 @@ class BasisBuilder:
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
         basis_name: str = "B",
+        approximation: bool | ApproximationSpec | None = None,
     ) -> Basis:
         """
         Gaussian process models with a fixed range parameter in a
@@ -1298,6 +1390,7 @@ class BasisBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name=basis_name,
+            approximation=approximation,
         )
 
         return basis

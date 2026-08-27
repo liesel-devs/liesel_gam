@@ -12,6 +12,7 @@ import pandas as pd
 import tensorflow_probability.substrates.jax.bijectors as tfb
 from liesel.model.model import TemporaryModel
 
+from .basis import ApproximationSpec
 from .basis_builder import BasisBuilder
 from .names import NameManager
 from .registry import CategoryMapping, PandasRegistry
@@ -90,6 +91,12 @@ class TermBuilder:
         sampling. The default is ``VarIGPrior(1.0, 0.005)``, which leads to an
         inverse Gamma prior on the level of the variance parameter, i.e.
         :math:`\tau^2 \sim \operatorname{InverseGamma}(1.0, 0.005)`.
+    approximation
+        Default approximation policy passed to the internal
+        :class:`.BasisBuilder`. ``False`` keeps exact evaluation, ``True`` uses
+        :class:`.ApproximationSpec` defaults, and an ``ApproximationSpec`` supplies
+        shared tolerances and the grid-size guard. Explicit bounds are supplied on
+        individual eligible smooth calls.
 
     See Also
     --------
@@ -98,6 +105,11 @@ class TermBuilder:
 
     Notes
     ------
+
+    Eligible univariate continuous smooth methods accept an ``approximation``
+    argument. ``None`` inherits the builder policy, ``False`` keeps exact
+    evaluation, ``True`` uses default settings, and an
+    :class:`.ApproximationSpec` supplies custom settings.
 
     The terms created by this builder generally have the form
 
@@ -293,10 +305,15 @@ class TermBuilder:
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        approximation: bool | ApproximationSpec = False,
     ) -> None:
         self.registry = registry
         self.names = NameManager(prefix=prefix_names_by)
-        self.bases = BasisBuilder(registry, names=self.names)
+        self.bases = BasisBuilder(
+            registry,
+            names=self.names,
+            approximation=approximation,
+        )
         self.default_inference = default_inference
         self._default_scale_fn = default_scale_fn
 
@@ -384,6 +401,7 @@ class TermBuilder:
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        approximation: bool | ApproximationSpec = False,
     ) -> TermBuilder:
         """
         Initializes a TermBuilder from a dictionary that holds the data.
@@ -398,6 +416,7 @@ class TermBuilder:
             prefix_names_by=prefix_names_by,
             default_inference=default_inference,
             default_scale_fn=default_scale_fn,
+            approximation=approximation,
         )
 
     @classmethod
@@ -407,6 +426,7 @@ class TermBuilder:
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
         default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        approximation: bool | ApproximationSpec = False,
     ) -> TermBuilder:
         """
         Initializes a TermBuilder from a pandas dataframe.
@@ -424,6 +444,7 @@ class TermBuilder:
             prefix_names_by=prefix_names_by,
             default_inference=default_inference,
             default_scale_fn=default_scale_fn,
+            approximation=approximation,
         )
 
     def labels_to_integers(self, newdata: dict) -> dict:
@@ -733,6 +754,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -840,6 +862,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "cr", basis.x.name)
@@ -871,6 +894,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -978,6 +1002,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "cs", basis.x.name)
@@ -1009,6 +1034,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -1117,6 +1143,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "cc", basis.x.name)
@@ -1149,6 +1176,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -1259,6 +1287,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "bs", basis.x.name)
@@ -1292,6 +1321,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -1417,6 +1447,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "ps", basis.x.name)
@@ -1448,6 +1479,7 @@ class TermBuilder:
         knots: ArrayLike | None = None,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -1563,6 +1595,7 @@ class TermBuilder:
             diagonal_penalty=False,
             scale_penalty=False,
             basis_name="B",
+            approximation=False,
         )
 
         basis.constrain("constant_and_linear")
@@ -1570,6 +1603,7 @@ class TermBuilder:
             basis.scale_penalty()
         if diagonal_penalty:
             basis.diagonalize_penalty()
+        basis = self.bases._maybe_approximate(basis, approximation)
 
         fname = self.names.fname(prefix + "np", basis.x.name)
         term_name = prefix + name if name is not None else fname
@@ -1602,6 +1636,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -1717,6 +1752,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "cp", basis.x.name)
@@ -2044,6 +2080,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -2058,6 +2095,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + bs, basis.x.name)
@@ -2280,6 +2318,8 @@ class TermBuilder:
         use_callback: bool = True,
         cache_basis: bool = True,
         penalty: ArrayLike | None = None,
+        approximation: bool | ApproximationSpec | None = None,
+        row_wise: bool | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -2334,6 +2374,9 @@ class TermBuilder:
             If ``True`` the computed basis is cached in a persistent
             calculation node (``lsl.Calc``), which avoids re-computation
             when not required. Passed on to :class:`.Basis`.
+        row_wise
+            Whether each output row depends only on the corresponding input row.
+            Passed on to :class:`.Basis`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
@@ -2405,6 +2448,8 @@ class TermBuilder:
             cache_basis=cache_basis,
             penalty=penalty,
             basis_name="B",
+            approximation=approximation,
+            row_wise=row_wise,
         )
 
         fname = self.names.fname(prefix + "f", basis.x.name)
@@ -2443,6 +2488,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -2556,6 +2602,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "kriging", basis.x.name)
@@ -2585,6 +2632,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         remove_null_space_completely: bool = False,
         prefix: str = "",
@@ -2697,6 +2745,7 @@ class TermBuilder:
             scale_penalty=scale_penalty,
             basis_name="B",
             remove_null_space_completely=remove_null_space_completely,
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "tp", basis.x.name)
@@ -2727,6 +2776,7 @@ class TermBuilder:
         absorb_cons: bool = True,
         diagonal_penalty: bool = True,
         scale_penalty: bool = True,
+        approximation: bool | ApproximationSpec | None = None,
         factor_scale: bool = False,
         prefix: str = "",
         name: str | None = None,
@@ -2837,6 +2887,7 @@ class TermBuilder:
             diagonal_penalty=diagonal_penalty,
             scale_penalty=scale_penalty,
             basis_name="B",
+            approximation=approximation,
         )
 
         fname = self.names.fname(prefix + "ts", basis.x.name)
