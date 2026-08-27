@@ -477,7 +477,7 @@ class IWLSProposal:
     basis_name
         Name of the basis matrix variable for the structured term, retained as
         metadata for compatibility.
-    smooth_scale_name
+    term_scale_name
         Name of the single smoothing scale variable used in the coefficient
         prior. The penalty contribution is ``penalty / tau**2``.
     penalty
@@ -494,7 +494,7 @@ class IWLSProposal:
     """
 
     basis: ArrayLike = field(repr=False)
-    smooth_scale_name: str
+    term_scale_name: str
     penalty: ArrayLike = field(repr=False)
     model: lsl.Model | gs.LieselInterface
     working_weights_fn: WorkingWeightsFn = field(repr=False, compare=False)
@@ -562,15 +562,15 @@ class IWLSProposal:
         if not basis_name:
             raise ValueError(f"The basis of term {term} must be named.")
 
-        smooth_scale_name = term.scale.name
-        if not smooth_scale_name:
+        term_scale_name = term.scale.name
+        if not term_scale_name:
             raise ValueError(f"The smoothing scale of term {term} must be named.")
 
         basis = _static_basis_for_term(term)
 
         return cls(
             basis=basis,
-            smooth_scale_name=smooth_scale_name,
+            term_scale_name=term_scale_name,
             penalty=_penalty_for_term(term, nbases=basis.shape[-1], dtype=basis.dtype),
             model=model,
             working_weights_fn=working_weights_fn,
@@ -828,9 +828,9 @@ class IWLSProposal:
         jax.Array
             Positive-definite proposal precision matrix.
         """
-        pos = self.model.extract_position([self.smooth_scale_name], model_state)
+        pos = self.model.extract_position([self.term_scale_name], model_state)
         Z = jnp.asarray(self.basis)
-        scale = pos[self.smooth_scale_name]
+        scale = pos[self.term_scale_name]
 
         # Weights: support scalar or vector without materializing a diagonal.
         w = jnp.asarray(self.working_weights(model_state), dtype=Z.dtype)
@@ -864,9 +864,9 @@ class GaussianLocIWLSProposal(IWLSProposal):
     basis_name
         Name of the basis matrix variable for the structured term, retained as
         metadata for compatibility.
-    smooth_name
+    term_name
         Name of the structured term.
-    smooth_scale_name
+    term_scale_name
         Name of the smoothing scale variable used in the coefficient prior.
     scale_name
         Name of the Gaussian observation scale variable.
@@ -882,7 +882,7 @@ class GaussianLocIWLSProposal(IWLSProposal):
         currently unsupported and raises an error if set to ``True``.
     """
 
-    smooth_name: str
+    term_name: str
     scale_name: str
     n: int
 
@@ -900,8 +900,8 @@ class GaussianLocIWLSProposal(IWLSProposal):
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
             basis=base.basis,
-            smooth_name=term.name,
-            smooth_scale_name=base.smooth_scale_name,
+            term_name=term.name,
+            term_scale_name=base.term_scale_name,
             scale_name=scale_name,
             penalty=base.penalty,
             model=base.model,
@@ -913,8 +913,8 @@ class GaussianLocIWLSProposal(IWLSProposal):
     def __init__(
         self,
         basis: ArrayLike,
-        smooth_name: str,
-        smooth_scale_name: str,
+        term_name: str,
+        term_scale_name: str,
         scale_name: str,
         penalty: ArrayLike,
         model: lsl.Model | gs.LieselInterface,
@@ -928,14 +928,14 @@ class GaussianLocIWLSProposal(IWLSProposal):
         working_weights_fn = IWLSWeights.gaussian_loc(scale_name=scale_name)
         super().__init__(
             basis=basis,
-            smooth_scale_name=smooth_scale_name,
+            term_scale_name=term_scale_name,
             penalty=penalty,
             model=model,
             working_weights_fn=working_weights_fn,
             basis_name=basis_name,
             scale_factored=scale_factored,
         )
-        self.smooth_name = smooth_name
+        self.term_name = term_name
         self.scale_name = scale_name
         self.n = n
 
@@ -952,9 +952,9 @@ class GaussianScaleIWLSProposal(IWLSProposal):
     basis_name
         Name of the basis matrix variable for the structured term, retained as
         metadata for compatibility.
-    smooth_name
+    term_name
         Name of the structured term.
-    smooth_scale_name
+    term_scale_name
         Name of the smoothing scale variable used in the coefficient prior.
     penalty
         Penalty matrix of the structured coefficient prior.
@@ -968,7 +968,7 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         currently unsupported and raises an error if set to ``True``.
     """
 
-    smooth_name: str
+    term_name: str
     n: int
 
     @classmethod
@@ -983,8 +983,8 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         base = IWLSProposal.from_term(term, working_weights_fn)
         return cls(
             basis=base.basis,
-            smooth_name=term.name,
-            smooth_scale_name=base.smooth_scale_name,
+            term_name=term.name,
+            term_scale_name=base.term_scale_name,
             penalty=base.penalty,
             model=base.model,
             n=term.value.shape[0],
@@ -995,8 +995,8 @@ class GaussianScaleIWLSProposal(IWLSProposal):
     def __init__(
         self,
         basis: ArrayLike,
-        smooth_name: str,
-        smooth_scale_name: str,
+        term_name: str,
+        term_scale_name: str,
         penalty: ArrayLike,
         model: lsl.Model | gs.LieselInterface,
         n: int,
@@ -1009,14 +1009,14 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         working_weights_fn = IWLSWeights.gaussian_scale()
         super().__init__(
             basis=basis,
-            smooth_scale_name=smooth_scale_name,
+            term_scale_name=term_scale_name,
             penalty=penalty,
             model=model,
             working_weights_fn=working_weights_fn,
             basis_name=basis_name,
             scale_factored=scale_factored,
         )
-        self.smooth_name = smooth_name
+        self.term_name = term_name
         self.n = n
 
 

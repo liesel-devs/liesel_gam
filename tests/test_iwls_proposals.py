@@ -140,8 +140,8 @@ def _loc_info(penalty, scale_factored=False):
     Z, _, _ = _state(jnp.array(2.0, dtype=jnp.float32))
     return GaussianLocIWLSProposal(
         basis=Z,
-        smooth_name="f(x)",
-        smooth_scale_name="tau",
+        term_name="f(x)",
+        term_scale_name="tau",
         scale_name="obs_scale",
         penalty=penalty,
         model=DictModel(),  # type: ignore
@@ -155,8 +155,8 @@ def _scale_info(penalty, scale_factored=False):
     Z, _, _ = _state(jnp.array(2.0, dtype=jnp.float32))
     return GaussianScaleIWLSProposal(
         basis=Z,
-        smooth_name="f(x)",
-        smooth_scale_name="tau",
+        term_name="f(x)",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         n=3,
@@ -326,7 +326,7 @@ def test_iwls_proposal_precision_uses_constant_unit_weights():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     info = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.constant(),
@@ -348,7 +348,7 @@ def test_iwls_proposal_precision_uses_static_basis_matrix():
     changed_state = state | {"B": 10.0 * Z}
     info = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.constant(),
@@ -479,7 +479,7 @@ def test_iwls_proposal_precision_uses_score_squared_weights():
     )
     info = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=model,
         working_weights_fn=IWLSWeights.score_squared("eta"),
@@ -587,7 +587,7 @@ def test_iwls_proposal_uses_supplied_working_weights_function():
     state = state | {"custom_weights": weights}
     info = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         working_weights_fn=working_weights,
@@ -619,7 +619,7 @@ def test_iwls_proposal_from_term_extracts_geometry_from_supported_terms(term):
 
     assert proposal.basis_name == term.basis.name
     assert jnp.allclose(proposal.basis, expected_basis)
-    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.term_scale_name == term.scale.name
     assert jnp.allclose(proposal.penalty, expected_penalty)
     assert proposal.model is model
     assert proposal.scale_factored is False
@@ -773,16 +773,16 @@ def test_gaussian_iwls_proposals_can_be_constructed_from_term():
 
     assert loc_proposal.basis_name == term.basis.name
     assert jnp.allclose(loc_proposal.basis, term.basis.value)
-    assert loc_proposal.smooth_name == term.name
-    assert loc_proposal.smooth_scale_name == term.scale.name
+    assert loc_proposal.term_name == term.name
+    assert loc_proposal.term_scale_name == term.scale.name
     assert loc_proposal.scale_name == "obs_scale"
     assert loc_proposal.model is model
     assert loc_proposal.n == term.value.shape[0]
 
     assert scale_proposal.basis_name == term.basis.name
     assert jnp.allclose(scale_proposal.basis, term.basis.value)
-    assert scale_proposal.smooth_name == term.name
-    assert scale_proposal.smooth_scale_name == term.scale.name
+    assert scale_proposal.term_name == term.name
+    assert scale_proposal.term_scale_name == term.scale.name
     assert scale_proposal.model is model
     assert scale_proposal.n == term.value.shape[0]
 
@@ -797,7 +797,7 @@ def test_iwls_proposal_kernel_factory_uses_bound_proposal():
     state = state | {"custom_weights": weights}
     proposal = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         working_weights_fn=working_weights,
@@ -824,7 +824,7 @@ def test_iwls_proposal_kernel_factory_uses_iwls_defaults_for_constant_weights():
     Z, penalty, state = _state(jnp.array(2.0, dtype=jnp.float32))
     proposal = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.constant(),
@@ -848,7 +848,7 @@ def test_iwls_proposal_kernel_factory_uses_iwls_step_default_when_tuning_request
     Z, penalty, _ = _state(jnp.array(2.0, dtype=jnp.float32))
     proposal = IWLSProposal(
         basis=Z,
-        smooth_scale_name="tau",
+        term_scale_name="tau",
         penalty=penalty,
         model=DictModel(),  # type: ignore
         working_weights_fn=IWLSWeights.gaussian_scale(),
@@ -911,7 +911,7 @@ def test_iwls_spec_builds_tuned_kernel_with_constant_unit_weights():
     assert isinstance(proposal, IWLSProposal)
     assert not isinstance(proposal, GaussianLocIWLSProposal | GaussianScaleIWLSProposal)
     assert proposal.basis_name == term.basis.name
-    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.term_scale_name == term.scale.name
     assert proposal.model is model
     assert proposal.scale_factored is False
     assert proposal.working_weights(model.state) == pytest.approx(1.0)
@@ -984,8 +984,8 @@ def test_gaussian_iwls_spec_loc_builds_tuned_kernel_with_custom_chol_info():
     assert kernel.fallback_chol_info is None
     assert isinstance(proposal, GaussianLocIWLSProposal)
     assert proposal.basis_name == term.basis.name
-    assert proposal.smooth_name == term.name
-    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.term_name == term.name
+    assert proposal.term_scale_name == term.scale.name
     assert proposal.scale_name == "obs_scale"
     assert proposal.model is model
     assert proposal.n == term.value.shape[0]
@@ -1058,8 +1058,8 @@ def test_gaussian_iwls_spec_scale_builds_tuned_kernel_with_custom_chol_info():
     assert kernel.fallback_chol_info is None
     assert isinstance(proposal, GaussianScaleIWLSProposal)
     assert proposal.basis_name == term.basis.name
-    assert proposal.smooth_name == term.name
-    assert proposal.smooth_scale_name == term.scale.name
+    assert proposal.term_name == term.name
+    assert proposal.term_scale_name == term.scale.name
     assert proposal.model is model
     assert proposal.n == term.value.shape[0]
     assert proposal.scale_factored is False
