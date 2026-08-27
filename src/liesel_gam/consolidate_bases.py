@@ -12,6 +12,10 @@ can be safely and efficiently used in batched operations:
 
 - :func:`.evaluate_bases` takes a position of input data, evaluate the corresponding
   bases in the provided model, and returns a position of the evaluated bases.
+
+These helpers materialize basis matrices and are therefore unsuitable for the
+large-data raw-position workflow described in
+:doc:`Large-data model setup </notebooks_large_data>`.
 """
 
 import liesel.model as lsl
@@ -58,6 +62,9 @@ def consolidate_bases(
 
     Returns a new model that depends only on the strong bases, and a model that
     holds the original bases and their input data.
+
+    This materializes basis matrices. Do not use it when full-data basis matrices
+    must remain out of memory.
 
     If ``copy=False``, all data will be extracted from the original model, instead
     of creating copies. This saves memory, but renders the original model empty.

@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
 import pandas as pd
+from liesel.goose.types import Position
 
 from .category_mapping import CategoryMapping, series_is_categorical
 
@@ -590,3 +591,99 @@ class PandasRegistry:
             mapping = None
 
         return VarAndMapping(var, mapping)
+
+    def observed_position(self, model: lsl.Model, data: pd.DataFrame) -> Position:
+        """
+        Creates a raw data position for the model from a DataFrame.
+
+        Uses the Registry to match source values to observed model variables and to
+        convert categorical labels. Ignores source values that the model does not use.
+
+        Parameters
+        ----------
+        model
+            Model whose observed variables define the returned position entries.
+        data
+            Data to encode. It can contain any number of rows but must provide every
+            observed variable required by ``model``.
+
+        Returns
+        -------
+        A raw data position containing exactly ``model.observed``. Values are JAX
+        arrays; registered categorical source values contain integer codes.
+
+        Notes
+        -----
+        The result contains raw observed values, not evaluated basis matrices or other
+        derived model quantities. Extra columns in ``data`` are ignored.
+
+        Examples
+        --------
+        >>> import liesel.model as lsl
+        >>> import pandas as pd
+        >>> from liesel_gam import PandasRegistry
+        >>> setup = pd.DataFrame(
+        ...     {
+        ...         "x": [1.0, 2.0],
+        ...         "group": pd.Categorical(["a", "b"]),
+        ...     }
+        ... )
+        >>> registry = PandasRegistry(setup, prefix_names_by="loc.")
+        >>> x = registry.get_obs("x")
+        >>> group, _ = registry.get_categorical_obs("group")
+        >>> model = lsl.Model([x, group])
+        >>> data = pd.DataFrame(
+        ...     {
+        ...         "x": [3.0, 4.0],
+        ...         "group": ["b", "a"],
+        ...         "unused": [5.0, 6.0],
+        ...     }
+        ... )
+        >>> position = registry.observed_position(model, data)
+        >>> {name: value.tolist() for name, value in sorted(position.items())}
+        {'loc.group': [1, 0], 'loc.x': [3.0, 4.0]}
+
+        See Also
+        --------
+        liesel_gam.category_coverage_indices
+            Find categorical coverage rows to reserve in training.
+        liesel_gam.basis_setup_sample
+            Draw a representative setup sample from selected training rows.
+        :doc:`Large-data model setup </notebooks_large_data>`
+            Compose the helpers in an executable workflow.
+        """
+        columns_by_var = {var.name: name for name, var in self._var_cache.items()}
+        position = {}
+        unresolved = []
+
+        for var_name in model.observed:
+            if var_name in columns_by_var:
+                column = columns_by_var[var_name]
+            elif var_name in data.columns:
+                column = var_name
+            else:
+                unresolved.append(var_name)
+                continue
+
+            values = data[column]
+            is_nonfinite = (
+                pd.api.types.is_numeric_dtype(values)
+                and not np.isfinite(values.to_numpy()).all()
+            )
+            if values.isna().any() or is_nonfinite:
+                raise ValueError(
+                    f"Observed column {column!r} contains missing or non-finite values."
+                )
+            if column in columns_by_var.values() and self.is_categorical(column):
+                mapping = CategoryMapping.from_series(self.data[column])
+                values = mapping.labels_to_integers(values)
+
+            position[var_name] = self._to_jax(np.asarray(values), var_name)
+
+        if unresolved:
+            raise KeyError(
+                "Could not resolve observed model variables from data: "
+                f"{sorted(unresolved)}"
+            )
+
+        return Position(position)

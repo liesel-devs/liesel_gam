@@ -31,6 +31,11 @@ the individual pieces.
 Check out the demos on polynomial regression and on P-splines for additional
 example code, for example on on posterior predictive sampling.
 
+Guides
+------
+
+- :ref:`nb_large_data`
+
 
 .. toctree::
    :hidden:
@@ -41,6 +46,13 @@ example code, for example on on posterior predictive sampling.
    notebooks_univariate
    notebooks_composite
    notebooks_multivariate
+
+.. toctree::
+   :hidden:
+   :caption: Guides
+   :maxdepth: 1
+
+   notebooks_large_data
 
 
 Relevant Literature
@@ -187,6 +199,8 @@ Other
     ~liesel_gam.demo_data
     ~liesel_gam.demo_data_ta
     ~liesel_gam.LinearConstraintEVD
+    ~liesel_gam.basis_setup_sample
+    ~liesel_gam.category_coverage_indices
 
 .. rubric:: In/Out
 
