@@ -24,21 +24,21 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 import liesel.model as lsl
 import liesel_gam as gam
 
-tb = gam.TermBuilder.from_df(data)             # data: a pandas DataFrame
+tb = gam.TermBuilder.from_df(data)  # data: a pandas DataFrame
 
 loc = gam.AdditivePredictor(name="loc")
 
 loc += tb.lin("x1 + x2*x3 + C(x4, contr.sum)")  # Linear term
-loc += tb.ps("x5", k=20)                        # P-spline
-loc += tb.tf(                                   # Full tensor product
+loc += tb.ps("x5", k=20)  # P-spline
+loc += tb.tf(  # Full tensor product
     tb.ps("x6", k=8),  # first marginal
-    tb.ps("x7", k=8)   # second marginal
+    tb.ps("x7", k=8),  # second marginal
 )
 
 y = lsl.Var.new_obs(
     data["y"].to_numpy(),
     distribution=lsl.Dist(tfd.Normal, loc=loc, scale=...),
-    name="y"
+    name="y",
 )
 
 model = lsl.Model([y])
@@ -122,7 +122,7 @@ import liesel.goose as gs
 
 import liesel_gam as gam
 
-data = ... # assuming data is a pandas DataFrame object
+data = ...  # assuming data is a pandas DataFrame object
 ```
 
 ### Additive predictors and response model
@@ -140,7 +140,7 @@ scale_pred = gam.AdditivePredictor("sigma", inv_link=jnp.exp)
 y = lsl.Var.new_obs(
     value=...,
     distribution=lsl.Dist(tfd.Normal, loc=loc_pred, scale=scale_pred),
-    name="y"
+    name="y",
 )
 ```
 
@@ -168,7 +168,7 @@ dedicated methods for setting up penalized smooths, see below.
 
 ```python
 loc_pred += tb.lin("x1 + x2*x3 + C(x4, contr.sum)")
-scale_pred += tb.lin("x1") # using a simpler model for the scale predictor here
+scale_pred += tb.lin("x1")  # using a simpler model for the scale predictor here
 ```
 
 ### TermBuilder.s: Penalized smooth terms
@@ -200,7 +200,7 @@ eb.set_duration(
     warmup_duration=1000,
     posterior_duration=1000,
     term_duration=200,
-    posterior_thinning=2
+    posterior_thinning=2,
 )
 engine = eb.build()
 ```
@@ -229,7 +229,7 @@ Example usage:
 ```python
 gam.plot_1d_smooth(
     term=model.vars["ps(x)"],  # the Term object, here retrieved from the model
-    samples=samples            # the MCMC samples drawn via liesel.goose
+    samples=samples,  # the MCMC samples drawn via liesel.goose
 )
 ```
 
@@ -256,7 +256,7 @@ loc_intercept = lsl.Var.new_param(
     value=0.0,
     distribution=lsl.Dist(tfd.Normal, loc=0.0, scale=100.0),
     inference=gs.MCMCSpec(gs.NUTSKernel),
-    name="mu_intercept"
+    name="mu_intercept",
 )
 
 loc_pred = gam.AdditivePredictor("mu", intercept=loc_intercept)
@@ -269,8 +269,7 @@ You can customize the prior by passing a `lsl.Dist` to the `prior` argument:
 
 ```python
 loc_pred += tb.lin(
-    "x1 + x2*x3 + C(x4, contr.sum)",
-    prior=lsl.Dist(tfd.Normal, loc=0.0, scale=100.0)
+    "x1 + x2*x3 + C(x4, contr.sum)", prior=lsl.Dist(tfd.Normal, loc=0.0, scale=100.0)
 )
 ```
 
@@ -289,14 +288,14 @@ arguments and using the `gs.MCMCSpec(kernel_group)` argument:
 loc_intercept = lsl.Var.new_param(
     value=0.0,
     inference=gs.MCMCSpec(gs.IWLSKernel, kernel_group="loc_lin"),
-    name="mu_intercept"
+    name="mu_intercept",
 )
 
 loc_pred = gam.AdditivePredictor("mu", intercept=loc_intercept)
 
 loc_pred += tb.lin(
     "x1 + x2*x3 + C(x4, contr.sum)",
-    inference=gs.MCMCSpec(gs.IWLSKernel, kernel_group="loc_lin")
+    inference=gs.MCMCSpec(gs.IWLSKernel, kernel_group="loc_lin"),
 )
 ```
 
@@ -336,15 +335,11 @@ which accepts `gam.VarIGPrior` and `lsl.Var` objects, but also simple floats.
 
 ```python
 scale_x5 = lsl.Var.new_param(
-    1.0,
-    distribution=lsl.Dist(tfd.HalfNormal, scale=20.0),
-    name="scale_x5"
+    1.0, distribution=lsl.Dist(tfd.HalfNormal, scale=20.0), name="scale_x5"
 )
 
 scale_x5.transform(
-    bijector=tfb.Exp(),
-    inference=gs.MCMCSpec(gs.NUTSKernel),
-    name="log_scale_x5"
+    bijector=tfb.Exp(), inference=gs.MCMCSpec(gs.NUTSKernel), name="log_scale_x5"
 )
 
 loc_pred += tb.ps("x5", k=20, scale=scale_x5)
@@ -389,15 +384,17 @@ def custom_basis_fn(x: jax.Array) -> jax.Array:
     # of the penalty matrix corresponding to this basis.
     ...
 
-custom_penalty = ... # your custom penalty of shape (p, p)
+
+custom_penalty = ...  # your custom penalty of shape (p, p)
 
 loc_pred += tb.f(
     # here, we supply two covariances.
     # They will be concatenated into x = jnp.stack([x6, x7], axis=-1) for passing
     # to basis_fn
-    "x6", "x7",
+    "x6",
+    "x7",
     basis_fn=custom_basis_fn,
-    penalty=custom_penalty
+    penalty=custom_penalty,
 )
 ```
 
@@ -406,10 +403,10 @@ is advantageous, because it enables us to simply pass the
 covariates that this basis relies on directly to `lsl.Model.predict` for predictions:
 
 ```python
-model = lsl.Model([y]) # a lsl.Model that contains an .f term
+model = lsl.Model([y])  # a lsl.Model that contains an .f term
 
-new_x6 = ... # 1d array with new data for x6
-new_x7 = ... # 1d array with new data for x7
+new_x6 = ...  # 1d array with new data for x6
+new_x7 = ...  # 1d array with new data for x7
 model.predict(newdata={"x6": new_x6, "x7": new_x7}, predict=["f1(x6,x7)"])
 ```
 
@@ -420,18 +417,18 @@ If you have a custom basis matrix and a penalty matrix, you can initialize a
 
 ```python
 custom_basis = gam.Basis(
-    value=...,   # your basis matrix of shape (n, p) goes here
-    penalty=..., # your penalty matrix of shape (p, p) goes here
-    xname="x8" # the name of the basis object will by default be B(xname); here: B(x8)
+    value=...,  # your basis matrix of shape (n, p) goes here
+    penalty=...,  # your penalty matrix of shape (p, p) goes here
+    xname="x8",  # the name of the basis object will by default be B(xname); here: B(x8)
 )
 
 custom_term = gam.Term.f(
     basis=custom_basis,
-    scale=gam.VarIGPrior(1.0, 0.005), # also accepts any scalar-valued lsl.Var object
-    fname="h" # name of the term will be fname(basis.x.name), so here: h(x8)
+    scale=gam.VarIGPrior(1.0, 0.005),  # also accepts any scalar-valued lsl.Var object
+    fname="h",  # name of the term will be fname(basis.x.name), so here: h(x8)
 )
 
-loc_pred += custom_term # still need to add the term to our predictor
+loc_pred += custom_term  # still need to add the term to our predictor
 ```
 
 Be aware that, if you go this route, the `lsl.Model` does *not* how to construct
@@ -439,9 +436,11 @@ your basis from input data. So to predict at new values, you will have to
 provide a full basis matrix:
 
 ```python
-model = lsl.Model([y]) # a lsl.Model that contains your custom term
+model = lsl.Model([y])  # a lsl.Model that contains your custom term
 
-new_custom_basis = ... # your (m, p) array, the basis matrix at which you want to predict
+new_custom_basis = (
+    ...
+)  # your (m, p) array, the basis matrix at which you want to predict
 model.predict(newdata={"x8": new_custom_basis}, predict=["h(x8)"])
 ```
 
@@ -479,17 +478,14 @@ tb = gam.TermBuilder.from_df(data)
 s_basis = tb.bases.ps(
     "x5",
     k=20,
-
     # whether sum-to-zero constraints should be applied by reparameterizing the basis
-    absorb_cons = True,
-
+    absorb_cons=True,
     # whether the penalty matrix corresponding to this basis should be reparameterized
     # into a diagonal matrix, with a corresponding reparameterization for the basis
-    diagonal_penalty = True,
-
+    diagonal_penalty=True,
     # whether the penalty matrix should corresponding to this basis should be
     # scaled
-    scale_penalty = True
+    scale_penalty=True,
 )
 ```
 
