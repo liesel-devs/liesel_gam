@@ -3440,7 +3440,9 @@ class TermBuilder:
                     this_subterm.basis.var_value_node.name
                 )
 
-        first_order_bases = [term_.basis for term_ in term.marginals]
+        first_order_bases = []
+        for term_ in term.terms_by_order[1]:
+            first_order_bases.append(term_.basis)
 
         for i in term.order:
             if i == 1:
@@ -3457,16 +3459,6 @@ class TermBuilder:
             for subterm in subterms:
                 subterm.coef.name = self.names.create(subterm.coef.name)
                 subterm.name = self.names.create(subterm.name)
-
-        if group_terms_by_order:
-            for group in term.term_groups.values():
-                group.name = self.names.create(group.name)
-                group.value_node.name = self.names.create(
-                    group.name + "_value_node", apply_prefix=False
-                )
-                group.var_value_node.name = self.names.create(
-                    group.name + "_var_value_node", apply_prefix=False
-                )
 
         if not common_scale:
             for scale in term.scales:

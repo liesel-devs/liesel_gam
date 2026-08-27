@@ -159,7 +159,12 @@ class MultivariateNormalSingular(tfd.Distribution):
     def _sqrt_cov(self) -> Array:
         eigenvalues, evecs = jnp.linalg.eigh(self._penalty)
         sqrt_eval = jnp.sqrt(1 / eigenvalues)
-        sqrt_eval = sqrt_eval.at[: -self._penalty_rank].set(0.0)
+        rank = jnp.expand_dims(self._penalty_rank, -1)
+        sqrt_eval = jnp.where(
+            jnp.arange(sqrt_eval.shape[-1]) < sqrt_eval.shape[-1] - rank,
+            0.0,
+            sqrt_eval,
+        )
 
         event_shape = sqrt_eval.shape[-1]
         shape = sqrt_eval.shape + (event_shape,)
@@ -922,7 +927,7 @@ class MultivariateNormalStructured(tfd.Distribution):
 
         if self._op._masks is None:
             raise ValueError("self._op_masks is None, but need pre-computed masks.")
-        sqrt_eval = sqrt_eval.at[..., ~self._op._masks].set(0.0)
+        sqrt_eval = jnp.where(self._op._masks, sqrt_eval, 0.0)
 
         event_shape = sqrt_eval.shape[-1]
         shape = sqrt_eval.shape + (event_shape,)

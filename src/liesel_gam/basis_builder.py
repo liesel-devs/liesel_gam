@@ -1842,7 +1842,7 @@ class BasisBuilder:
             else None
         )
         if nb_out is None and polys is not None and penalty is None:
-            nb_out = smoothcon.polygon_neighbors(polys)
+            nb_out = smoothcon.infer_neighbors_from_polygons(polys)
 
         if penalty is not None:
             penalty = np.asarray(penalty)
@@ -1873,7 +1873,7 @@ class BasisBuilder:
             penalty_array = penalty[np.ix_(indices, indices)]
         else:
             assert nb_out is not None
-            penalty_array = smoothcon.laplacian(nb_out, ordered_labels)
+            penalty_array = smoothcon.build_mrf_penalty(nb_out, ordered_labels)
 
         if nb is not None and penalty is not None:
             logger.warning(
