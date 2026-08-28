@@ -53,6 +53,17 @@ class TestBasisBuilder:
 
         assert basis.approximation is not None
 
+    def test_pspline_balances_the_null_space(self) -> None:
+        data = pd.DataFrame({"x": np.linspace(-1.0, 2.0, 40)})
+        bases = gb.BasisBuilder(gb.PandasRegistry(data))
+
+        basis = bases.ps("x", k=9, approximation=False)
+        design = basis.value
+        penalized_norm = jnp.mean(jnp.sum(design[:, :7] ** 2, axis=0))
+        null_norm = jnp.sum(design[:, 7] ** 2)
+
+        np.testing.assert_allclose(null_norm, penalized_norm, rtol=2e-6)
+
     @pytest.mark.parametrize("family", ("ps", "cp"))
     @pytest.mark.parametrize("k", (20, 40))
     def test_native_approximation_is_declared_row_wise(
@@ -808,6 +819,24 @@ class TestMRFBasis:
             jnp.array([[1.0, -1.0, 0.0], [-1.0, 3.0, -2.0], [0.0, -2.0, 2.0]]),
         )
 
+    def test_diagonalization_balances_the_null_space(self) -> None:
+        region = CatVar(["a", "b", "c", "c"], name="region")
+        neighbors = {"a": ["c"], "b": ["c"], "c": ["a", "b"]}
+        bases = BasisBuilder(PandasRegistry(pd.DataFrame({"x": range(4)})))
+
+        basis = bases.mrf(
+            region,
+            nb=neighbors,
+            absorb_cons=False,
+            diagonal_penalty=True,
+            scale_penalty=True,
+        )
+        design = basis.value
+        penalized_norm = jnp.mean(jnp.sum(design[:, :2] ** 2, axis=0))
+        null_norm = jnp.sum(design[:, 2] ** 2)
+
+        np.testing.assert_allclose(null_norm, penalized_norm, rtol=2e-6)
+
     def test_initialization_nb_strings(self, columb, columb_polys):
         """
         There are quite a few ways to initialize the MRF basis.
@@ -1558,6 +1587,7 @@ class TestKriging:
 
         for kname in names:
             b2 = bases.kriging("x", "y", k=20, kernel_name=kname)
+            assert jnp.all(jnp.isfinite(b2.value))
             assert b2.penalty is not None
             assert b2.value.shape[-1] == 19
             assert is_diagonal(b2.penalty.value)
