@@ -110,18 +110,13 @@ def plot_1d_smooth(
         # TODO: Currently, this branch of the function assumes that term.basis.x is
         # a strong node.
         # That is not necessarily always the case.
-        xgrid = np.linspace(term.basis.x.value.min(), term.basis.x.value.max(), 150)
+        xgrid = np.linspace(term.basis.x.value.min(), term.basis.x.value.max(), ngrid)
         newdata_x: Mapping[str, ArrayLike] = {term.basis.input_name: xgrid}
     else:
         newdata_x = newdata
         xgrid = np.asarray(newdata[term.basis.input_name])
 
     newdata_x = _as_array_dict(newdata_x)
-
-    term_samples = _normalise_sample_dims(
-        term.predict(gs.Position(samples), newdata=gs.Position(newdata_x)),
-        term.value.ndim,
-    )
 
     term_summary = summarise_1d_smooth(
         term=term,
@@ -164,6 +159,10 @@ def plot_1d_smooth(
         )
 
     if show_n_samples is not None and show_n_samples > 0:
+        term_samples = _normalise_sample_dims(
+            term.predict(gs.Position(samples), newdata=gs.Position(newdata_x)),
+            term.value.ndim,
+        )
         key = jax.random.key(seed) if isinstance(seed, int) else seed
         n_samples = min(show_n_samples, term_samples.shape[0] * term_samples.shape[1])
 
