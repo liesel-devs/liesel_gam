@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, cast, overload
+from typing import Any, Literal, overload
 
 import jax
 import jax.numpy as jnp
@@ -266,9 +266,11 @@ PlotVars = Literal[
 ]
 
 
-def _normalise_which(which: PlotVars | Sequence[PlotVars]) -> Sequence[PlotVars]:
+def _normalise_which(
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str],
+) -> Sequence[str]:
     if isinstance(which, str):
-        return [cast(PlotVars, which)]
+        return [which]
     return which
 
 
@@ -278,7 +280,7 @@ def summarise_nd_smooth(
     samples: Mapping[str, ArrayLike],
     newdata: None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
@@ -292,7 +294,7 @@ def summarise_nd_smooth(
     samples: Mapping[str, ArrayLike],
     newdata: None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
@@ -305,7 +307,7 @@ def summarise_nd_smooth(
     samples: Mapping[str, ArrayLike],
     newdata: None | Mapping[str, ArrayLike] = None,
     ngrid: int = 20,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     newdata_meshgrid: bool = False,
@@ -596,7 +598,7 @@ def summarise_regions(
     term: RITerm | MRFTerm | StrctTerm,
     samples: Mapping[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
     labels: CategoryMapping | Sequence[str] | None = None,
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -609,7 +611,7 @@ def summarise_regions(
     term: lsl.Var | lsl.Node,
     samples: Mapping[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
     labels: CategoryMapping | Sequence[str] | None = None,
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -621,7 +623,7 @@ def summarise_regions(
     term: lsl.Var | lsl.Node,
     samples: Mapping[str, ArrayLike],
     newdata: gs.Position | None | Mapping[str, ArrayLike] = None,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     polys: Mapping[str, ArrayLike] | None = None,
     labels: CategoryMapping | Sequence[str] | None = None,
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
@@ -794,7 +796,7 @@ def summarise_1d_smooth_clustered(
     clustered_term: lsl.Var,
     samples: Mapping[str, ArrayLike],
     newdata: Mapping[str, ArrayLike] | None = None,
-    which: PlotVars | Sequence[PlotVars] = "mean",
+    which: PlotVars | str | Sequence[PlotVars] | Sequence[str] = "mean",
     quantiles: Sequence[float] = (0.05, 0.5, 0.95),
     hdi_prob: float = 0.9,
     labels: CategoryMapping | None | Sequence[str] = None,
