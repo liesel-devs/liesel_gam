@@ -6,7 +6,6 @@ arviz==1.2.0
 arviz-base==1.2.0
 arviz-plots==1.2.0
 arviz-stats==1.2.0
-ast-serialize==0.5.0
 asttokens==3.0.1
 attrs==26.1.0
 babel==2.18.0
@@ -56,8 +55,7 @@ jupyter-client==8.9.1
 jupyter-core==5.9.1
 kiwisolver==1.5.0
 lazy-loader==0.5
-librt==0.11.0 ; platform_python_implementation != 'PyPy'
-liesel==0.5.1
+liesel==0.5.2
 markdown-it-py==4.2.0
 markupsafe==3.0.3
 matplotlib==3.10.9
@@ -66,8 +64,6 @@ mdit-py-plugins==0.6.1
 mdurl==0.1.2
 mizani==0.14.4
 ml-dtypes==0.5.4
-mypy==2.1.0
-mypy-extensions==1.1.0
 myst-nb==1.4.0
 myst-parser==5.1.0
 narwhals==2.22.1
@@ -83,7 +79,6 @@ optax==0.2.8
 packaging==26.2
 pandas==3.0.3
 parso==0.8.7
-pathspec==1.1.1
 patsy==1.0.2
 pexpect==4.9.0 ; sys_platform != 'emscripten' and sys_platform != 'win32'
 pillow==12.2.0
@@ -114,6 +109,7 @@ ruff==0.15.18
 scipy==1.17.1
 seaborn==0.13.2
 six==1.17.0
+smoothcon==0.3.0
 snowballstemmer==3.1.1
 soupsieve==2.8.4
 sphinx==9.1.0
