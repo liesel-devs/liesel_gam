@@ -246,19 +246,23 @@ def _compute_masks(
     flat_evs = [ev.reshape(B_flat, ev.shape[-1]) for ev in penalties_eigvalues]
 
     diags = jax.vmap(diag)(flat_evs)  # (B_flat, N)
-    K = _materialize_precision(penalties)  # (B, N, N)
-    K = K.reshape((B_flat,) + K.shape[-2:])
-
-    ranks = jax.vmap(jnp.linalg.matrix_rank)(K)  # (B_flat,)
-    masks = (diags > eps).sum(-1)  # (B_flat,)
-
-    if not jnp.allclose(masks, ranks):
-        raise ValueError(
-            f"Number of zero eigenvalues ({masks}) does not "
-            f"correspond to penalty rank ({ranks}). Maybe a different value for "
-            f"{eps=} can help."
-        )
     mask = diags > eps
+    mask_ranks = mask.sum(-1)  # (B_flat,)
+
+    marginal_nullities = jnp.stack(
+        [penalty.shape[-1] - jnp.linalg.matrix_rank(penalty) for penalty in penalties],
+        axis=-1,
+    )
+    total_size = prod(penalty.shape[-1] for penalty in penalties)
+    expected_ranks = total_size - jnp.prod(marginal_nullities, axis=-1)
+    expected_ranks = jnp.reshape(expected_ranks, (B_flat,))
+
+    if not jnp.array_equal(mask_ranks, expected_ranks):
+        raise ValueError(
+            f"Number of non-zero eigenvalues ({mask_ranks}) does not "
+            f"correspond to penalty rank ({expected_ranks}). Maybe a different value "
+            f"for {eps=} can help."
+        )
 
     return mask.reshape(B + (mask.shape[-1],))
 

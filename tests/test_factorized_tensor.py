@@ -1,3 +1,5 @@
+import inspect
+
 import jax
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -98,6 +100,33 @@ def test_indexed_marginal_uses_gather_and_retains_its_penalty():
     assert jnp.allclose(interaction.value, explicit @ coef, atol=1e-5)
     assert jnp.allclose(interaction.penalties[0], penalty)
     assert interaction.marginal_bases[0].value.shape == (n,)
+
+
+def test_multivariate_three_way_matches_explicit_basis():
+    n = 9
+    bases = (
+        jax.random.normal(jax.random.key(4), (n, 2)),
+        jax.random.normal(jax.random.key(5), (n, 3)),
+        jax.random.normal(jax.random.key(6), (n, 4)),
+    )
+    term = gam.MultivariateStrctInteractionTerm.f(
+        *(_term(basis, name) for basis, name in zip(bases, ("x", "y", "z"))),
+        dimension_penalties=[jnp.eye(2)],
+        dimension_scales=[1.0],
+    )
+    coef = jnp.linspace(-1.0, 1.0, term.coef.value.size)
+    explicit = _explicit_basis(*bases)
+
+    term.coef.value = coef
+    term.latent.update()
+    expected = explicit @ coef.reshape(term.nbases, term.latent_ndim)
+    assert not hasattr(term, "basis")
+    assert jnp.allclose(term.latent.value, expected, atol=1e-5)
+
+
+def test_multivariate_interaction_factory_omits_basis_name():
+    parameters = inspect.signature(gam.MultivariateStrctInteractionTerm.f).parameters
+    assert "basis_name" not in parameters
 
 
 def test_consolidation_keeps_only_marginal_bases():

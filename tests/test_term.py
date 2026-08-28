@@ -936,3 +936,33 @@ class TestRITerm:
 
         term.labels = ["a" + str(i) for i in range(10)]
         assert len(term.labels) == 10
+
+
+class TestMultivariateTPTerm:
+    def test_2d_spline(self, columb):
+        tb = gam.TermBuilder.from_df(columb)
+
+        s = tb.ps(
+            "x",
+            k=10,
+            absorb_cons=False,
+            diagonal_penalty=False,
+            scale_penalty=False,
+        )
+
+        s2d = gam.MultivariateStrctTerm.f(
+            s,
+            dimension_penalties=[jnp.eye(2)],
+            dimension_scales=[lsl.Var(1.0)],
+        )
+
+        assert s2d.value.shape == (49, 2)
+
+        dist = s2d.coef.dist_node.init_dist()  # type: ignore
+        K = dist._op.materialize_penalty()  # type: ignore
+
+        Kmarginal = jnp.kron(s.basis.penalty.value, jnp.eye(2)) + jnp.kron(  # type: ignore
+            jnp.eye(2), jnp.eye(s.nbases)
+        )
+
+        assert jnp.allclose(K, Kmarginal)
