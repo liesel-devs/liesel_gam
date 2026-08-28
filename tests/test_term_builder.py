@@ -1143,6 +1143,20 @@ class TestTPTerm:
 
         assert set(term.terms_by_order) == {2}
 
+    def test_grouped_tf_names_respect_builder_prefixes(self, columb):
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        def tensor(prefix):
+            tb = gb.TermBuilder(registry, prefix_names_by=prefix)
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                order=(2,),
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
+
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")

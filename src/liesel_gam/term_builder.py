@@ -3577,6 +3577,16 @@ class TermBuilder:
                 subterm.coef.name = self.names.create(subterm.coef.name)
                 subterm.name = self.names.create(subterm.name)
 
+        if group_terms_by_order:
+            for group in term.term_groups.values():
+                group.name = self.names.create(group.name)
+                group.value_node.name = self.names.create(
+                    group.name + "_value_node", apply_prefix=False
+                )
+                group.var_value_node.name = self.names.create(
+                    group.name + "_var_value_node", apply_prefix=False
+                )
+
         if not common_scale:
             for scale in term.scales:
                 if not isinstance(scale, lsl.Var):
