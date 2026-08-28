@@ -1145,6 +1145,16 @@ class TestTPTerm:
         psx = tb.ps("x", k=10)
         tb.tx(psy, psx)
 
+    def test_tf_without_main_effects(self, columb):
+        tb = gb.TermBuilder.from_df(columb)
+        term = tb.tf(
+            tb.ps("x", k=10),
+            tb.ps("y", k=10),
+            order=(2,),
+        )
+
+        assert set(term.terms_by_order) == {2}
+
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")
