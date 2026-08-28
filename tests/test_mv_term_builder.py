@@ -121,9 +121,7 @@ class TestMVTermBuilder:
             "z": jnp.array([1.25, 1.75]),
         }
 
-        prediction = term.predict(
-            gs.Position(samples), newdata=gs.Position(newdata)
-        )
+        prediction = term.predict(gs.Position(samples), newdata=gs.Position(newdata))
 
         assert term.name == "tp(x,z)"
         assert term.basis.input_name == "x,z"
