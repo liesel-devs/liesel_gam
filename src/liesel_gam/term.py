@@ -1060,10 +1060,7 @@ class IndexingTerm(StrctTerm):
             validate_scalar_scale=validate_scalar_scale,
         )
 
-        # mypy warns that self.value_node might be a lsl.Node, which does not have the
-        # attribute "function".
-        # But we can assume safely that self.value_node is a lsl.Calc, which does have
-        # one.
+        # Narrow the node type before replacing its calculation function.
         assert isinstance(self.value_node, lsl.Calc)
         self.value_node.function = lambda basis, coef: jnp.take(coef, basis)
         if _update_on_init:
