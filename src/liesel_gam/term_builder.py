@@ -46,7 +46,7 @@ def labels_to_integers(newdata: dict, mappings: dict[str, CategoryMapping]) -> d
     # replace categorical variables by their integer representations
     for name, mapping in mappings.items():
         if name in newdata:
-            newdata[name] = mapping.labels_to_integers(newdata[name])
+            newdata[name] = jnp.asarray(mapping.labels_to_integers(newdata[name]))
 
     return newdata
 
@@ -474,11 +474,16 @@ class TermBuilder:
             approximation=approximation,
         )
 
-    def labels_to_integers(self, newdata: dict) -> dict:
-        """
-        Processes a ``newdata`` dictionary, replacing labels of caterogical variables
-        with their integer representation, such that they can be understood by
-        :meth:`liesel.model.Model.predict`.
+    def labels_to_integers(self, newdata: dict[str, Any]) -> dict[str, Any]:
+        """Encode categorical labels for prediction paths that require codes.
+
+        Models containing :class:`.CatVar` accept labels directly in ``newdata``;
+        this compatibility helper is not normally needed for those models.
+
+        Parameters
+        ----------
+        newdata
+            Replacement values keyed by source-value name.
         """
         return labels_to_integers(newdata, self.bases.mappings)
 

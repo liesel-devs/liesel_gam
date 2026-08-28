@@ -995,6 +995,18 @@ class TestRITerm:
         assert term.coef.value.size == 3
         assert tb.labels_to_integers({"G": ["b"]})["G"].tolist() == [1]
 
+    def test_label_encoding_helper_returns_prediction_codes(self) -> None:
+        tb = gam.TermBuilder.from_df(pd.DataFrame({"G": ["a", "b"]}))
+        term = tb.ri("G", scale=1.0)
+        newdata = tb.labels_to_integers({"G": ["b", "a"]})
+
+        prediction = term.predict(
+            gs.Position({term.coef.name: jnp.array([[10.0, 20.0]])}),
+            newdata=gs.Position(newdata),
+        )
+
+        assert jnp.array_equal(prediction, jnp.array([[20.0, 10.0]]))
+
     @pytest.mark.parametrize("method", ["ri", "rs", "mrf"])
     def test_categorical_terms_require_one_dimensional_inputs(
         self, method: str

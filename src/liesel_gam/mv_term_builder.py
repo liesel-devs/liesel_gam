@@ -379,7 +379,10 @@ class MVTermBuilder:
         return int(self.dimension_penalty.value.shape[-1])
 
     def labels_to_integers(self, newdata: dict[str, Any]) -> dict[str, Any]:
-        """Encode categorical prediction values with the builder's mappings.
+        """Encode categorical labels for prediction paths that require codes.
+
+        Models containing :class:`.CatVar` accept labels directly in ``newdata``;
+        this compatibility helper is not normally needed for those models.
 
         Parameters
         ----------
