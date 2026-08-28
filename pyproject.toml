@@ -34,7 +34,6 @@ classifiers = [
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
-    "mypy>=1.15.0",
     "nbval>=0.11.0",
     "plotnine>=0.14.5",
     "pre-commit>=4.2.0",
@@ -89,12 +88,6 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-
-[tool.mypy]
-files = ["src", "tests"]
-ignore_missing_imports = true
-scripts_are_modules = true
-disable_error_code = "annotation-unchecked"
 
 [build-system]
 requires = ["hatchling"]

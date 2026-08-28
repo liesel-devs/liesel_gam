@@ -1155,6 +1155,49 @@ class TestTPTerm:
 
         assert set(term.terms_by_order) == {2}
 
+    def test_grouped_tf_names_respect_builder_prefixes(self, columb):
+        registry = gb.PandasRegistry(columb, na_action="drop")
+
+        def tensor(prefix):
+            tb = gb.TermBuilder(registry, prefix_names_by=prefix)
+            return tb.tf(
+                tb.ps("x", k=5),
+                tb.ps("y", k=5),
+                order=(2,),
+                group_terms_by_order=True,
+            )
+
+        lsl.Model([tensor("l."), tensor("s.")])
+
+    @pytest.mark.parametrize("prefix", (False, True))
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_tensor_graph_composition_same_builder(self, columb, method, prefix):
+        tb = gb.TermBuilder.from_df(columb)
+        psx1 = tb.ps("x", k=10, prefix="l." if prefix else "")
+        psy1 = tb.ps("y", k=10, prefix="l." if prefix else "")
+        term1 = getattr(tb, method)(psx1, psy1, prefix="l." if prefix else "")
+
+        psx2 = tb.ps("x", k=10, prefix="s." if prefix else "")
+        psy2 = tb.ps("y", k=10, prefix="s." if prefix else "")
+        term2 = getattr(tb, method)(psx2, psy2, prefix="s." if prefix else "")
+
+        lsl.Model([term1, term2])
+
+    @pytest.mark.parametrize("prefix", (False, True))
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_tensor_graph_composition_two_builders(self, columb, method, prefix):
+        tb1 = gb.TermBuilder.from_df(columb, prefix_names_by="l." if prefix else "")
+        term1 = getattr(tb1, method)(tb1.ps("x", k=10), tb1.ps("y", k=10))
+
+        tb2 = gb.TermBuilder.from_df(columb, prefix_names_by="s." if prefix else "")
+        term2 = getattr(tb2, method)(tb2.ps("x", k=10), tb2.ps("y", k=10))
+
+        if prefix:
+            lsl.Model([term1, term2])
+        else:
+            with pytest.raises(RuntimeError, match="Duplicate node names"):
+                lsl.Model([term1, term2])
+
     def test_ps_ri(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         ri = tb.ri("district")

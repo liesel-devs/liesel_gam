@@ -705,7 +705,7 @@ class TestNDSmoothSummary:
         assert "q_0.95" in su1.variable.to_list()
         assert "q_0.5" in su1.variable.to_list()
 
-        su2 = gam.summarise_nd_smooth(  # ty: ignore[no-matching-overload]
+        su2 = gam.summarise_nd_smooth(
             term=term,
             samples=samples,
             which=["q_0.1", "q_0.9"],
