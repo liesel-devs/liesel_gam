@@ -184,6 +184,34 @@ Distribution
     ~liesel_gam.StructuredPenaltyOperator
 
 
+Two-piece Student-t IWLS proposals
+**********************************
+
+.. autosummary::
+    :toctree: generated
+    :caption: Two-piece Student-t IWLS proposals
+    :nosignatures:
+
+    ~liesel_gam.iwls_proposals.IWLSWeights.two_piece_student_t_loc
+    ~liesel_gam.iwls_proposals.IWLSWeights.two_piece_student_t_scale
+    ~liesel_gam.iwls_proposals.IWLSWeights.two_piece_student_t_df
+    ~liesel_gam.iwls_proposals.IWLSWeights.two_piece_student_t_skewness
+    ~liesel_gam.iwls_proposals.TwoPieceStudentTIWLSWeights
+    ~liesel_gam.iwls_proposals.TwoPieceStudentTIWLSProposal
+    ~liesel_gam.iwls_proposals.TwoPieceStudentTLocIWLSProposal
+    ~liesel_gam.iwls_proposals.TwoPieceStudentTScaleIWLSProposal
+    ~liesel_gam.iwls_proposals.TwoPieceStudentTDfIWLSProposal
+    ~liesel_gam.iwls_proposals.TwoPieceStudentTSkewnessIWLSProposal
+    ~liesel_gam.iwls_proposals.two_piece_student_t_iwls_spec_loc
+    ~liesel_gam.iwls_proposals.two_piece_student_t_iwls_spec_scale
+    ~liesel_gam.iwls_proposals.two_piece_student_t_iwls_spec_df
+    ~liesel_gam.iwls_proposals.two_piece_student_t_iwls_spec_skewness
+    ~liesel_gam.iwls_proposals.apply_two_piece_student_t_iwls_spec_loc
+    ~liesel_gam.iwls_proposals.apply_two_piece_student_t_iwls_spec_scale
+    ~liesel_gam.iwls_proposals.apply_two_piece_student_t_iwls_spec_df
+    ~liesel_gam.iwls_proposals.apply_two_piece_student_t_iwls_spec_skewness
+
+
 Other
 ***************
 
