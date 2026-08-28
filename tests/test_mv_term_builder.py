@@ -500,6 +500,31 @@ class TestMVTermBuilder:
         assert term.name == f"p.x*{by_name}"
         assert by.name == by_name
 
+    def test_varying_coefficient_rejects_incompatible_multivariate_term(self) -> None:
+        scalar_builder = gam.TermBuilder.from_df(_data())
+        identity = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
+        difference = jnp.diff(jnp.eye(3), axis=0)
+        random_walk = gam.MVTermBuilder.from_term_builder(
+            scalar_builder, difference.T @ difference
+        )
+        incompatible = _mv_term(random_walk, "z", dimension_scale=1.0)
+
+        with pytest.raises(ValueError, match="different dimension penalty"):
+            identity.vc("x", incompatible)
+
+    def test_varying_coefficient_rejects_incompatible_constraint(self) -> None:
+        scalar_builder = gam.TermBuilder.from_df(_data())
+        builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))
+        incompatible = gam.MultivariateStrctTerm(
+            _scalar_term(scalar_builder, "z"),
+            dimension_penalties=[jnp.eye(3)],
+            dimension_scales=[1.0],
+            dimension_reparam=jnp.flip(jnp.eye(3), axis=0),
+        )
+
+        with pytest.raises(ValueError, match="different constraint"):
+            builder.vc("x", incompatible)
+
     def test_varying_coefficient_rejects_catvar_x(self) -> None:
         scalar_builder = gam.TermBuilder.from_df(_data())
         builder = gam.MVTermBuilder.from_term_builder(scalar_builder, jnp.eye(3))

@@ -9,6 +9,14 @@ from liesel_gam.consolidate_bases import consolidate_bases
 
 
 class TestMVAdditivePredictor:
+    def test_contribution_rejects_incompatible_latent_dimension(self) -> None:
+        with pytest.raises(ValueError, match="trailing dimension"):
+            gam.MultivariateContribution(
+                latent=lsl.Var.new_value(jnp.ones((5, 2))),
+                dimension_reparam=lsl.Value(jnp.eye(3)),
+                dimension_penalty=lsl.Value(jnp.eye(3)),
+            )
+
     def test_penalty_validation(self) -> None:
         with pytest.raises(ValueError, match="matrix"):
             gam.MVAdditivePredictor("delta", jnp.ones(3))
@@ -42,6 +50,14 @@ class TestMVAdditivePredictor:
         predictor = gam.MVAdditivePredictor.from_random_walk("delta", ndim=np.int64(4))
 
         assert predictor.ndim == 4
+
+    def test_custom_integer_intercept_produces_float_predictor(self) -> None:
+        intercept = lsl.Var.new_value(jnp.arange(3, dtype=jnp.int32))
+        predictor = gam.MVAdditivePredictor.from_identity(
+            "delta", ndim=3, intercept=intercept
+        )
+
+        assert jnp.issubdtype(predictor.value.dtype, jnp.floating)
 
     def test_identity_and_no_penalty_constructors(self) -> None:
         identity = gam.MVAdditivePredictor.from_identity("identity", ndim=3)

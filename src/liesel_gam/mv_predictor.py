@@ -65,6 +65,14 @@ class MultivariateContribution(UserVar):
         dimension_penalty: lsl.Value,
         name: str = "",
     ) -> None:
+        latent_shape = jnp.shape(latent.value)
+        latent_ndim = dimension_reparam.value.shape[1]
+        if not latent_shape or latent_shape[-1] != latent_ndim:
+            raise ValueError(
+                f"Latent value must have trailing dimension {latent_ndim}, "
+                f"got shape {latent_shape}."
+            )
+
         self.latent = latent
         self.dimension_reparam = dimension_reparam
         self.dimension_penalty = dimension_penalty
@@ -326,7 +334,7 @@ class MVAdditivePredictor(UserVar):
                 return x
 
         def _sum(*args, intercept):
-            return inv_link(sum(args) + intercept)
+            return inv_link(sum(args) + 0.0 + intercept)
 
         name_cleaned = name.replace("$", "")
         automatic_intercept_name = intercept_name.format(

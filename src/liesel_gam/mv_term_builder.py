@@ -1410,6 +1410,18 @@ class MVTermBuilder:
         (8, 2)
         """
         if isinstance(by, MultivariateStrctTerm):
+            if by.dimension_penalty is None or not jnp.allclose(
+                by.dimension_penalty.value, self.dimension_penalty.value
+            ):
+                raise ValueError(
+                    "Varying-coefficient term uses a different dimension penalty."
+                )
+            if not jnp.allclose(
+                by.dimension_reparam.value, self.dimension_reparam.value
+            ):
+                raise ValueError(
+                    "Varying-coefficient term uses a different constraint."
+                )
             by_mv = by
         elif isinstance(by, StrctTerm):
             by_mv = self._wrap_marginal(
