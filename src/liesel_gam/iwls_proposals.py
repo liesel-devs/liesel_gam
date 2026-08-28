@@ -17,6 +17,7 @@ import liesel.goose as gs
 import liesel.model as lsl
 from jax import Array, grad
 from jax.flatten_util import ravel_pytree
+from jax.scipy.special import polygamma
 from jax.typing import ArrayLike
 from liesel.goose.types import ModelState, Position
 
@@ -274,6 +275,201 @@ class IWLSWeights:
 
         return working_weights
 
+    @staticmethod
+    def two_piece_student_t_loc(
+        df_name: str = "df",
+        scale_name: str = "scale",
+    ) -> WorkingWeightsFn:
+        """
+        Return Fisher weights for ``TwoPieceStudentT`` location terms.
+
+        The location predictor uses an identity link. ``df`` and ``scale`` are
+        the positive parameters passed to TFP.
+
+        Parameters
+        ----------
+        df_name
+            Name of the degrees-of-freedom variable.
+        scale_name
+            Name of the observation-scale variable.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> from unittest.mock import Mock
+        >>> model = Mock()
+        >>> model.extract_position.return_value = {
+        ...     "df": jnp.array(5.0),
+        ...     "scale": jnp.array(2.0),
+        ... }
+        >>> weights = IWLSWeights.two_piece_student_t_loc()(model, {})
+        >>> print(round(float(weights), 3))
+        0.188
+        """
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name, scale_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            scale = jnp.asarray(pos[scale_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            scale = jnp.clip(scale, min=eps)
+            return (df + 1.0) / ((df + 3.0) * jnp.square(scale))
+
+        return working_weights
+
+    @staticmethod
+    def two_piece_student_t_scale(df_name: str = "df") -> WorkingWeightsFn:
+        """
+        Return Fisher weights for ``TwoPieceStudentT`` log-scale terms.
+
+        Parameters
+        ----------
+        df_name
+            Name of the degrees-of-freedom variable.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> from unittest.mock import Mock
+        >>> model = Mock()
+        >>> model.extract_position.return_value = {"df": jnp.array(5.0)}
+        >>> weights = IWLSWeights.two_piece_student_t_scale()(model, {})
+        >>> print(float(weights))
+        1.25
+        """
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            return 2.0 * df / (df + 3.0)
+
+        return working_weights
+
+    @staticmethod
+    def two_piece_student_t_df(df_name: str = "df") -> WorkingWeightsFn:
+        """
+        Return Fisher weights for ``TwoPieceStudentT`` log-df terms.
+
+        For larger degrees of freedom, the weight is evaluated with an
+        asymptotic expansion to avoid cancellation in the trigamma difference.
+
+        Parameters
+        ----------
+        df_name
+            Name of the degrees-of-freedom variable.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> from unittest.mock import Mock
+        >>> model = Mock()
+        >>> model.extract_position.return_value = {"df": jnp.array(5.0)}
+        >>> weights = IWLSWeights.two_piece_student_t_df()(model, {})
+        >>> print(round(float(weights), 3))
+        0.076
+        """
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            direct_weight = (
+                jnp.square(df)
+                / 4.0
+                * (polygamma(1, df / 2.0) - polygamma(1, (df + 1.0) / 2.0))
+                + df / (2.0 * (df + 3.0))
+                - df / (df + 1.0)
+            )
+            # The direct trigamma difference loses precision as df grows. This
+            # expansion has relative error below 4e-6 at the branch point and
+            # becomes more accurate for larger df.
+            inverse_df = 1.0 / jnp.maximum(df, 15.0)
+            asymptotic_weight = jnp.square(inverse_df) * (
+                7.0 / 2.0
+                + inverse_df
+                * (
+                    -13.0
+                    + inverse_df
+                    * (
+                        79.0 / 2.0
+                        + inverse_df
+                        * (
+                            -119.0
+                            + inverse_df
+                            * (
+                                727.0 / 2.0
+                                + inverse_df
+                                * (
+                                    -1101.0
+                                    + inverse_df * (6559.0 / 2.0 - 9763.0 * inverse_df)
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+            weight = jnp.where(df >= 15.0, asymptotic_weight, direct_weight)
+            return jnp.clip(weight, min=jnp.finfo(df.dtype).tiny)
+
+        return working_weights
+
+    @staticmethod
+    def two_piece_student_t_skewness(
+        df_name: str = "df",
+        skewness_name: str = "skewness",
+    ) -> WorkingWeightsFn:
+        """
+        Return Fisher weights for ``TwoPieceStudentT`` log-skewness terms.
+
+        Parameters
+        ----------
+        df_name
+            Name of the degrees-of-freedom variable.
+        skewness_name
+            Name of the skewness variable.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> from unittest.mock import Mock
+        >>> model = Mock()
+        >>> model.extract_position.return_value = {
+        ...     "df": jnp.array(5.0),
+        ...     "skewness": jnp.array(2.0),
+        ... }
+        >>> weights = IWLSWeights.two_piece_student_t_skewness()(model, {})
+        >>> print(round(float(weights), 2))
+        1.89
+        """
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([df_name, skewness_name], model_state)
+            df = jnp.asarray(pos[df_name])
+            skewness = jnp.asarray(pos[skewness_name])
+            eps = jnp.sqrt(jnp.finfo(df.dtype).eps)
+            df = jnp.clip(df, min=eps)
+            skewness = jnp.clip(skewness, min=eps)
+            skew_info = 4.0 / jnp.square(skewness + 1.0 / skewness)
+            return 2.0 * df / (df + 3.0) + skew_info
+
+        return working_weights
+
 
 class GaussianIWLSWeights(IWLSWeights):
     """
@@ -284,6 +480,31 @@ class GaussianIWLSWeights(IWLSWeights):
 
     loc = staticmethod(IWLSWeights.gaussian_loc)
     scale = staticmethod(IWLSWeights.gaussian_scale)
+
+
+class TwoPieceStudentTIWLSWeights(IWLSWeights):
+    """
+    Working-weight factories for TFP's ``TwoPieceStudentT`` distribution.
+
+    ``scale``, ``df``, and ``skewness`` use logarithmic predictors; ``loc`` uses
+    an identity predictor. The location, scale, and degrees-of-freedom weights
+    do not depend on skewness under TFP's two-piece normalization.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from unittest.mock import Mock
+    >>> model = Mock()
+    >>> model.extract_position.return_value = {"df": jnp.array(5.0)}
+    >>> weights = TwoPieceStudentTIWLSWeights.scale()(model, {})
+    >>> print(float(weights))
+    1.25
+    """
+
+    loc = staticmethod(IWLSWeights.two_piece_student_t_loc)
+    scale = staticmethod(IWLSWeights.two_piece_student_t_scale)
+    df = staticmethod(IWLSWeights.two_piece_student_t_df)
+    skewness = staticmethod(IWLSWeights.two_piece_student_t_skewness)
 
 
 def gaussian_iwls_spec_loc(
@@ -458,6 +679,410 @@ def apply_gaussian_iwls_spec_scale(
         term.coef.inference = gaussian_iwls_spec_scale(term=term, **kwargs)
         if verbose:
             logger.info(f"Updating inference of '{term.name}' coefficient.")
+
+
+def _two_piece_student_t_iwls_spec(
+    term: IWLSProposalInputTerm,
+    proposal_type: Any,
+    proposal_kwargs: dict[str, str],
+    kernel_kwargs: dict[str, Any],
+) -> gs.MCMCSpec:
+    """Build a ``TwoPieceStudentT`` IWLS specification."""
+    term = _ensure_isotropic_term(term)
+    _raise_if_scale_factored(term)
+
+    def init_iwls_kernel(position_keys, term):
+        term = _ensure_isotropic_term(term)
+        _raise_if_scale_factored(term)
+        proposal = proposal_type.from_term(term, **proposal_kwargs)
+        return proposal.kernel_factory()(position_keys, **kernel_kwargs)
+
+    return gs.MCMCSpec(kernel=init_iwls_kernel, kernel_kwargs={"term": term})
+
+
+def two_piece_student_t_iwls_spec_loc(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    scale_name: str = "scale",
+    **kwargs: Any,
+) -> gs.MCMCSpec:
+    """
+    Create an IWLS specification for a ``TwoPieceStudentT`` location term.
+
+    Parameters
+    ----------
+    term
+        Structured additive term for the identity-linked location predictor.
+        Scale-factored and anisotropic terms are not supported.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :class:`liesel.goose.IWLSKernel`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> spec = two_piece_student_t_iwls_spec_loc(term)
+    >>> print(type(spec).__name__)
+    MCMCSpec
+    """
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTLocIWLSProposal,
+        {"df_name": df_name, "scale_name": scale_name},
+        kwargs,
+    )
+
+
+def two_piece_student_t_iwls_spec_scale(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    **kwargs: Any,
+) -> gs.MCMCSpec:
+    """
+    Create an IWLS specification for a log-scale predictor term.
+
+    Parameters
+    ----------
+    term
+        Structured additive term for the log-scale predictor. Scale-factored
+        and anisotropic terms are not supported.
+    df_name
+        Name of the degrees-of-freedom variable.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :class:`liesel.goose.IWLSKernel`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> spec = two_piece_student_t_iwls_spec_scale(term)
+    >>> print(type(spec).__name__)
+    MCMCSpec
+    """
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTScaleIWLSProposal,
+        {"df_name": df_name},
+        kwargs,
+    )
+
+
+def two_piece_student_t_iwls_spec_df(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    **kwargs: Any,
+) -> gs.MCMCSpec:
+    """
+    Create an IWLS specification for a log-df predictor term.
+
+    Parameters
+    ----------
+    term
+        Structured additive term for the log-df predictor. Scale-factored and
+        anisotropic terms are not supported.
+    df_name
+        Name of the degrees-of-freedom variable.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :class:`liesel.goose.IWLSKernel`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> spec = two_piece_student_t_iwls_spec_df(term)
+    >>> print(type(spec).__name__)
+    MCMCSpec
+    """
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTDfIWLSProposal,
+        {"df_name": df_name},
+        kwargs,
+    )
+
+
+def two_piece_student_t_iwls_spec_skewness(
+    term: IWLSProposalInputTerm,
+    df_name: str = "df",
+    skewness_name: str = "skewness",
+    **kwargs: Any,
+) -> gs.MCMCSpec:
+    """
+    Create an IWLS specification for a log-skewness predictor term.
+
+    Parameters
+    ----------
+    term
+        Structured additive term for the log-skewness predictor. Scale-factored
+        and anisotropic terms are not supported.
+    df_name
+        Name of the degrees-of-freedom variable.
+    skewness_name
+        Name of the skewness variable.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :class:`liesel.goose.IWLSKernel`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> spec = two_piece_student_t_iwls_spec_skewness(term)
+    >>> print(type(spec).__name__)
+    MCMCSpec
+    """
+    return _two_piece_student_t_iwls_spec(
+        term,
+        TwoPieceStudentTSkewnessIWLSProposal,
+        {"df_name": df_name, "skewness_name": skewness_name},
+        kwargs,
+    )
+
+
+def _apply_two_piece_student_t_iwls_spec(
+    predictor: AdditivePredictor,
+    spec_fn: Callable[..., gs.MCMCSpec],
+    verbose: bool,
+    **kwargs: Any,
+) -> None:
+    """Assign one kind of ``TwoPieceStudentT`` IWLS specification."""
+    for term in predictor.terms.values():
+        if _skip_anisotropic_term(term, verbose=verbose):
+            continue
+        if not isinstance(term, _IWLS_PROPOSAL_TERM_TYPES):
+            if verbose:
+                logger.info(f"Skipping '{term.name}', inference left unchanged.")
+            continue
+        term.coef.inference = spec_fn(term=term, **kwargs)
+        if verbose:
+            logger.info(f"Updating inference of '{term.name}' coefficient.")
+
+
+def apply_two_piece_student_t_iwls_spec_loc(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    scale_name: str = "scale",
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Assign location IWLS specifications to supported predictor terms.
+
+    Parameters
+    ----------
+    predictor
+        Additive predictor whose structured terms should be updated.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    verbose
+        If ``True``, log whether each term is updated or skipped.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :func:`two_piece_student_t_iwls_spec_loc`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.predictor import AdditivePredictor
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> predictor = AdditivePredictor("loc", intercept=False)
+    >>> predictor += term
+    >>> apply_two_piece_student_t_iwls_spec_loc(predictor)
+    >>> print(type(term.coef.inference).__name__)
+    MCMCSpec
+    """
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_loc,
+        verbose,
+        df_name=df_name,
+        scale_name=scale_name,
+        **kwargs,
+    )
+
+
+def apply_two_piece_student_t_iwls_spec_scale(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Assign log-scale IWLS specifications to supported predictor terms.
+
+    Parameters
+    ----------
+    predictor
+        Additive predictor whose structured terms should be updated.
+    df_name
+        Name of the degrees-of-freedom variable.
+    verbose
+        If ``True``, log whether each term is updated or skipped.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :func:`two_piece_student_t_iwls_spec_scale`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.predictor import AdditivePredictor
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> predictor = AdditivePredictor("scale", intercept=False)
+    >>> predictor += term
+    >>> apply_two_piece_student_t_iwls_spec_scale(predictor)
+    >>> print(type(term.coef.inference).__name__)
+    MCMCSpec
+    """
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_scale,
+        verbose,
+        df_name=df_name,
+        **kwargs,
+    )
+
+
+def apply_two_piece_student_t_iwls_spec_df(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Assign log-df IWLS specifications to supported predictor terms.
+
+    Parameters
+    ----------
+    predictor
+        Additive predictor whose structured terms should be updated.
+    df_name
+        Name of the degrees-of-freedom variable.
+    verbose
+        If ``True``, log whether each term is updated or skipped.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :func:`two_piece_student_t_iwls_spec_df`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.predictor import AdditivePredictor
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> predictor = AdditivePredictor("df", intercept=False)
+    >>> predictor += term
+    >>> apply_two_piece_student_t_iwls_spec_df(predictor)
+    >>> print(type(term.coef.inference).__name__)
+    MCMCSpec
+    """
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_df,
+        verbose,
+        df_name=df_name,
+        **kwargs,
+    )
+
+
+def apply_two_piece_student_t_iwls_spec_skewness(
+    predictor: AdditivePredictor,
+    df_name: str = "df",
+    skewness_name: str = "skewness",
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Assign log-skewness IWLS specifications to supported predictor terms.
+
+    Parameters
+    ----------
+    predictor
+        Additive predictor whose structured terms should be updated.
+    df_name
+        Name of the degrees-of-freedom variable.
+    skewness_name
+        Name of the skewness variable.
+    verbose
+        If ``True``, log whether each term is updated or skipped.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :func:`two_piece_student_t_iwls_spec_skewness`.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> import liesel.model as lsl
+    >>> from liesel_gam.basis import Basis
+    >>> from liesel_gam.predictor import AdditivePredictor
+    >>> from liesel_gam.term import StrctTerm
+    >>> term = StrctTerm.f(
+    ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+    ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+    ... )
+    >>> predictor = AdditivePredictor("skewness", intercept=False)
+    >>> predictor += term
+    >>> apply_two_piece_student_t_iwls_spec_skewness(predictor)
+    >>> print(type(term.coef.inference).__name__)
+    MCMCSpec
+    """
+    _apply_two_piece_student_t_iwls_spec(
+        predictor,
+        two_piece_student_t_iwls_spec_skewness,
+        verbose,
+        df_name=df_name,
+        skewness_name=skewness_name,
+        **kwargs,
+    )
 
 
 @dataclass
@@ -1018,6 +1643,406 @@ class GaussianScaleIWLSProposal(IWLSProposal):
         )
         self.term_name = term_name
         self.n = n
+
+
+@dataclass(init=False)
+class TwoPieceStudentTIWLSProposal(IWLSProposal):
+    """
+    Base IWLS proposal for TFP's ``TwoPieceStudentT`` parameters.
+
+    Subclasses use diagonal expected Fisher information for one of ``loc``,
+    ``log(scale)``, ``log(df)``, or ``log(skewness)``. The three logarithmic
+    predictors must be exponentiated before being passed to TFP. They only
+    select working weights; proposal precision and kernels continue to use the
+    shared :class:`IWLSProposal` implementation.
+
+    Parameters
+    ----------
+    basis
+        Static basis matrix for the structured term.
+    term_name
+        Name of the structured term.
+    term_scale_name
+        Name of the smoothing-scale variable used in the coefficient prior.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    skewness_name
+        Name of the skewness variable.
+    penalty
+        Penalty matrix of the structured coefficient prior.
+    model
+        Liesel model or model interface used to extract variables from model
+        states.
+    n
+        Number of observations represented by the term.
+    basis_name
+        Name of the basis matrix variable, retained as metadata.
+    scale_factored
+        Whether the corresponding term uses scale factorization. This is
+        currently unsupported and raises an error if set to ``True``.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from unittest.mock import Mock
+    >>> proposal = TwoPieceStudentTScaleIWLSProposal(
+    ...     basis=jnp.eye(2),
+    ...     term_name="x",
+    ...     term_scale_name="tau",
+    ...     df_name="df",
+    ...     scale_name="scale",
+    ...     skewness_name="skewness",
+    ...     penalty=jnp.eye(2),
+    ...     model=Mock(),
+    ...     n=2,
+    ... )
+    >>> print(isinstance(proposal, TwoPieceStudentTIWLSProposal))
+    True
+    """
+
+    parameter = ""
+    term_name: str
+    df_name: str
+    scale_name: str
+    skewness_name: str
+    n: int
+
+    @classmethod
+    def _working_weights(
+        cls,
+        *,
+        df_name: str,
+        scale_name: str,
+        skewness_name: str,
+    ) -> WorkingWeightsFn:
+        if cls.parameter == "loc":
+            return IWLSWeights.two_piece_student_t_loc(df_name, scale_name)
+        if cls.parameter == "scale":
+            return IWLSWeights.two_piece_student_t_scale(df_name)
+        if cls.parameter == "df":
+            return IWLSWeights.two_piece_student_t_df(df_name)
+        if cls.parameter == "skewness":
+            return IWLSWeights.two_piece_student_t_skewness(df_name, skewness_name)
+        raise ValueError(f"Unknown TwoPieceStudentT parameter {cls.parameter!r}.")
+
+    @classmethod
+    def from_term(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+        cls,
+        term: IWLSProposalInputTerm,
+        *,
+        df_name: str = "df",
+        scale_name: str = "scale",
+        skewness_name: str = "skewness",
+    ) -> Self:
+        """
+        Construct a parameter-specific proposal from a structured term.
+
+        Parameters
+        ----------
+        term
+            Structured term whose basis, smoothing scale, penalty, and model
+            define the proposal geometry.
+        df_name
+            Name of the degrees-of-freedom variable.
+        scale_name
+            Name of the observation-scale variable.
+        skewness_name
+            Name of the skewness variable.
+
+        Examples
+        --------
+        >>> import jax.numpy as jnp
+        >>> import liesel.model as lsl
+        >>> from liesel_gam.basis import Basis
+        >>> from liesel_gam.term import StrctTerm
+        >>> term = StrctTerm.f(
+        ...     Basis(jnp.eye(2), xname="x", penalty=jnp.eye(2), use_callback=False),
+        ...     scale=lsl.Var.new_param(jnp.array(1.0), name="tau"),
+        ... )
+        >>> model = lsl.Model(
+        ...     [
+        ...         term,
+        ...         lsl.Var.new_param(jnp.array(5.0), name="df"),
+        ...     ]
+        ... )
+        >>> proposal = TwoPieceStudentTScaleIWLSProposal.from_term(term)
+        >>> print(proposal.term_name)
+        f(x)
+        """
+        working_weights_fn = cls._working_weights(
+            df_name=df_name,
+            scale_name=scale_name,
+            skewness_name=skewness_name,
+        )
+        base = IWLSProposal.from_term(term, working_weights_fn)
+        return cls(
+            basis=base.basis,
+            term_name=term.name,
+            term_scale_name=base.term_scale_name,
+            df_name=df_name,
+            scale_name=scale_name,
+            skewness_name=skewness_name,
+            penalty=base.penalty,
+            model=base.model,
+            n=term.value.shape[0],
+            basis_name=base.basis_name,
+            scale_factored=base.scale_factored,
+        )
+
+    def __init__(
+        self,
+        basis: ArrayLike,
+        term_name: str,
+        term_scale_name: str,
+        df_name: str,
+        scale_name: str,
+        skewness_name: str,
+        penalty: ArrayLike,
+        model: lsl.Model | gs.LieselInterface,
+        n: int,
+        basis_name: str = "",
+        scale_factored: bool = False,
+    ) -> None:
+        """Initialize a parameter-specific proposal."""
+        working_weights_fn = type(self)._working_weights(
+            df_name=df_name,
+            scale_name=scale_name,
+            skewness_name=skewness_name,
+        )
+        super().__init__(
+            basis=basis,
+            term_scale_name=term_scale_name,
+            penalty=penalty,
+            model=model,
+            working_weights_fn=working_weights_fn,
+            basis_name=basis_name,
+            scale_factored=scale_factored,
+        )
+        self.term_name = term_name
+        self.df_name = df_name
+        self.scale_name = scale_name
+        self.skewness_name = skewness_name
+        self.n = n
+
+
+class TwoPieceStudentTLocIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """
+    IWLS proposal for the identity-linked TFP ``loc`` parameter.
+
+    Parameters
+    ----------
+    basis
+        Static basis matrix for the structured term.
+    term_name
+        Name of the structured term.
+    term_scale_name
+        Name of the smoothing-scale variable used in the coefficient prior.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    skewness_name
+        Name of the skewness variable.
+    penalty
+        Penalty matrix of the structured coefficient prior.
+    model
+        Model or model interface used to extract model-state values.
+    n
+        Number of observations represented by the term.
+    basis_name
+        Name of the basis matrix variable, retained as metadata.
+    scale_factored
+        Whether the term uses unsupported scale factorization.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from unittest.mock import Mock
+    >>> model = Mock()
+    >>> model.extract_position.return_value = {
+    ...     "df": jnp.array(5.0),
+    ...     "scale": jnp.array(2.0),
+    ... }
+    >>> proposal = TwoPieceStudentTLocIWLSProposal(
+    ...     jnp.eye(2),
+    ...     "x",
+    ...     "tau",
+    ...     "df",
+    ...     "scale",
+    ...     "skewness",
+    ...     jnp.eye(2),
+    ...     model,
+    ...     2,
+    ... )
+    >>> print(round(float(proposal.working_weights({})), 3))
+    0.188
+    """
+
+    parameter = "loc"
+
+
+class TwoPieceStudentTScaleIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """
+    IWLS proposal for a log-linked TFP ``scale`` parameter.
+
+    Parameters
+    ----------
+    basis
+        Static basis matrix for the structured term.
+    term_name
+        Name of the structured term.
+    term_scale_name
+        Name of the smoothing-scale variable used in the coefficient prior.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    skewness_name
+        Name of the skewness variable.
+    penalty
+        Penalty matrix of the structured coefficient prior.
+    model
+        Model or model interface used to extract model-state values.
+    n
+        Number of observations represented by the term.
+    basis_name
+        Name of the basis matrix variable, retained as metadata.
+    scale_factored
+        Whether the term uses unsupported scale factorization.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from unittest.mock import Mock
+    >>> model = Mock()
+    >>> model.extract_position.return_value = {"df": jnp.array(5.0)}
+    >>> proposal = TwoPieceStudentTScaleIWLSProposal(
+    ...     jnp.eye(2),
+    ...     "x",
+    ...     "tau",
+    ...     "df",
+    ...     "scale",
+    ...     "skewness",
+    ...     jnp.eye(2),
+    ...     model,
+    ...     2,
+    ... )
+    >>> print(float(proposal.working_weights({})))
+    1.25
+    """
+
+    parameter = "scale"
+
+
+class TwoPieceStudentTDfIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """
+    IWLS proposal for a log-linked TFP ``df`` parameter.
+
+    Parameters
+    ----------
+    basis
+        Static basis matrix for the structured term.
+    term_name
+        Name of the structured term.
+    term_scale_name
+        Name of the smoothing-scale variable used in the coefficient prior.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    skewness_name
+        Name of the skewness variable.
+    penalty
+        Penalty matrix of the structured coefficient prior.
+    model
+        Model or model interface used to extract model-state values.
+    n
+        Number of observations represented by the term.
+    basis_name
+        Name of the basis matrix variable, retained as metadata.
+    scale_factored
+        Whether the term uses unsupported scale factorization.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from unittest.mock import Mock
+    >>> model = Mock()
+    >>> model.extract_position.return_value = {"df": jnp.array(5.0)}
+    >>> proposal = TwoPieceStudentTDfIWLSProposal(
+    ...     jnp.eye(2),
+    ...     "x",
+    ...     "tau",
+    ...     "df",
+    ...     "scale",
+    ...     "skewness",
+    ...     jnp.eye(2),
+    ...     model,
+    ...     2,
+    ... )
+    >>> print(round(float(proposal.working_weights({})), 3))
+    0.076
+    """
+
+    parameter = "df"
+
+
+class TwoPieceStudentTSkewnessIWLSProposal(TwoPieceStudentTIWLSProposal):
+    """
+    IWLS proposal for a log-linked TFP ``skewness`` parameter.
+
+    Parameters
+    ----------
+    basis
+        Static basis matrix for the structured term.
+    term_name
+        Name of the structured term.
+    term_scale_name
+        Name of the smoothing-scale variable used in the coefficient prior.
+    df_name
+        Name of the degrees-of-freedom variable.
+    scale_name
+        Name of the observation-scale variable.
+    skewness_name
+        Name of the skewness variable.
+    penalty
+        Penalty matrix of the structured coefficient prior.
+    model
+        Model or model interface used to extract model-state values.
+    n
+        Number of observations represented by the term.
+    basis_name
+        Name of the basis matrix variable, retained as metadata.
+    scale_factored
+        Whether the term uses unsupported scale factorization.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from unittest.mock import Mock
+    >>> model = Mock()
+    >>> model.extract_position.return_value = {
+    ...     "df": jnp.array(5.0),
+    ...     "skewness": jnp.array(2.0),
+    ... }
+    >>> proposal = TwoPieceStudentTSkewnessIWLSProposal(
+    ...     jnp.eye(2),
+    ...     "x",
+    ...     "tau",
+    ...     "df",
+    ...     "scale",
+    ...     "skewness",
+    ...     jnp.eye(2),
+    ...     model,
+    ...     2,
+    ... )
+    >>> print(round(float(proposal.working_weights({})), 2))
+    1.89
+    """
+
+    parameter = "skewness"
 
 
 # Backward-compatible aliases for the original Cholesky-focused names.
