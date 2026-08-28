@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from functools import reduce
 from itertools import combinations
+from math import prod
 from typing import Any, Literal, Self
 
 import jax
@@ -20,6 +20,37 @@ from .var import ScaleIG, UserVar, VarIGPrior, _append_name
 InferenceTypes = Any
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
+
+
+def _factorized_tensor_dot(
+    coef: Array,
+    bases: Sequence[Array],
+    marginal_sizes: Sequence[int],
+    indexed: Sequence[bool],
+) -> Array:
+    """Apply a row-wise tensor-product basis without materializing it."""
+    order = tuple(
+        sorted(range(len(marginal_sizes)), key=marginal_sizes.__getitem__, reverse=True)
+    )
+    tensor = jnp.reshape(coef, marginal_sizes)
+    tensor = jnp.transpose(tensor, order)
+
+    has_observation_axis = False
+    for marginal_index in order:
+        basis = jnp.asarray(bases[marginal_index])
+        if indexed[marginal_index]:
+            indices = basis.astype(jnp.int32)
+            if has_observation_axis:
+                tensor = tensor[jnp.arange(tensor.shape[0]), indices]
+            else:
+                tensor = jnp.take(tensor, indices, axis=0)
+        elif has_observation_axis:
+            tensor = jnp.einsum("ni,ni...->n...", basis, tensor)
+        else:
+            tensor = jnp.einsum("ni,i...->n...", basis, tensor)
+        has_observation_axis = True
+
+    return tensor
 
 
 def mvn_diag_prior(scale: lsl.Var) -> lsl.Dist:
@@ -1406,14 +1437,11 @@ class StrctInteractionTerm(UserVar):
         in the notation used below.
     name
         Name of the term
+    inference
+        Inference specification for the coefficient variable.
     coef_name
         Name of the coefficient variable. If ``None``, created automatically based on
         ``name``.
-    basis_name
-        Name of the basis variable. This variable is internally created to represent the
-        tensor product of the marginal basis matrices. If ``None``, the name will be
-        created automatically based on the names of the observed input variables to the
-        marginal terms.
     include_main_effects
         If ``True``, the marginal terms will be added to this term's value.
     _update_on_init
@@ -1475,6 +1503,10 @@ class StrctInteractionTerm(UserVar):
     The individual terms have (potentially different) basis dimensions
     :math:`J_1, \dots, J_M`, such that the tensor product basis dimension is
     :math:`J = \prod_{m=1}^M J_m`.
+
+    The tensor-product basis is never materialized. Instead, the coefficient tensor is
+    contracted with the marginal bases one dimension at a time. Consequently, this
+    class exposes :attr:`marginal_bases`, but intentionally has no ``basis`` attribute.
 
     The coefficient vector is equipped with a potentially rank-deficient multivariate
     Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as
@@ -1557,8 +1589,10 @@ class StrctInteractionTerm(UserVar):
     >>> sx = StrctTerm.f(bx, scale=1.0)
     >>> sy = StrctTerm.f(by, scale=2.0)
     >>> term = StrctInteractionTerm(sx, sy)
-    >>> term.basis.value.shape, term.coef.value.shape
-    ((4, 4), (4,))
+    >>> term.coef.value.shape
+    (4,)
+    >>> [basis.value.shape for basis in term.marginal_bases]
+    [(4, 2), (4, 2)]
     """
 
     def __init__(
@@ -1568,10 +1602,12 @@ class StrctInteractionTerm(UserVar):
         name: str = "",
         inference: InferenceTypes = None,
         coef_name: str | None = None,
-        basis_name: str | None = None,
         include_main_effects: bool = False,
         _update_on_init: bool = True,
     ):
+        if len(marginals) < 2:
+            raise ValueError("StrctInteractionTerm requires at least two marginals.")
+
         for term__ in marginals:
             if term__.scale is None:
                 raise ValueError(
@@ -1590,7 +1626,9 @@ class StrctInteractionTerm(UserVar):
         self._validate_marginals(marginals)
         coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
         bases = self._get_bases(marginals)
-        penalties = self._get_penalties(bases)
+        penalties = self._get_penalties(marginals)
+        marginal_sizes = tuple(int(term.nbases) for term in marginals)
+        indexed = tuple(isinstance(term, IndexingTerm) for term in marginals)
 
         if common_scale is None:
             scales = [t.scale for t in marginals if t.scale is not None]
@@ -1620,19 +1658,8 @@ class StrctInteractionTerm(UserVar):
             assert scale_ is not None
             scales = [scale_] * len(bases)
 
-        _rowwise_kron = jax.vmap(jnp.kron)
-
-        def rowwise_kron(*bases):
-            return reduce(_rowwise_kron, bases)
-
         self.xnames = ",".join(list(self._input_obs(bases)))
-
-        if basis_name is None:
-            basis_name = "B(" + self.xnames + ")"
-
-        assert basis_name is not None
-        basis = lsl.Var.new_calc(rowwise_kron, *bases, name=basis_name)
-        nbases = jnp.shape(basis.value)[-1]
+        nbases = prod(marginal_sizes)
 
         mvnds = MultivariateNormalStructured.get_locscale_constructor(
             penalties=penalties
@@ -1649,30 +1676,51 @@ class StrctInteractionTerm(UserVar):
             name=coef_name,
         )
 
-        self.basis = basis
         self.marginals = marginals
+        self.marginal_bases = bases
         self.bases = bases
+        self.marginal_sizes = marginal_sizes
         self.penalties = penalties
         self.scales = scales
 
         self.nbases = nbases
-        self.basis = basis
         self.coef = coef
         self.scale = scales_var
         self.include_main_effects = include_main_effects
 
+        def tensor_dot(*basis_values, coef):
+            return _factorized_tensor_dot(
+                coef,
+                basis_values,
+                marginal_sizes=marginal_sizes,
+                indexed=indexed,
+            )
+
         if include_main_effects:
+            nmarginals = len(marginals)
+
+            def tensor_dot_with_main_effects(*values, coef):
+                marginal_values = values[:nmarginals]
+                basis_values = values[nmarginals:]
+                interaction = _factorized_tensor_dot(
+                    coef,
+                    basis_values,
+                    marginal_sizes=marginal_sizes,
+                    indexed=indexed,
+                )
+                return sum(marginal_values) + interaction
+
             calc = lsl.Calc(
-                lambda *marginals, basis, coef: sum(marginals) + jnp.dot(basis, coef),
+                tensor_dot_with_main_effects,
                 *marginals,
-                basis=basis,
+                *bases,
                 coef=self.coef,
                 _update_on_init=_update_on_init,
             )
         else:
             calc = lsl.Calc(
-                lambda basis, coef: jnp.dot(basis, coef),
-                basis=basis,
+                tensor_dot,
+                *bases,
                 coef=self.coef,
                 _update_on_init=_update_on_init,
             )
@@ -1685,23 +1733,29 @@ class StrctInteractionTerm(UserVar):
     def _get_bases(
         marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm],
     ) -> list[Basis]:
-        bases = []
-        for t in marginals:
-            if isinstance(t, IndexingTerm):
-                bases.append(t.init_full_basis())
-            else:
-                bases.append(t.basis)
-        return bases
+        return [term.basis for term in marginals]
 
     @staticmethod
-    def _get_penalties(bases: Sequence[Basis]) -> list[Array]:
+    def _get_penalties(
+        marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm],
+    ) -> list[Array]:
         penalties = []
-        for b in bases:
-            if b.penalty is None:
+        for term in marginals:
+            if isinstance(term, IndexingTerm):
+                penalty = term._penalty
+                if penalty is None:
+                    penalty = term.basis.penalty
+                if penalty is None:
+                    penalties.append(jnp.eye(term.nbases))
+                    continue
+            else:
+                penalty = term.basis.penalty
+            if penalty is None:
                 raise TypeError(
-                    f"All bases must have a penalty matrix, got 'None' for {b}."
+                    "All marginal terms must have a penalty matrix, "
+                    f"got 'None' for {term}."
                 )
-            penalties.append(b.penalty.value)
+            penalties.append(jnp.asarray(penalty.value))
         return penalties
 
     @staticmethod
@@ -1791,6 +1845,8 @@ class StrctInteractionTerm(UserVar):
             isotropic tensor product.
         fname
             Function-name prefix used when constructing the term name.
+        inference
+            Inference specification for the coefficient variable.
         include_main_effects
             If ``True``, the marginal terms will be added to this term's value.
         _update_on_init
@@ -1824,7 +1880,6 @@ class StrctInteractionTerm(UserVar):
             inference=inference,
             coef_name=coef_name,
             name=name,
-            basis_name=None,
             include_main_effects=include_main_effects,
             _update_on_init=_update_on_init,
         )
@@ -1865,9 +1920,8 @@ class StrctTensorProdTerm(UserVar):
         The naming pattern is ``"${coef_name}_{term_name}$"``, where ``term_name`` is
         the name of a lower-order interaction in this term.
         Does not affect the names of the marginal terms' coefficients.
-    basis_name
-        Function component for the names of interaction bases internally created by
-        this term. The naming pattern is ``"{basis_name}(x1, x2, ...)"``.
+    inference
+        Inference specification for the interaction coefficient variables.
     group_terms_by_order
         If ``True``, an intermediate variable object will be created for each order
         of interactions in this term. This can help to better organize the
@@ -1932,6 +1986,9 @@ class StrctTensorProdTerm(UserVar):
     The individual terms have (potentially different) basis dimensions
     :math:`J_1, \dots, J_M`, such that the tensor product basis dimension is
     :math:`J = \prod_{m=1}^M J_m`.
+
+    Each higher-order interaction is evaluated directly from its marginal bases, so no
+    full tensor-product basis is stored on the interaction term.
 
     The coefficient vector is equipped with a potentially rank-deficient multivariate
     Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as
@@ -2028,7 +2085,6 @@ class StrctTensorProdTerm(UserVar):
         tx_name: str = "tx",
         tf_name: str = "tf",
         coef_name: str = r"\beta",
-        basis_name: str = "B",
         group_terms_by_order: bool = False,
         _update_on_init: bool = True,
     ):
@@ -2068,13 +2124,6 @@ class StrctTensorProdTerm(UserVar):
 
             term.name = names_prefix + f"{tx_name}({term.xnames})"
             term.coef.name = names_prefix + "$" + coef_name + r"_{" + term.name + r"}$"
-            term.basis.name = names_prefix + basis_name + "(" + term.xnames + ")"
-            term.basis.value_node.name = (
-                names_prefix + basis_name + "(" + term.xnames + ")" + "_value_node"
-            )
-            term.basis.var_value_node.name = (
-                names_prefix + basis_name + "(" + term.xnames + ")" + "_var_value_node"
-            )
 
             interactions.append(term)
 
@@ -2098,7 +2147,7 @@ class StrctTensorProdTerm(UserVar):
         self.marginals = marginals
         self._terms_list = list(marginals) + interactions
         self.bases = StrctInteractionTerm._get_bases(marginals)
-        self.penalties = StrctInteractionTerm._get_penalties(self.bases)
+        self.penalties = StrctInteractionTerm._get_penalties(marginals)
 
         self.xnames = ",".join(list(self.input_obs))
 

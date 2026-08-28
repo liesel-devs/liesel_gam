@@ -7,6 +7,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 from jax import Array
 
 import liesel_gam as gam
+from liesel_gam.term import _factorized_tensor_dot
 
 from .mgcv_data import load_columb
 
@@ -417,6 +418,12 @@ class TestTermWithCustomPenalty:
 
 
 class TestInteractionTerm:
+    def test_requires_at_least_two_marginals(self, columb):
+        marginal = gam.TermBuilder.from_df(columb).ps("x", k=10)
+
+        with pytest.raises(ValueError, match="at least two"):
+            gam.StrctInteractionTerm(marginal)
+
     def test_init(self, columb):
         tb = gam.TermBuilder.from_df(columb)
 
@@ -491,14 +498,50 @@ class TestInteractionTerm:
         tp = gam.StrctInteractionTerm(px, py, include_main_effects=True)
         assert tp.value_node[0] is px
         assert tp.value_node[1] is py
-        assert isinstance(tp.value_node["basis"], lsl.Var)
+        assert tp.value_node[2] is px.basis
+        assert tp.value_node[3] is py.basis
         assert isinstance(tp.value_node["coef"], lsl.Var)
 
         tp = gam.StrctInteractionTerm(px, py)
-        with pytest.raises(IndexError):
-            tp.value_node[0]
-        assert isinstance(tp.value_node["basis"], lsl.Var)
+        assert tp.value_node[0] is px.basis
+        assert tp.value_node[1] is py.basis
         assert isinstance(tp.value_node["coef"], lsl.Var)
+
+    def test_factorized_value_and_gradient_match_explicit_basis(self) -> None:
+        n = 7
+        b1 = jax.random.normal(jax.random.key(1), (n, 2))
+        b2 = jax.random.normal(jax.random.key(2), (n, 3))
+        b3 = jax.random.normal(jax.random.key(3), (n, 4))
+        terms = [
+            gam.StrctTerm.f(
+                gam.Basis(basis, xname=f"x{i}", penalty=jnp.eye(basis.shape[1])),
+                scale=1.0,
+            )
+            for i, basis in enumerate((b1, b2, b3))
+        ]
+        term = gam.StrctInteractionTerm(*terms)
+        coef = jnp.linspace(-1.0, 1.0, term.nbases)
+        explicit_basis = jax.vmap(lambda x, y, z: jnp.kron(jnp.kron(x, y), z))(
+            b1, b2, b3
+        )
+
+        term.coef.value = coef
+        term.update()
+        assert not hasattr(term, "basis")
+        assert jnp.allclose(term.value, explicit_basis @ coef, atol=1e-5)
+
+        expected_grad = jax.grad(lambda beta: jnp.sum(explicit_basis @ beta))(coef)
+        actual_grad = jax.grad(
+            lambda beta: jnp.sum(
+                _factorized_tensor_dot(
+                    beta,
+                    (b1, b2, b3),
+                    marginal_sizes=(2, 3, 4),
+                    indexed=(False, False, False),
+                )
+            )
+        )(coef)
+        assert jnp.allclose(actual_grad, expected_grad, atol=1e-5)
 
     def test_strong_input_obs(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -787,23 +830,25 @@ class TestTensorProdTerm:
             for term in ta.terms_by_order[i]:
                 assert "gamma" in term.coef.name
 
-    def test_basis_name(self, columb):
+    def test_interactions_have_only_marginal_bases(self, columb):
         tb = gam.TermBuilder.from_df(columb)
 
         s1 = tb.ps("x", k=10)
         s2 = tb.ps("y", k=10)
         s3 = tb.ps("area", k=10)
 
-        ta = gam.StrctTensorProdTerm(s1, s2, s3, basis_name="C")
+        ta = gam.StrctTensorProdTerm(s1, s2, s3)
 
         for term in ta.terms_by_order[1]:
+            assert isinstance(term, gam.StrctTerm)
             assert isinstance(term.basis, gam.Basis)
             assert term.basis.name == f"B({term.basis.x.name})"
 
         for i in [2, 3]:
             for term in ta.terms_by_order[i]:
                 assert isinstance(term, gam.StrctInteractionTerm)
-                assert term.basis.name == f"C({term.xnames})"
+                assert not hasattr(term, "basis")
+                assert term.marginal_bases == list(term.bases)
 
     def test_group_terms_by_order(self, columb):
         tb = gam.TermBuilder.from_df(columb)

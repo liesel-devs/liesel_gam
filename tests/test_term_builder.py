@@ -1138,7 +1138,16 @@ class TestTPTerm:
         ri = tb.ri("district")
         ps = tb.ps("x", k=10)
         ta = tb.tx(ri, ps)
-        assert ta.basis.value.shape == (49, 9 * 49)
+        assert ta.nbases == 9 * 49
+        assert ta.marginal_bases[0].value.shape == (49,)
+        assert ta.marginal_bases[1].value.shape == (49, 9)
+        coef = jnp.linspace(-1.0, 1.0, ta.nbases)
+        explicit = jax.vmap(jnp.kron)(
+            jax.nn.one_hot(ri.basis.value, ri.nbases), ps.basis.value
+        )
+        ta.coef.value = coef
+        ta.update()
+        assert jnp.allclose(ta.value, explicit @ coef, atol=1e-5)
 
     def test_common_scale(self, columb):
         tb = gb.TermBuilder.from_df(columb)
@@ -1146,7 +1155,7 @@ class TestTPTerm:
         psx = tb.ps("x", k=10)
         ta = tb.tx(psy, psx, common_scale=gam.VarIGPrior(1.0, 0.005))
 
-        assert ta.basis.value.shape == (49, 9 * 9)
+        assert ta.nbases == 9 * 9
         for i in range(len(ta.scales)):
             scale = ta.scales[i]
             assert isinstance(scale, lsl.Var)
@@ -1158,7 +1167,7 @@ class TestTPTerm:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         ta = tb.tf(psy, psx, common_scale=gam.VarIGPrior(1.0, 0.005))
-        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
+        assert ta.terms_by_order[2][0].nbases == 9 * 9
         for i in range(len(ta.scales)):
             scale = ta.scales[i]
             assert isinstance(scale, lsl.Var)
@@ -1170,7 +1179,7 @@ class TestTPTerm:
                 assert ta.scales[i] is ta.scales[i - 1]
 
         ta = tb.tf(psy, psx, common_scale=1.0)
-        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
+        assert ta.terms_by_order[2][0].nbases == 9 * 9
         for i in range(len(ta.scales)):
             scale = ta.scales[i]
             assert isinstance(scale, lsl.Var)
@@ -1181,7 +1190,7 @@ class TestTPTerm:
 
         scale_inference = gs.MCMCSpec(gs.HMCKernel)
         ta = tb.tf(psy, psx, common_scale=scale_wb(inference=scale_inference))
-        assert ta.terms_by_order[2][0].basis.value.shape == (49, 9 * 9)
+        assert ta.terms_by_order[2][0].nbases == 9 * 9
         for i in range(len(ta.scales)):
             scale = ta.scales[i]
             assert isinstance(scale, lsl.Var)
@@ -1250,41 +1259,11 @@ class TestTPTerm:
         mrf = tb.mrf("district", polys=columb_polys)
         ps = tb.ps("x", k=10)
         ta = tb.tx(mrf, ps)
-        assert ta.basis.value.shape == (49, 9 * 48)
-
-    @pytest.mark.parametrize("prefix", (False, True))
-    @pytest.mark.parametrize("method", ("tx", "tf"))
-    def test_basis_name_handling(self, columb, method, prefix):
-        tb = gb.TermBuilder.from_df(columb)
-        psx1 = tb.ps("x", k=10, prefix="l." if prefix else "")
-        psy1 = tb.ps("y", k=10, prefix="l." if prefix else "")
-        tx1 = getattr(tb, method)(psx1, psy1, prefix="l." if prefix else "")
-
-        psx2 = tb.ps("x", k=10, prefix="s." if prefix else "")
-        psy2 = tb.ps("y", k=10, prefix="s." if prefix else "")
-        tx2 = getattr(tb, method)(psx2, psy2, prefix="s." if prefix else "")
-
-        model = lsl.Model([tx1, tx2])
-        assert model is not None
-
-    @pytest.mark.parametrize("prefix", (False, True))
-    @pytest.mark.parametrize("method", ("tx", "tf"))
-    def test_basis_name_handling_two_termbuilders(self, columb, method, prefix):
-        tb1 = gb.TermBuilder.from_df(columb, prefix_names_by="l." if prefix else "")
-        psx1 = tb1.ps("x", k=10)
-        psy1 = tb1.ps("y", k=10)
-        tx1 = getattr(tb1, method)(psx1, psy1)
-
-        tb2 = gb.TermBuilder.from_df(columb, prefix_names_by="s." if prefix else "")
-        psx2 = tb2.ps("x", k=10)
-        psy2 = tb2.ps("y", k=10)
-        tx2 = getattr(tb2, method)(psx2, psy2)
-
-        if not prefix:
-            with pytest.raises(RuntimeError, match="Duplicate node names"):
-                lsl.Model([tx1, tx2])
-        else:
-            lsl.Model([tx1, tx2])
+        assert ta.nbases == 9 * 48
+        assert [basis.value.shape for basis in ta.marginal_bases] == [
+            (49, 48),
+            (49, 9),
+        ]
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
     def test_wb_scale(self, columb, method):
