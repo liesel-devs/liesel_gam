@@ -15,6 +15,7 @@ from liesel_gam.category_mapping import CategoryMapping
 
 from .basis import Basis, is_diagonal
 from .dist import MultivariateNormalSingular, MultivariateNormalStructured
+from .mv_utils import as_penalty_value, as_reparam_value, reconstruct_dimension
 from .var import ScaleIG, UserVar, VarIGPrior, _append_name
 
 InferenceTypes = Any
@@ -27,13 +28,15 @@ def _factorized_tensor_dot(
     bases: Sequence[Array],
     marginal_sizes: Sequence[int],
     indexed: Sequence[bool],
+    trailing_shape: tuple[int, ...] = (),
 ) -> Array:
     """Apply a row-wise tensor-product basis without materializing it."""
     order = tuple(
         sorted(range(len(marginal_sizes)), key=marginal_sizes.__getitem__, reverse=True)
     )
-    tensor = jnp.reshape(coef, marginal_sizes)
-    tensor = jnp.transpose(tensor, order)
+    tensor = jnp.reshape(coef, (*marginal_sizes, *trailing_shape))
+    trailing_axes = tuple(range(len(marginal_sizes), tensor.ndim))
+    tensor = jnp.transpose(tensor, (*order, *trailing_axes))
 
     has_observation_axis = False
     for marginal_index in order:
@@ -2260,3 +2263,749 @@ class StrctTensorProdTerm(UserVar):
         ['x', 'y']
         """
         return StrctInteractionTerm._input_obs(self.bases)
+
+
+class MultivariateStrctTerm(UserVar):
+    """A structured term with shared cross-dimensional smoothing.
+
+    This class wraps one ordinary marginal term. Use
+    :class:`MultivariateStrctInteractionTerm` for two or more marginals.
+
+    Parameters
+    ----------
+    *marginals
+        Exactly one ordinary structured marginal term.
+    dimension_penalties
+        Cross-dimensional penalty matrices.
+    dimension_scales
+        Scalar scales corresponding to ``dimension_penalties``.
+    dimension_reparam
+        Optional matrix mapping latent cross-dimensional coordinates to output
+        dimensions. The identity matrix is used by default.
+    name
+        Term variable name.
+    inference
+        Inference specification for the coefficient variable.
+    coef_name
+        Coefficient variable name. By default it is derived from ``name``.
+    basis_name
+        Name for the variable exposing the ordinary marginal basis.
+    _update_on_init
+        Whether to evaluate the term during initialization.
+    _factorized
+        Internal flag used by :class:`MultivariateStrctInteractionTerm`.
+
+    Examples
+    --------
+    >>> basis = Basis(
+    ...     jnp.column_stack((jnp.ones(4), jnp.arange(4.0))),
+    ...     xname="x",
+    ...     penalty=jnp.eye(2),
+    ... )
+    >>> marginal = StrctTerm.f(basis, scale=1.0)
+    >>> term = MultivariateStrctTerm(
+    ...     marginal,
+    ...     dimension_penalties=[jnp.eye(2)],
+    ...     dimension_scales=[1.0],
+    ... )
+    >>> term.value.shape
+    (4, 2)
+    """
+
+    def __init__(
+        self,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        dimension_penalties: Sequence[Array | lsl.Value],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        basis_name: str | None = None,
+        _update_on_init: bool = True,
+        _factorized: bool = False,
+    ) -> None:
+        if not marginals:
+            raise ValueError("At least one marginal term is required.")
+        if _factorized and len(marginals) < 2:
+            raise ValueError(
+                "A multivariate interaction requires at least two marginals."
+            )
+        if not _factorized and len(marginals) != 1:
+            raise ValueError(
+                "MultivariateStrctTerm wraps exactly one marginal; use "
+                "MultivariateStrctInteractionTerm for tensor interactions."
+            )
+        StrctInteractionTerm._validate_marginals(marginals)
+
+        if not dimension_penalties:
+            raise ValueError("dimension_penalties must contain at least one matrix.")
+
+        dimension_penalty_values = [
+            as_penalty_value(penalty) for penalty in dimension_penalties
+        ]
+        dimension_penalty_arrays = [
+            jnp.asarray(penalty.value) for penalty in dimension_penalty_values
+        ]
+
+        dimension_scale_vars: list[lsl.Var] = []
+        for s in dimension_scales:
+            if s is None:
+                raise TypeError("No entries of dimension_scales may be None.")
+            scale_var = _init_scale_ig(s, validate_scalar=True)
+            assert scale_var is not None
+            dimension_scale_vars.append(scale_var)
+
+        if not len(dimension_penalty_arrays) == len(dimension_scale_vars):
+            raise ValueError(
+                "dimension_penalties and dimension_scales must have the same length."
+            )
+
+        coef_name = _append_name(name, "_coef") if coef_name is None else coef_name
+        bases_marginals = StrctInteractionTerm._get_bases(marginals)
+
+        penalties_marginals = StrctInteractionTerm._get_penalties(marginals)
+
+        scales_marginals = [t.scale for t in marginals]
+        marginal_sizes = tuple(int(term.nbases) for term in marginals)
+        indexed = tuple(isinstance(term, IndexingTerm) for term in marginals)
+
+        self.xnames = ",".join(list(StrctInteractionTerm._input_obs(bases_marginals)))
+        nbases = prod(marginal_sizes)
+
+        indexed_marginal = not _factorized and indexed[0]
+        basis: Basis | lsl.Var
+        if indexed_marginal:
+            basis = bases_marginals[0]
+        elif not _factorized:
+            if basis_name is None:
+                basis_name = "B(" + self.xnames + ")"
+            basis = lsl.Var.new_calc(
+                lambda basis_value: basis_value,
+                bases_marginals[0],
+                name=basis_name,
+            )
+
+        latent_ndim = prod([p.shape[-1] for p in dimension_penalty_arrays])
+        dimension_reparam_value = as_reparam_value(
+            dimension_reparam,
+            latent_ndim=latent_ndim,
+            name=_append_name(name, "_dimension_reparam"),
+        )
+
+        penalties = list(penalties_marginals) + dimension_penalty_arrays
+        scales = list(scales_marginals) + list(dimension_scale_vars)
+
+        mvnds = MultivariateNormalStructured.get_locscale_constructor(
+            penalties=penalties
+        )
+
+        scales_var = lsl.Calc(lambda *x: jnp.stack(x, axis=-1), *scales)
+
+        prior = lsl.Dist(
+            distribution=mvnds,
+            loc=jnp.zeros(nbases * latent_ndim),
+            scales=scales_var,
+        )
+
+        coef = lsl.Var.new_param(
+            jnp.zeros(nbases * latent_ndim),
+            distribution=prior,
+            inference=inference,
+            name=coef_name,
+        )
+
+        if not _factorized:
+            self.basis = basis
+
+        self.marginal_terms = marginals
+        self.marginal_bases = bases_marginals
+        self.marginal_sizes = marginal_sizes
+
+        self.marginal_penalties = penalties_marginals
+        self.dimension_penalties = dimension_penalty_arrays
+        self.dimension_penalty_values = dimension_penalty_values
+        self.dimension_penalty = (
+            dimension_penalty_values[0] if len(dimension_penalty_values) == 1 else None
+        )
+
+        self.marginal_scales = scales_marginals
+        self.dimension_scales = dimension_scale_vars
+        self.dimension_scale = (
+            dimension_scale_vars[0] if len(dimension_scale_vars) == 1 else None
+        )
+
+        self.scale = scales_var
+
+        self.nbases = nbases
+        self.latent_ndim = latent_ndim
+        self.ndim = int(dimension_reparam_value.value.shape[0])
+        self.dimension_reparam = dimension_reparam_value
+
+        self.coef = coef
+
+        if _factorized or indexed_marginal:
+
+            def tensor_dot(*basis_values, coef):
+                return _factorized_tensor_dot(
+                    coef,
+                    basis_values,
+                    marginal_sizes=marginal_sizes,
+                    indexed=indexed,
+                    trailing_shape=(latent_ndim,),
+                )
+
+            latent = lsl.Var.new_calc(
+                tensor_dot,
+                *bases_marginals,
+                coef=self.coef,
+                name=_append_name(name, "_latent"),
+                _update_on_init=_update_on_init,
+            )
+        else:
+            latent = lsl.Var.new_calc(
+                lambda basis, coef: jnp.dot(
+                    basis, jnp.reshape(coef, (nbases, latent_ndim))
+                ),
+                basis=basis,
+                coef=self.coef,
+                name=_append_name(name, "_latent"),
+                _update_on_init=_update_on_init,
+            )
+        self.latent = latent
+
+        calc = lsl.Calc(
+            reconstruct_dimension,
+            latent=latent,
+            reparam=dimension_reparam_value,
+            _update_on_init=_update_on_init,
+        )
+
+        super().__init__(calc, name=name)
+        if _update_on_init:
+            self.coef.update()
+
+    @property
+    def input_obs(self) -> dict[str, lsl.Var]:
+        """Strong observed variables used by the marginal bases.
+
+        Examples
+        --------
+        >>> x = lsl.Var.new_obs(jnp.arange(4.0), name="x")
+        >>> basis = Basis(
+        ...     x,
+        ...     basis_fn=lambda value: jnp.column_stack((jnp.ones(4), value)),
+        ...     penalty=jnp.eye(2),
+        ...     use_callback=False,
+        ... )
+        >>> marginal = StrctTerm.f(basis, scale=1.0)
+        >>> term = MultivariateStrctTerm(
+        ...     marginal,
+        ...     dimension_penalties=[jnp.eye(2)],
+        ...     dimension_scales=[1.0],
+        ... )
+        >>> list(term.input_obs)
+        ['x']
+        """
+        return StrctInteractionTerm._input_obs(self.marginal_bases)
+
+    @classmethod
+    def f(
+        cls,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        dimension_penalties: Sequence[Array | lsl.Value],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
+        fname: str = "F",
+        inference: InferenceTypes = None,
+        basis_name: str | None = None,
+        _update_on_init: bool = True,
+    ) -> Self:
+        """Construct a multivariate structured term with automatic names.
+
+        Parameters
+        ----------
+        *marginals
+            Ordinary structured marginal terms.
+        dimension_penalties
+            Cross-dimensional penalty matrices.
+        dimension_scales
+            Scalar scales corresponding to ``dimension_penalties``.
+        dimension_reparam
+            Optional mapping from latent coordinates to output dimensions.
+        fname
+            Function-name component used in the term name.
+        inference
+            Inference specification for the coefficient variable.
+        basis_name
+            Optional name for the variable exposing a single marginal basis.
+        _update_on_init
+            Whether to evaluate the term during initialization.
+
+        Examples
+        --------
+        >>> basis = Basis(
+        ...     jnp.column_stack((jnp.ones(4), jnp.arange(4.0))),
+        ...     xname="x",
+        ...     penalty=jnp.eye(2),
+        ... )
+        >>> marginal = StrctTerm.f(basis, scale=1.0)
+        >>> term = MultivariateStrctTerm.f(
+        ...     marginal,
+        ...     dimension_penalties=[jnp.eye(2)],
+        ...     dimension_scales=[1.0],
+        ... )
+        >>> term.name, term.value.shape
+        ('F(x)', (4, 2))
+        """
+        xnames = list(
+            StrctInteractionTerm._input_obs(StrctInteractionTerm._get_bases(marginals))
+        )
+        name = fname + "(" + ",".join(xnames) + ")"
+
+        coef_name = "$\\gamma_{" + name + "}$"
+
+        basis_kwargs: dict[str, Any] = (
+            {} if basis_name is None else {"basis_name": basis_name}
+        )
+        term = cls(
+            *marginals,
+            dimension_penalties=dimension_penalties,
+            dimension_scales=dimension_scales,
+            dimension_reparam=dimension_reparam,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+            _update_on_init=_update_on_init,
+            **basis_kwargs,
+        )
+
+        return term
+
+
+class MultivariateStrctInteractionTerm(MultivariateStrctTerm):
+    """Multivariate tensor interaction evaluated from its marginal bases.
+
+    The coefficient vector is reshaped to a tensor with one axis per marginal and a
+    trailing latent-dimension axis. Factorized contractions evaluate the effect without
+    constructing an observation-by-product-dimension basis matrix. The term exposes
+    :attr:`marginal_bases`, but intentionally has no ``basis`` attribute.
+
+    Parameters
+    ----------
+    *marginals
+        Two or more ordinary structured marginal terms.
+    dimension_penalties
+        Cross-dimensional penalty matrices.
+    dimension_scales
+        Scalar scales corresponding to ``dimension_penalties``.
+    dimension_reparam
+        Optional matrix mapping latent coordinates to output dimensions.
+    name
+        Interaction variable name.
+    inference
+        Inference specification for the coefficient variable.
+    coef_name
+        Coefficient variable name. By default it is derived from ``name``.
+    _update_on_init
+        Whether to evaluate the term during initialization.
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> first = StrctTerm.f(
+    ...     Basis(jnp.column_stack((jnp.ones(4), x)), xname="x", penalty=jnp.eye(2)),
+    ...     scale=1.0,
+    ... )
+    >>> second = StrctTerm.f(
+    ...     Basis(jnp.column_stack((jnp.ones(4), x**2)), xname="z", penalty=jnp.eye(2)),
+    ...     scale=1.0,
+    ... )
+    >>> interaction = MultivariateStrctInteractionTerm(
+    ...     first,
+    ...     second,
+    ...     dimension_penalties=[jnp.eye(2)],
+    ...     dimension_scales=[1.0],
+    ... )
+    >>> interaction.value.shape
+    (4, 2)
+    """
+
+    def __init__(
+        self,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        dimension_penalties: Sequence[Array | lsl.Value],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
+        name: str = "",
+        inference: InferenceTypes = None,
+        coef_name: str | None = None,
+        _update_on_init: bool = True,
+    ) -> None:
+        super().__init__(
+            *marginals,
+            dimension_penalties=dimension_penalties,
+            dimension_scales=dimension_scales,
+            dimension_reparam=dimension_reparam,
+            name=name,
+            inference=inference,
+            coef_name=coef_name,
+            _update_on_init=_update_on_init,
+            _factorized=True,
+        )
+
+    @classmethod
+    def f(  # type: ignore[override]  # ty: ignore[invalid-method-override]
+        cls,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        dimension_penalties: Sequence[Array | lsl.Value],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
+        fname: str = "F",
+        inference: InferenceTypes = None,
+        _update_on_init: bool = True,
+    ) -> Self:
+        """Construct a multivariate interaction with automatic names.
+
+        Unlike :meth:`MultivariateStrctTerm.f`, this factory intentionally has no
+        ``basis_name`` argument because an interaction retains only its marginal
+        bases and never materializes a tensor-product basis.
+
+        Parameters
+        ----------
+        *marginals
+            Two or more ordinary structured marginal terms.
+        dimension_penalties
+            Cross-dimensional penalty matrices.
+        dimension_scales
+            Scalar scales corresponding to ``dimension_penalties``.
+        dimension_reparam
+            Optional mapping from latent coordinates to output dimensions.
+        fname
+            Function-name component used in the interaction name.
+        inference
+            Inference specification for the coefficient variable.
+        _update_on_init
+            Whether to evaluate the interaction during initialization.
+
+        Examples
+        --------
+        >>> x = jnp.linspace(0.0, 1.0, 4)
+        >>> first = StrctTerm.f(
+        ...     Basis(
+        ...         jnp.column_stack((jnp.ones(4), x)), xname="x", penalty=jnp.eye(2)
+        ...     ),
+        ...     scale=1.0,
+        ... )
+        >>> second = StrctTerm.f(
+        ...     Basis(
+        ...         jnp.column_stack((jnp.ones(4), x**2)), xname="z", penalty=jnp.eye(2)
+        ...     ),
+        ...     scale=1.0,
+        ... )
+        >>> interaction = MultivariateStrctInteractionTerm.f(
+        ...     first,
+        ...     second,
+        ...     dimension_penalties=[jnp.eye(2)],
+        ...     dimension_scales=[1.0],
+        ... )
+        >>> interaction.name, interaction.value.shape, hasattr(interaction, "basis")
+        ('F(x,z)', (4, 2), False)
+        """
+        xnames = list(
+            StrctInteractionTerm._input_obs(StrctInteractionTerm._get_bases(marginals))
+        )
+        name = fname + "(" + ",".join(xnames) + ")"
+        coef_name = "$\\gamma_{" + name + "}$"
+
+        return cls(
+            *marginals,
+            dimension_penalties=dimension_penalties,
+            dimension_scales=dimension_scales,
+            dimension_reparam=dimension_reparam,
+            inference=inference,
+            coef_name=coef_name,
+            name=name,
+            _update_on_init=_update_on_init,
+        )
+
+
+class MultivariateStrctLinTerm(MultivariateStrctTerm, LinMixin):
+    """Multivariate structured linear term retaining formula metadata.
+
+    It is normally created by :meth:`.MVTermBuilder.lin` or
+    :meth:`.MVTermBuilder.slin`.
+
+    Parameters
+    ----------
+    *marginals
+        Exactly one ordinary structured linear marginal term.
+    dimension_penalties
+        Cross-dimensional penalty matrices.
+    dimension_scales
+        Scalar scales corresponding to ``dimension_penalties``.
+    dimension_reparam
+        Optional matrix mapping latent cross-dimensional coordinates to output
+        dimensions. The identity matrix is used by default.
+    name
+        Term variable name.
+    inference
+        Inference specification for the coefficient variable.
+    coef_name
+        Coefficient variable name. By default it is derived from ``name``.
+    basis_name
+        Name for the variable exposing the ordinary marginal basis.
+    _update_on_init
+        Whether to evaluate the term during initialization.
+    _factorized
+        Internal flag inherited from :class:`MultivariateStrctTerm`.
+
+    Examples
+    --------
+    >>> import liesel_gam as gam
+    >>> builder = gam.MVTermBuilder.from_dict({"x": [0.0, 1.0, 2.0]}, jnp.eye(2))
+    >>> linear = builder.lin("x", dimension_scale=1.0)
+    >>> linear.column_names
+    ['x']
+    """
+
+    pass
+
+
+class MultivariateTPTerm(UserVar):
+    """A full multivariate tensor product containing selected interaction orders.
+
+    Higher-order interactions are evaluated from their marginal bases without
+    materializing tensor-product design matrices.
+
+    Parameters
+    ----------
+    *marginals
+        Ordinary structured marginal terms.
+    common_scale
+        Optional shared covariate-side scale for all marginals.
+    dimension_penalties
+        Cross-dimensional penalty matrices.
+    dimension_scales
+        Scalar scales corresponding to ``dimension_penalties``.
+    dimension_reparam
+        Optional matrix mapping latent coordinates to output dimensions.
+    order
+        Interaction orders to include. By default all orders are included.
+    inference
+        Inference specification for coefficient variables.
+    names_prefix
+        Prefix applied to names created inside the tensor product.
+    tx_name
+        Function-name component for interaction terms.
+    tf_name
+        Function-name component for the full tensor-product term.
+    coef_name
+        Symbol component for coefficient names.
+    group_terms_by_order
+        Whether to expose an intermediate sum for each interaction order.
+    _update_on_init
+        Whether to evaluate terms during initialization.
+
+    Examples
+    --------
+    >>> x = jnp.linspace(0.0, 1.0, 4)
+    >>> first = StrctTerm.f(
+    ...     Basis(jnp.column_stack((jnp.ones(4), x)), xname="x", penalty=jnp.eye(2)),
+    ...     scale=1.0,
+    ... )
+    >>> second = StrctTerm.f(
+    ...     Basis(jnp.column_stack((jnp.ones(4), x**2)), xname="z", penalty=jnp.eye(2)),
+    ...     scale=1.0,
+    ... )
+    >>> tensor = MultivariateTPTerm(
+    ...     first,
+    ...     second,
+    ...     dimension_penalties=[jnp.eye(2)],
+    ...     dimension_scales=[1.0],
+    ... )
+    >>> tensor.value.shape
+    (4, 2)
+    """
+
+    def __init__(
+        self,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
+        dimension_penalties: Sequence[Array | lsl.Value],
+        dimension_scales: Sequence[ScaleIG | lsl.Var | ArrayLike | VarIGPrior],
+        dimension_reparam: ArrayLike | lsl.Value | None = None,
+        order: Sequence[int] | None = None,
+        inference: InferenceTypes = None,
+        names_prefix: str = "",
+        tx_name: str = "mx",
+        tf_name: str = "mf",
+        coef_name: str = r"\gamma",
+        group_terms_by_order: bool = False,
+        _update_on_init: bool = True,
+    ) -> None:
+        if not marginals:
+            raise ValueError("At least one marginal term is required.")
+        for term__ in marginals:
+            if term__.scale is None:
+                raise ValueError(
+                    f"Scale of {term__} is None, which is not allowed "
+                    f"in {type(self).__name__}."
+                )
+        nmargins = len(marginals)
+        terms_combinations = []
+        for i in range(1, (nmargins + 1)):
+            terms_combinations += list(combinations(marginals, i))
+
+        self.order = (
+            tuple(order) if order is not None else tuple(range(1, len(marginals) + 1))
+        )
+        if not self.order:
+            raise ValueError("order must contain at least one interaction order.")
+        if len(set(self.order)) != len(self.order) or any(
+            not isinstance(o, int) or not 1 <= o <= nmargins for o in self.order
+        ):
+            raise ValueError(
+                f"order must contain unique integers between 1 and {nmargins}."
+            )
+
+        self.terms_by_order: dict[int, list[MultivariateStrctTerm]] = {}
+
+        scale_ = _init_scale_ig(common_scale) if common_scale is not None else None
+        if common_scale is not None:
+            assert isinstance(scale_, lsl.Var)
+            for term_ in marginals:
+                term_.replace_scale(scale_)
+
+        dimension_scale_vars: list[lsl.Var] = []
+        for scale in dimension_scales:
+            if scale is None:
+                raise TypeError("No entries of dimension_scales may be None.")
+            scale_var = _init_scale_ig(scale, validate_scalar=True)
+            assert scale_var is not None
+            dimension_scale_vars.append(scale_var)
+
+        if len(dimension_penalties) != len(dimension_scale_vars):
+            raise ValueError(
+                "dimension_penalties and dimension_scales must have the same length."
+            )
+
+        interactions = []
+        for term_marginals in terms_combinations:
+            order_term = len(term_marginals)
+            if order_term not in self.order:
+                continue
+
+            term_class = (
+                MultivariateStrctTerm
+                if order_term == 1
+                else MultivariateStrctInteractionTerm
+            )
+            term = term_class(
+                *term_marginals,
+                dimension_penalties=dimension_penalties,
+                dimension_scales=dimension_scale_vars,
+                dimension_reparam=dimension_reparam,
+                inference=inference,
+                _update_on_init=_update_on_init,
+            )
+
+            term.name = names_prefix + f"{tx_name}({term.xnames})"
+            term.coef.name = names_prefix + "$" + coef_name + r"_{" + term.name + r"}$"
+            if order_term == 1:
+                term.basis.name = names_prefix + "B(" + term.xnames + ")"
+                term.basis.value_node.name = term.basis.name + "_value_node"
+                term.basis.var_value_node.name = term.basis.name + "_var_value_node"
+            term.latent.name = _append_name(term.name, "_latent")
+            term.latent.value_node.name = term.latent.name + "_value_node"
+            term.latent.var_value_node.name = term.latent.name + "_var_value_node"
+
+            interactions.append(term)
+
+            if not self.terms_by_order.get(order_term, None):
+                self.terms_by_order[order_term] = [term]
+            else:
+                self.terms_by_order[order_term].append(term)
+
+        for o in self.order:
+            if o not in self.terms_by_order:
+                raise ValueError(
+                    f"Order {order} was supplied, but no interactions "
+                    f"of order {o} found."
+                )
+
+        self.marginals = marginals
+        self._terms_list = interactions
+        self.marginal_terms = marginals
+        self.marginal_bases = StrctInteractionTerm._get_bases(marginals)
+
+        self.marginal_penalties = StrctInteractionTerm._get_penalties(marginals)
+        self.dimension_penalties = dimension_penalties
+        self.dimension_scales = dimension_scale_vars
+        self.dimension_scale = (
+            dimension_scale_vars[0] if len(dimension_scale_vars) == 1 else None
+        )
+        self.dimension_reparam = interactions[0].dimension_reparam
+        self.dimension_penalty = interactions[0].dimension_penalty
+        self.latent_ndim = interactions[0].latent_ndim
+        self.ndim = interactions[0].ndim
+
+        self.xnames = ",".join(list(self.input_obs))
+
+        if group_terms_by_order:
+            self.term_groups = {}
+            for o, o_terms in self.terms_by_order.items():
+                self.term_groups[o] = lsl.Var.new_calc(
+                    lambda *args: sum(args),
+                    *o_terms,
+                    _update_on_init=_update_on_init,
+                    name=names_prefix + f"${tf_name}^{{({o})}}({self.xnames})$",
+                )
+
+        latent = lsl.Var.new_calc(
+            lambda *args: sum(args),
+            *[term.latent for term in self._terms_list],
+            name=names_prefix + f"{tf_name}({self.xnames})_latent",
+            _update_on_init=_update_on_init,
+        )
+        self.latent = latent
+
+        if group_terms_by_order:
+            calc = lsl.Calc(
+                lambda *args: sum(args),
+                *list(self.term_groups.values()),
+                _update_on_init=_update_on_init,
+            )
+        else:
+            calc = lsl.Calc(
+                reconstruct_dimension,
+                latent=latent,
+                reparam=self.dimension_reparam,
+                _update_on_init=_update_on_init,
+            )
+
+        super().__init__(calc, name=names_prefix + f"{tf_name}({self.xnames})")
+
+    @property
+    def input_obs(self) -> dict[str, lsl.Var]:
+        """Strong observed variables used by the marginal bases.
+
+        Examples
+        --------
+        >>> x = lsl.Var.new_obs(jnp.arange(4.0), name="x")
+        >>> basis = Basis(
+        ...     x,
+        ...     basis_fn=lambda value: jnp.column_stack((jnp.ones(4), value)),
+        ...     penalty=jnp.eye(2),
+        ...     use_callback=False,
+        ... )
+        >>> marginal = StrctTerm.f(basis, scale=1.0)
+        >>> tensor = MultivariateTPTerm(
+        ...     marginal,
+        ...     dimension_penalties=[jnp.eye(2)],
+        ...     dimension_scales=[1.0],
+        ... )
+        >>> list(tensor.input_obs)
+        ['x']
+        """
+        return StrctInteractionTerm._input_obs(self.marginal_bases)

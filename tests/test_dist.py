@@ -160,12 +160,19 @@ class TestStructuredPenaltyOperator:
 
         assert jnp.allclose(ldet1, ldet2)
 
-    def test_compute_masks(self):
+    def test_compute_masks_does_not_materialize_precision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         K1 = pspline_penalty(6)
         K2 = pspline_penalty(8)
         K3 = pspline_penalty(5)
 
         scales = jnp.array([1.0, 2.0, 0.5])
+
+        def fail_if_called(*args: object, **kwargs: object) -> None:
+            raise AssertionError("mask validation materialized the full precision")
+
+        monkeypatch.setattr(gd, "_materialize_precision", fail_if_called)
 
         with pytest.raises(ValueError):
             gd.StructuredPenaltyOperator.from_penalties(

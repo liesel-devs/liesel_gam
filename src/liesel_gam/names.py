@@ -67,3 +67,33 @@ class NameManager:
     def tau2(self, term_name: str = "") -> str:
         """Creates a tau2 parameter name ``$\\tau^2_{term_name}$``."""
         return self.param(term_name=term_name, param_name="\\tau^2")
+
+    def psi(self, term_name: str = "") -> str:
+        """Create a cross-dimensional scale name.
+
+        Parameters
+        ----------
+        term_name
+            Term name placed in the parameter subscript.
+
+        Examples
+        --------
+        >>> NameManager().psi("f(x)")
+        '$\\\\psi_{f(x)}$'
+        """
+        return self.param(term_name=term_name, param_name="\\psi")
+
+    def psi2(self, term_name: str = "") -> str:
+        """Create a squared cross-dimensional scale name.
+
+        Parameters
+        ----------
+        term_name
+            Term name placed in the parameter subscript.
+
+        Examples
+        --------
+        >>> NameManager().psi2("f(x)")
+        '$\\\\psi^2_{f(x)}$'
+        """
+        return self.param(term_name=term_name, param_name="\\psi^2")
