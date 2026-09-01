@@ -490,6 +490,9 @@ class Basis(UserVar):
         dynamic ``basis_kwargs``. It approximates values only; derivatives with
         respect to the input are not guaranteed to match the exact evaluator.
 
+        A 0-dimensional runtime value is treated as one observation. A one-dimensional
+        basis output has shape ``(1,)`` and a matrix-valued output has shape ``(1, p)``.
+
         If every value in a runtime batch lies inside the approximation bounds,
         interval indices are calculated algebraically and values are linearly
         interpolated. If any value lies outside, the entire batch is evaluated
@@ -626,7 +629,7 @@ class Basis(UserVar):
         step = (hi - lo) / (grid_size - 1)
 
         def interpolated_basis(value, *args, **kwargs):
-            value_array = jnp.asarray(value)
+            value_array = jnp.atleast_1d(jnp.asarray(value))
             values = value_array if value_array.ndim == 1 else value_array[..., 0]
             index = jnp.floor((values - lo) / step).astype(jnp.int32)
             index = jnp.clip(index, 0, grid_size - 2)
@@ -641,7 +644,7 @@ class Basis(UserVar):
                 inside,
                 lambda: interpolated,
                 lambda: jnp.asarray(
-                    exact_fn(value, *args, **kwargs),
+                    exact_fn(as_input(values), *args, **kwargs),
                     dtype=basis_grid.dtype,
                 ),
             )

@@ -69,6 +69,74 @@ class TestBasis:
             atol=spec.atol,
         )
 
+    @pytest.mark.parametrize("matrix_input", (False, True))
+    @pytest.mark.parametrize("matrix_output", (False, True))
+    @pytest.mark.parametrize(
+        (
+            "value",
+            "expected_scalar",
+            "expected_matrix",
+            "expected_scalar_dot",
+            "expected_matrix_dot",
+        ),
+        (
+            (0.25, [1.5], [[0.25, 1.5]], 3.0, [1.75]),
+            (1.5, [4.0], [[1.5, 4.0]], 8.0, [5.5]),
+        ),
+    )
+    def test_approximation_treats_scalar_as_one_observation(
+        self,
+        matrix_input,
+        matrix_output,
+        value,
+        expected_scalar,
+        expected_matrix,
+        expected_scalar_dot,
+        expected_matrix_dot,
+    ) -> None:
+        def as_input(values: Array) -> Array:
+            return values[:, None] if matrix_input else values
+
+        def basis_fn(values: Array) -> Array:
+            values = values[:, 0] if matrix_input else values
+            if matrix_output:
+                return jnp.column_stack((values, 2.0 * values + 1.0))
+            return 2.0 * values + 1.0
+
+        construction_values = as_input(jnp.linspace(0.0, 1.0, 20))
+        exact = gam.Basis(
+            construction_values,
+            xname="exact_x",
+            basis_fn=basis_fn,
+            use_callback=False,
+        )
+        approximated = gam.Basis(
+            construction_values,
+            xname="approximated_x",
+            basis_fn=basis_fn,
+            use_callback=False,
+        ).approximate(gam.ApproximationSpec(bounds=(0.0, 1.0)))
+
+        assert isinstance(exact.x, lsl.Var)
+        assert isinstance(approximated.x, lsl.Var)
+        exact.x.value = as_input(jnp.asarray([value]))
+        exact.update()
+        approximated.x.value = jnp.asarray(value)
+        approximated.update()
+
+        expected = jnp.asarray(expected_matrix if matrix_output else expected_scalar)
+        coef = jnp.asarray([1.0, 1.0] if matrix_output else [2.0])
+        expected_dot = jnp.asarray(
+            expected_matrix_dot if matrix_output else expected_scalar_dot
+        )
+
+        assert exact.value.shape == expected.shape
+        assert approximated.value.shape == expected.shape
+        assert jnp.allclose(exact.value, expected)
+        assert jnp.allclose(approximated.value, expected)
+        assert jnp.allclose(jnp.dot(exact.value, coef), expected_dot)
+        assert jnp.allclose(jnp.dot(approximated.value, coef), expected_dot)
+
     def test_approximation_reports_fitted_spec(self) -> None:
         x = lsl.Var.new_obs(jnp.linspace(2.0, 4.0, 20), name="x")
         basis = gam.Basis(x, basis_fn=lambda value: value[:, None])
