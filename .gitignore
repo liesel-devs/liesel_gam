@@ -188,3 +188,4 @@ notebooks/univariate/test_ps_smooth_constant_prior.ipynb
 notebooks/univariate/test_ps_vi.ipynb
 notebooks/univariate/test_ps_with_optim.ipynb
 tmp
+notebooks/large_data/show_setup_and_batching.ipynb
