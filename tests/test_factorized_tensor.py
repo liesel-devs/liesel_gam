@@ -49,7 +49,7 @@ def test_factorized_three_way_is_jittable_and_has_no_full_design_intermediate():
 
     jaxpr = jax.make_jaxpr(evaluate)(coef).jaxpr
     output_shapes = {
-        tuple(var.aval.shape)
+        var.aval.shape
         for equation in jaxpr.eqns
         for var in equation.outvars
         if hasattr(var, "aval") and hasattr(var.aval, "shape")
