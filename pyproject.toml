@@ -10,9 +10,6 @@ dependencies = [
     "formulaic>=1.2.1",
     "jax>=0.5",
     "liesel>=0.5.2",
-    # arviz-plots currently imports matplotlib.style.core, which is not
-    # available in matplotlib 3.11.
-    "matplotlib<3.11",
     "numpy>=2.0",
     "pandas>=1.4",
     "plotnine>=0.14.5",
