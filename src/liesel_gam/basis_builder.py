@@ -1739,7 +1739,7 @@ class BasisBuilder:
         self,
         x: str | CatVar,
         k: int = -1,
-        polys: dict[Any, ArrayLike] | None = None,
+        polys: Mapping[Any, ArrayLike] | None = None,
         nb: Mapping[Any, ArrayLike | list[Any] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
         penalty_labels: Sequence[Any] | None = None,
@@ -1764,7 +1764,7 @@ class BasisBuilder:
             regions, a low-rank field will be returned, see Wood (2017), Sections 5.8.1
             and 5.4.2.
         polys
-            Dictionary of arrays. The keys of the dict are the region labels. The
+            Mapping of arrays. The keys are the region labels. The
             corresponding values define the region by defining polygons. The
             neighborhood structure can be inferred from this polygon information.
         nb

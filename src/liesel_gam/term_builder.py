@@ -2250,7 +2250,7 @@ class TermBuilder:
         k: int = -1,
         scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
-        polys: dict[Any, ArrayLike] | None = None,
+        polys: Mapping[Any, ArrayLike] | None = None,
         nb: Mapping[Any, ArrayLike | list[Any] | list[int]] | None = None,
         penalty: ArrayLike | None = None,
         penalty_labels: Sequence[Any] | None = None,
@@ -2304,7 +2304,7 @@ class TermBuilder:
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         polys
-            Dictionary of arrays. The keys of the dict are the region labels. The
+            Mapping of arrays. The keys are the region labels. The
             corresponding values define the region by defining polygons. The
             neighborhood structure can be inferred from this polygon information.
         nb
