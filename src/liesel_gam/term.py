@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from itertools import combinations
 from math import prod
 from typing import Any, Literal, Self
@@ -865,9 +865,9 @@ class MRFTerm(StrctTerm):
         self._neighbors = value
 
     @property
-    def polygons(self) -> dict[Any, ArrayLike] | None:
+    def polygons(self) -> Mapping[Any, ArrayLike] | None:
         """
-        Dictionary of arrays. The keys of the dict are the region labels. The
+        Mapping of arrays. The keys are the region labels. The
         corresponding values define each region through a 2-D array of polygon
         information.
 
@@ -894,7 +894,7 @@ class MRFTerm(StrctTerm):
         return self._polygons
 
     @polygons.setter
-    def polygons(self, value: dict[Any, ArrayLike] | None) -> None:
+    def polygons(self, value: Mapping[Any, ArrayLike] | None) -> None:
         """
         Set polygon coordinates keyed by region label.
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, NamedTuple, Self
 
 import jax
@@ -1179,4 +1179,4 @@ class MRFSpec(NamedTuple):
     mapping: CategoryMapping
     nb: dict[Any, list[Any]] | None
     ordered_labels: list[Any] | None
-    polys: dict[Any, ArrayLike] | None
+    polys: Mapping[Any, ArrayLike] | None

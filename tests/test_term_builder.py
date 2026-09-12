@@ -1,5 +1,6 @@
 import logging
 from functools import partial
+from types import MappingProxyType
 
 import jax
 import jax.numpy as jnp
@@ -466,6 +467,15 @@ class TestLinTerm:
 
 
 class TestMRFTerm:
+    def test_polygon_mapping(self, columb, columb_polys: dict[str, np.typing.NDArray]):
+        tb = gam.TermBuilder.from_df(columb)
+        term = tb.mrf("district", polys=columb_polys)
+        assert term.polygons is columb_polys
+
+        readonly_polys = MappingProxyType(columb_polys)
+        term = tb.mrf("district", polys=readonly_polys)
+        assert term.polygons is readonly_polys
+
     def test_accepts_catvar(self) -> None:
         tb = gam.TermBuilder.from_df(pd.DataFrame({"x": [1.0, 2.0, 3.0]}))
         region = gam.CatVar(["b", "a", "c"], name="region")
