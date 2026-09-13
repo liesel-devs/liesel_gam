@@ -14,6 +14,7 @@ from liesel.model.model import TemporaryModel
 
 from .basis import ApproximationSpec, LinBasis
 from .basis_builder import BasisBuilder
+from .mv_utils import as_penalty_value
 from .names import NameManager
 from .registry import CategoryMapping, DictRegistry, PandasRegistry
 from .term import (
@@ -673,6 +674,8 @@ class TermBuilder:
         prefix: str = "",
         name: str | None = None,
         include_intercept: bool = False,
+        *,
+        penalty: ArrayLike | lsl.Value | None = None,
     ) -> StrctLinTerm:
         """
         Structured linear term with an identity penalty by default.
@@ -682,9 +685,9 @@ class TermBuilder:
         formula
             Right-hand side of a model formula, as understood by formulaic_, or a
             named, penalized :class:`.LinBasis`. A formula-generated basis receives an
-            identity penalty, leading to a ridge prior. A supplied basis keeps its
-            existing penalty. Most of formulaic's grammar_ is supported. See notes for
-            details.
+            identity penalty by default, leading to a ridge prior. A supplied basis
+            keeps its existing penalty. Most of formulaic's grammar_ is supported.
+            See notes for details.
         scale
             Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
 
@@ -723,6 +726,14 @@ class TermBuilder:
         include_intercept
             Whether to include an intercept column in a formula-generated design
             matrix. Only supported when ``formula`` is a string.
+
+        penalty
+            Optional penalty for a formula-generated basis. Must be a finite,
+            square, symmetric, positive-semidefinite matrix with one row and column
+            per design-matrix column, including any requested intercept. Singular
+            and zero matrices are allowed. None uses an identity penalty.
+            Cannot be specified together with a LinBasis; set its penalty directly.
+            For a zero penalty, use a fixed scale because the scale has no effect.
 
         See Also
         --------
@@ -773,6 +784,11 @@ class TermBuilder:
         >>> tb.slin("x_lin")
         StrctLinTerm(name="slin(X)")
 
+        A custom zero penalty gives a flat coefficient prior:
+
+        >>> import jax.numpy as jnp
+        >>> term = tb.slin("x_lin", penalty=jnp.zeros((1, 1)), scale=1.0)
+
         A supplied basis must already have a penalty. Use ``penalty="identity"`` for
         a ridge prior.
 
@@ -791,6 +807,11 @@ class TermBuilder:
         .. _grammar: https://matthewwardrop.github.io/formulaic/latest/guides/grammar/
         """
         if isinstance(formula, LinBasis):
+            if penalty is not None:
+                raise ValueError(
+                    "Cannot supply penalty together with a LinBasis; "
+                    "set the penalty on the basis directly."
+                )
             basis = formula
             self._validate_lin_basis(
                 basis, context=context, include_intercept=include_intercept
@@ -808,7 +829,10 @@ class TermBuilder:
                 include_intercept=include_intercept,
                 context=context,
             )
-            basis._penalty = lsl.Value(jnp.eye(basis.nbases))
+            if penalty is None:
+                basis.update_penalty(jnp.eye(basis.nbases))
+            else:
+                basis.update_penalty(as_penalty_value(penalty))
         else:
             raise TypeError("formula must be a str or LinBasis.")
 

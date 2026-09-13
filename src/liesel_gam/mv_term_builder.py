@@ -648,13 +648,23 @@ class MVTermBuilder:
             ),
         )
 
-    def slin(self, *args: Any, **kwargs: Any) -> MultivariateStrctLinTerm:
+    def slin(
+        self,
+        *args: Any,
+        penalty: ArrayLike | lsl.Value | None = None,
+        **kwargs: Any,
+    ) -> MultivariateStrctLinTerm:
         """Build a multivariate structured linear term.
 
         Parameters
         ----------
         *args
             Positional arguments forwarded to :meth:`.TermBuilder.slin`.
+        penalty
+            Covariate-side penalty forwarded to :meth:`.TermBuilder.slin`.
+            None uses the identity penalty for formulas or preserves a supplied
+            LinBasis penalty. An explicit penalty is only accepted with formulas.
+            This does not replace the builder's cross-dimensional penalty.
         **kwargs
             Keyword arguments for :meth:`.TermBuilder.slin` and multivariate
             wrapping, including ``dimension_scale`` and ``scales_inference``.
@@ -664,11 +674,22 @@ class MVTermBuilder:
         >>> builder = MVTermBuilder.from_dict({"x": [0.0, 1.0, 2.0]}, jnp.eye(2))
         >>> builder.slin("x", scale=1.0, dimension_scale=1.0).value.shape
         (3, 2)
+
+        Remove the covariate-side penalty while retaining the cross-dimensional
+        penalty. Fix scale because a zero marginal penalty makes it irrelevant:
+
+        >>> term = builder.slin(
+        ...     "x", penalty=jnp.zeros((1, 1)), scale=1.0, dimension_scale=1.0
+        ... )
         """
         return cast(
             MultivariateStrctLinTerm,
             self._call_and_wrap(
-                "slin", *args, term_class=MultivariateStrctLinTerm, **kwargs
+                "slin",
+                *args,
+                penalty=penalty,
+                term_class=MultivariateStrctLinTerm,
+                **kwargs,
             ),
         )
 
