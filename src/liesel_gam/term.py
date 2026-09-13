@@ -351,7 +351,7 @@ class StrctTerm(UserVar):
             coef=self.coef,
             _update_on_init=_update_on_init,
         )
-        self._scale = scale
+        self._scale: lsl.Var | None = scale
 
         super().__init__(calc, name=name)
         if _update_on_init:
@@ -362,7 +362,7 @@ class StrctTerm(UserVar):
 
         if hasattr(self.scale, "setup_gibbs_inference"):
             try:
-                self.scale.setup_gibbs_inference(self.coef)  # type: ignore
+                self.scale.setup_gibbs_inference(self.coef)
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
@@ -426,9 +426,15 @@ class StrctTerm(UserVar):
         return jnp.shape(self.basis.value)[-1]
 
     @property
-    def scale(self) -> lsl.Var | lsl.Node | None:
+    def scale(self) -> Any:
         """
         The scale variable used by the coefficient prior.
+
+        Returns a variable, or ``None`` when no scale is present. The public
+        return type is :obj:`~typing.Any` to support subclass-specific methods
+        and access to the scale's internal graph without casts. Static checking
+        of those operations is left to the caller. The concrete type depends on
+        construction and can change through :meth:`.replace_scale`.
 
         Examples
         --------
@@ -583,7 +589,7 @@ class StrctTerm(UserVar):
                 self.scale.update()
                 self.scale.setup_gibbs_inference_factored(
                     scaled_coef, self.coef, penalty=pen
-                )  # type: ignore
+                )
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
 
