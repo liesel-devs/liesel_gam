@@ -195,6 +195,103 @@ class TestTermBuilder:
         assert caplog.records[0].levelno == logging.INFO
 
 
+class TestSlinCustomPenalty:
+    @pytest.fixture(params=(False, True), ids=("scalar", "multivariate"))
+    def builder(self, request):
+        data = pd.DataFrame(
+            {
+                "x": np.linspace(0.0, 1.0, 12),
+                "group": pd.Categorical(["a", "b", "c"] * 4),
+            }
+        )
+        if request.param:
+            return gam.MVTermBuilder.from_df(
+                data, jnp.diag(jnp.array([1.0, 2.0, 3.0])), scale_penalty=False
+            )
+        return gam.TermBuilder.from_df(data)
+
+    @pytest.mark.parametrize("kind", ("default", "custom", "singular", "zero", "value"))
+    def test_penalty_and_precision(self, builder, kind):
+        penalty = jnp.array([[2.0, -1.0], [-1.0, 2.0]])
+        if kind == "default":
+            penalty = jnp.eye(2)
+        elif kind == "singular":
+            penalty = jnp.array([[1.0, -1.0], [-1.0, 1.0]])
+        elif kind == "zero":
+            penalty = jnp.zeros((2, 2))
+        supplied = lsl.Value(penalty) if kind == "value" else penalty
+        kwargs: dict[str, object] = {} if kind == "default" else {"penalty": supplied}
+        is_mv = isinstance(builder, gam.MVTermBuilder)
+        if is_mv:
+            kwargs["dimension_scale"] = 3.0
+        term = builder.slin("group", scale=2.0, **kwargs)
+        assert term.coef.dist_node is not None
+        prior = term.coef.dist_node.init_dist()
+        precision = -jax.hessian(prior.log_prob)(jnp.zeros_like(term.coef.value))
+        expected = penalty / 2.0**2
+        if is_mv:
+            dimension_penalty = jnp.diag(jnp.array([1.0, 2.0, 3.0]))
+            expected = jnp.kron(expected, jnp.eye(3))
+            expected += jnp.kron(jnp.eye(2), dimension_penalty) / 3.0**2
+            assert jnp.array_equal(builder.dimension_penalty.value, dimension_penalty)
+        np.testing.assert_allclose(precision, expected, atol=1e-6)
+        assert np.isfinite(lsl.Model(term).log_prob)
+
+    def test_categorical_prediction(self, builder):
+        kwargs = (
+            {"dimension_scale": 1.0} if isinstance(builder, gam.MVTermBuilder) else {}
+        )
+        term = builder.slin("group", scale=1.0, penalty=jnp.eye(2), **kwargs)
+        assert term.column_names == ["group[T.b]", "group[T.c]"]
+        coef = jnp.arange(1.0, term.coef.value.size + 1)
+        prediction = term.predict(
+            {term.coef.name: coef}, newdata={"group": ["c", "a", "b"]}
+        )
+        expected = jnp.array([2.0, 0.0, 1.0])
+        if isinstance(builder, gam.MVTermBuilder):
+            expected = jnp.array([[4.0, 5.0, 6.0], [0.0, 0.0, 0.0], [1.0, 2.0, 3.0]])
+        np.testing.assert_allclose(prediction, expected)
+
+    @pytest.mark.parametrize(
+        ("penalty", "message"),
+        (
+            (1.0, "matrix"),
+            ([1.0, 1.0], "matrix"),
+            (np.zeros((0, 0)), "empty"),
+            (np.ones((1, 2)), "square"),
+            (np.eye(3), "columns"),
+            ([[1.0, np.nan], [np.nan, 1.0]], "finite"),
+            ([[np.inf, 0.0], [0.0, 1.0]], "finite"),
+            ([[1.0, 1.0], [0.0, 1.0]], "symmetric"),
+            ([[1.0, 2.0], [2.0, 1.0]], "positive semidefinite"),
+        ),
+    )
+    def test_invalid_penalty(self, builder, penalty, message):
+        with pytest.raises(ValueError, match=message):
+            builder.slin("group", penalty=penalty, scale=1.0)
+
+    def test_intercept_columns(self, builder):
+        kwargs = (
+            {"dimension_scale": 1.0} if isinstance(builder, gam.MVTermBuilder) else {}
+        )
+        with pytest.raises(ValueError, match="columns"):
+            builder.slin("group", include_intercept=True, penalty=jnp.eye(2), **kwargs)
+        term = builder.slin(
+            "group", include_intercept=True, penalty=jnp.eye(3), scale=1.0, **kwargs
+        )
+        assert term.column_names == ["Intercept", "group[T.b]", "group[T.c]"]
+        assert np.isfinite(lsl.Model(term).log_prob)
+
+    def test_rejects_penalty_with_lin_basis(self, builder):
+        basis = gam.LinBasis(np.ones((12, 2)), xname="design", name="V")
+        original_penalty = basis.penalty
+        with pytest.raises(ValueError, match="penalty.*LinBasis"):
+            builder.slin(basis, penalty=jnp.zeros((2, 2)))
+        assert basis.penalty is original_penalty
+        assert basis.penalty is not None
+        np.testing.assert_array_equal(basis.penalty.value, jnp.eye(2))
+
+
 class TestLinTerm:
     def test_lin_accepts_lin_basis(self, columb):
         tb = gam.TermBuilder.from_df(columb)
@@ -1354,7 +1451,7 @@ class TestTPTerm:
         assert len(scale_parameters) == expected_parameters
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
-    def test_zero_penalty_categorical_marginal(self, method):
+    def test_zero_penalty_categorical_marginal_with_supplied_basis(self, method):
         data = pd.DataFrame(
             {
                 "age": np.tile(np.linspace(0.0, 60.0, 12), 3),
@@ -1367,6 +1464,35 @@ class TestTPTerm:
         survey = tb.slin(basis, scale=1.0)
         age = tb.ps("age", k=5, scale=2.0)
         term = getattr(tb, method)(age, survey)
+        interaction = term if method == "tx" else term.terms_by_order[2][0]
+        model = lsl.Model(term)
+        assert np.isfinite(model.log_prob)
+
+        assert survey.coef.dist_node is not None
+        prior = survey.coef.dist_node.init_dist()
+        np.testing.assert_allclose(
+            prior.log_prob(jnp.zeros(2)), prior.log_prob(jnp.array([100.0, -100.0]))
+        )
+        interaction_prior = interaction.coef.dist_node.init_dist()
+        assert age.basis.penalty is not None
+        expected = jnp.kron(age.basis.penalty.value, jnp.eye(2)) / 2.0**2
+        np.testing.assert_allclose(
+            interaction_prior._op.materialize_precision(), expected, atol=1e-5
+        )
+        assert np.isfinite(interaction_prior.log_prob(jnp.ones(interaction.nbases)))
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_zero_penalty_categorical_marginal(self, method):
+        data = pd.DataFrame(
+            {
+                "age": np.tile(np.linspace(0.0, 60.0, 12), 3),
+                "survey": pd.Categorical(np.repeat(["1992", "1996", "2001"], 12)),
+            }
+        )
+        tb = gb.TermBuilder.from_df(data)
+        survey = tb.slin("survey", penalty=jnp.zeros((2, 2)), scale=1.0)
+        age = tb.ps("age", k=5, scale=2.0)
+        term = getattr(tb, method)(age, survey, common_scale=2.0)
         interaction = term if method == "tx" else term.terms_by_order[2][0]
         model = lsl.Model(term)
         assert np.isfinite(model.log_prob)

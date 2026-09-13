@@ -13,7 +13,7 @@ def as_penalty_value(
     atol: float = 1e-6,
     name: str = "",
 ) -> lsl.Value:
-    """Validate a cross-dimensional penalty and wrap it as a ``Value``."""
+    """Validate a penalty and wrap it as a ``Value``."""
     if isinstance(penalty, lsl.Value):
         penalty_value = penalty
         penalty_array = jnp.asarray(penalty.value)
@@ -23,24 +23,20 @@ def as_penalty_value(
 
     if penalty_array.ndim != 2:
         raise ValueError(
-            "A cross-dimensional penalty must be a matrix, "
-            f"got shape {penalty_array.shape}."
+            f"A penalty must be a matrix, got shape {penalty_array.shape}."
         )
     if not penalty_array.shape[0] or not penalty_array.shape[1]:
-        raise ValueError("A cross-dimensional penalty must not be empty.")
+        raise ValueError("A penalty must not be empty.")
     if penalty_array.shape[0] != penalty_array.shape[1]:
-        raise ValueError(
-            "A cross-dimensional penalty must be square, "
-            f"got shape {penalty_array.shape}."
-        )
+        raise ValueError(f"A penalty must be square, got shape {penalty_array.shape}.")
     if not bool(jnp.all(jnp.isfinite(penalty_array))):
-        raise ValueError("A cross-dimensional penalty must contain finite values.")
+        raise ValueError("A penalty must contain finite values.")
     if not bool(jnp.allclose(penalty_array, penalty_array.T, atol=atol, rtol=0.0)):
-        raise ValueError("A cross-dimensional penalty must be symmetric.")
+        raise ValueError("A penalty must be symmetric.")
 
     eigenvalues = jnp.linalg.eigvalsh(penalty_array)
     if bool(jnp.any(eigenvalues < -atol)):
-        raise ValueError("A cross-dimensional penalty must be positive semidefinite.")
+        raise ValueError("A penalty must be positive semidefinite.")
 
     penalty_value.value = penalty_array
     return penalty_value
