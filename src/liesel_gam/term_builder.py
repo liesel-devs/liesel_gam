@@ -3072,7 +3072,7 @@ class TermBuilder:
 
     def _ta(
         self,
-        *marginals: StrctTerm,
+        *marginals: StrctTerm | LinTerm,
         common_scale: ScaleIG
         | lsl.Var
         | float
@@ -3100,7 +3100,10 @@ class TermBuilder:
         Parameters
         ----------
         *marginals
-            Marginal terms, subclasses of :class:`.StrctTerm`.
+            Marginal terms, subclasses of :class:`.StrctTerm` or :class:`.LinTerm`.
+            Linear terms contribute a zero penalty in their direction. Their
+            basis, contrast coding, and main-effect priors remain unchanged;
+            custom main-effect priors are not transferred to interaction coefficients.
         common_scale
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
@@ -3159,7 +3162,7 @@ class TermBuilder:
 
     def tx(
         self,
-        *marginals: StrctTerm,
+        *marginals: StrctTerm | LinTerm,
         common_scale: ScaleIG
         | lsl.Var
         | float
@@ -3179,6 +3182,7 @@ class TermBuilder:
         Includes only the tensor product interaction. Corresponds to ``mgcv::ti``.
 
         Fixed marginal scales remain unchanged and receive no sampler.
+        Linear marginals use their existing design matrices without extra centering.
 
         .. warning::
             This method removes any default gibbs samplers and replaces them with
@@ -3189,7 +3193,10 @@ class TermBuilder:
         Parameters
         ----------
         *marginals
-            Marginal terms, subclasses of :class:`.StrctTerm`.
+            Marginal terms, subclasses of :class:`.StrctTerm` or :class:`.LinTerm`.
+            Linear terms contribute a zero penalty in their direction. Their
+            basis, contrast coding, and main-effect priors remain unchanged;
+            custom main-effect priors are not transferred to interaction coefficients.
         common_scale
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
@@ -3246,6 +3253,18 @@ class TermBuilder:
         >>> pred += tb.tx(ps1, ps2)
         >>> pred.terms
         {'tx(x_nonlin,x_lin)': StrctInteractionTerm(name="tx(x_nonlin,x_lin)")}
+
+        .. rubric:: Linear and categorical marginals
+
+        Linear terms can be combined directly with smooth terms:
+
+        >>> linear = tb.lin("x_cat")
+        >>> smooth = tb.ps("x_nonlin", k=7)
+        >>> interaction = tb.tx(smooth, linear)
+
+        The interaction is smoothed in the ``x_nonlin`` direction, with no additional
+        penalty in the categorical direction. Add ``smooth`` and ``linear`` separately
+        for their main effects, or use ``tb.tf(smooth, linear)`` to include them.
 
         .. rubric:: Anova decomposition
 
@@ -3399,7 +3418,7 @@ class TermBuilder:
 
     def tf(
         self,
-        *marginals: StrctTerm,
+        *marginals: StrctTerm | LinTerm,
         common_scale: ScaleIG
         | lsl.Var
         | float
@@ -3422,6 +3441,7 @@ class TermBuilder:
         Corresponds to ``mgcv::te``.
 
         Fixed marginal scales remain unchanged and receive no sampler.
+        Linear marginals use their existing design matrices without extra centering.
 
         .. warning::
             This method removes any default gibbs samplers and replaces them with
@@ -3432,13 +3452,17 @@ class TermBuilder:
         Parameters
         ----------
         *marginals
-            Marginal terms, subclasses of :class:`.StrctTerm`.
+            Marginal terms, subclasses of :class:`.StrctTerm` or :class:`.LinTerm`.
+            Linear terms contribute a zero penalty in their direction. Their
+            basis, contrast coding, and main-effect priors remain unchanged;
+            custom main-effect priors are not transferred to interaction coefficients.
         common_scale
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
             :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
             in the notation used in :class:`.StrctInteractionTerm`. Note that this
-            *will* also change the scales of the supplied marginals (main effects).
+            *will* also change the scales of the supplied structured marginals
+            (main effects). Linear main-effect priors remain unchanged.
         order
             Sequence of intergers identifying the orders of interactions to be included
             in this term. For example, if you want to include only the bi- and

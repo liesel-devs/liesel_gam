@@ -13,7 +13,7 @@ from .mgcv_data import load_columb
 
 
 def _as_interaction(
-    term: gam.StrctTerm | gam.StrctInteractionTerm,
+    term: gam.StrctTerm | gam.StrctInteractionTerm | gam.LinTerm,
 ) -> gam.StrctInteractionTerm:
     assert isinstance(term, gam.StrctInteractionTerm)
     return term
@@ -770,6 +770,7 @@ class TestTensorProdTerm:
         ta = gam.StrctTensorProdTerm(s1, s2, s3, common_scale=scale)
 
         for term in ta.terms_by_order[1]:
+            assert isinstance(term, gam.StrctTerm)
             assert term.scale is scale
             assert term.coef.dist_node is not None
             assert term.coef.dist_node["scale"] is scale

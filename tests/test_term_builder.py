@@ -1244,6 +1244,114 @@ class TestVaryincCoefficient:
             tb.vc(gam.CatVar(["a"] * len(columb), name="G"), by=by)
 
 
+class TestLinearTensorMarginals:
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    @pytest.mark.parametrize("categorical", (False, True))
+    @pytest.mark.parametrize("common_scale", (None, 3.0))
+    def test_linear_smooth_tensor(self, method, categorical, common_scale):
+        data = pd.DataFrame(
+            {
+                "x_nonlin": np.linspace(0.0, 1.0, 12),
+                "group": pd.Categorical(["a", "b", "c"] * 4),
+                "x": np.linspace(-1.0, 1.0, 12),
+            }
+        )
+        tb = gam.TermBuilder.from_df(data)
+        formula = "group" if categorical else "x"
+        prior = lsl.Dist(tfd.Normal, loc=0.0, scale=5.0)
+        inference = gs.MCMCSpec(gs.NUTSKernel)
+        linear = tb.lin(formula, prior=prior, inference=inference)
+        basis = linear.basis
+        model_spec = linear.model_spec
+        smooth = tb.ps("x_nonlin", k=5, scale=2.0)
+        term = getattr(tb, method)(smooth, linear, common_scale=common_scale)
+        interaction = term if method == "tx" else term.terms_by_order[2][0]
+        model = lsl.Model([smooth, linear, term])
+        assert linear.basis is basis
+        assert basis.penalty is None
+        assert linear.model_spec is model_spec
+        assert linear.coef.dist_node is prior
+        assert linear.coef.inference is inference
+        if method == "tf":
+            assert term.terms_by_order[1][1] is linear
+
+        linear.coef.value = jnp.arange(1.0, linear.nbases + 1)
+        smooth.coef.value = jnp.linspace(-0.5, 0.5, smooth.nbases)
+        interaction.coef.value = jnp.linspace(-1.0, 1.0, interaction.nbases)
+        model.update()
+        design = jax.vmap(jnp.kron)(smooth.basis.value, linear.basis.value)
+        expected = design @ interaction.coef.value
+        if method == "tf":
+            expected += smooth.value + linear.value
+        np.testing.assert_allclose(term.value, expected, atol=1e-6)
+        assert np.isfinite(model.log_prob)
+
+        assert smooth.basis.penalty is not None
+        scale = 2.0 if common_scale is None else common_scale
+        precision = (
+            jnp.kron(smooth.basis.penalty.value, jnp.eye(linear.nbases)) / scale**2
+        )
+        assert interaction.coef.dist_node is not None
+        distribution = interaction.coef.dist_node.init_dist()
+        np.testing.assert_allclose(
+            distribution._op.materialize_precision(), precision, atol=1e-5
+        )
+
+        rows = [11, 0, 4]
+        newdata = {"x_nonlin": data["x_nonlin"].iloc[rows].to_numpy()}
+        newdata[formula] = data[formula].iloc[rows].tolist()
+        samples = {
+            smooth.coef.name: smooth.coef.value,
+            linear.coef.name: linear.coef.value,
+            interaction.coef.name: interaction.coef.value,
+        }
+        np.testing.assert_allclose(
+            term.predict(samples, newdata=newdata), expected[jnp.array(rows)], atol=1e-6
+        )
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_all_linear_marginals(self, method):
+        tb = gam.TermBuilder.from_df(
+            pd.DataFrame({"x": [1.0, 2.0, 3.0], "w": [3.0, 2.0, 1.0]})
+        )
+        x = tb.lin("x")
+        w = tb.lin("w")
+        term = getattr(tb, method)(x, w)
+        interaction = term if method == "tx" else term.terms_by_order[2][0]
+        model = lsl.Model(term)
+        assert np.isfinite(model.log_prob)
+        assert interaction.coef.dist_node is not None
+        prior = interaction.coef.dist_node.init_dist()
+        np.testing.assert_allclose(
+            prior.log_prob(jnp.zeros(1)), prior.log_prob(jnp.array([100.0]))
+        )
+        assert x.basis.penalty is None
+        assert w.basis.penalty is None
+
+    def test_three_way_grouped_tensor(self):
+        tb = gam.TermBuilder.from_df(
+            pd.DataFrame(
+                {
+                    "x": np.linspace(0.0, 1.0, 12),
+                    "w": np.linspace(1.0, 2.0, 12),
+                    "group": pd.Categorical(["a", "b", "c"] * 4),
+                }
+            )
+        )
+        linear = tb.lin("group")
+        term = tb.tf(
+            tb.ps("x", k=5, scale=1.0),
+            tb.ps("w", k=5, scale=1.0),
+            linear,
+            group_terms_by_order=True,
+        )
+        assert set(term.terms_by_order) == {1, 2, 3}
+        assert [len(term.terms_by_order[i]) for i in (1, 2, 3)] == [3, 3, 1]
+        assert linear in term.terms_by_order[1]
+        assert np.isfinite(lsl.Model(term).log_prob)
+        assert linear.basis.penalty is None
+
+
 class TestTPTerm:
     def test_runs(self):
         df = gam.demo_data_ta(n=200)
@@ -1454,28 +1562,57 @@ class TestTPTerm:
     def test_zero_penalty_categorical_marginal_with_supplied_basis(self, method):
         data = pd.DataFrame(
             {
-                "age": np.tile(np.linspace(0.0, 60.0, 12), 3),
-                "survey": pd.Categorical(np.repeat(["1992", "1996", "2001"], 12)),
+                "x_nonlin": np.tile(np.linspace(0.0, 1.0, 12), 3),
+                "group": pd.Categorical(np.repeat(["a", "b", "c"], 12)),
             }
         )
         tb = gb.TermBuilder.from_df(data)
-        basis = tb.bases.lin("survey")
+        basis = tb.bases.lin("group")
         basis.update_penalty(jnp.zeros((basis.nbases, basis.nbases)))
-        survey = tb.slin(basis, scale=1.0)
-        age = tb.ps("age", k=5, scale=2.0)
-        term = getattr(tb, method)(age, survey)
+        categorical_term = tb.slin(basis, scale=1.0)
+        smooth = tb.ps("x_nonlin", k=5, scale=2.0)
+        term = getattr(tb, method)(smooth, categorical_term)
         interaction = term if method == "tx" else term.terms_by_order[2][0]
         model = lsl.Model(term)
         assert np.isfinite(model.log_prob)
 
-        assert survey.coef.dist_node is not None
-        prior = survey.coef.dist_node.init_dist()
+        assert categorical_term.coef.dist_node is not None
+        prior = categorical_term.coef.dist_node.init_dist()
         np.testing.assert_allclose(
             prior.log_prob(jnp.zeros(2)), prior.log_prob(jnp.array([100.0, -100.0]))
         )
         interaction_prior = interaction.coef.dist_node.init_dist()
-        assert age.basis.penalty is not None
-        expected = jnp.kron(age.basis.penalty.value, jnp.eye(2)) / 2.0**2
+        assert smooth.basis.penalty is not None
+        expected = jnp.kron(smooth.basis.penalty.value, jnp.eye(2)) / 2.0**2
+        np.testing.assert_allclose(
+            interaction_prior._op.materialize_precision(), expected, atol=1e-5
+        )
+        assert np.isfinite(interaction_prior.log_prob(jnp.ones(interaction.nbases)))
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_zero_penalty_categorical_marginal(self, method):
+        data = pd.DataFrame(
+            {
+                "x_nonlin": np.tile(np.linspace(0.0, 1.0, 12), 3),
+                "group": pd.Categorical(np.repeat(["a", "b", "c"], 12)),
+            }
+        )
+        tb = gb.TermBuilder.from_df(data)
+        categorical_term = tb.slin("group", penalty=jnp.zeros((2, 2)), scale=1.0)
+        smooth = tb.ps("x_nonlin", k=5, scale=2.0)
+        term = getattr(tb, method)(smooth, categorical_term, common_scale=2.0)
+        interaction = term if method == "tx" else term.terms_by_order[2][0]
+        model = lsl.Model(term)
+        assert np.isfinite(model.log_prob)
+
+        assert categorical_term.coef.dist_node is not None
+        prior = categorical_term.coef.dist_node.init_dist()
+        np.testing.assert_allclose(
+            prior.log_prob(jnp.zeros(2)), prior.log_prob(jnp.array([100.0, -100.0]))
+        )
+        interaction_prior = interaction.coef.dist_node.init_dist()
+        assert smooth.basis.penalty is not None
+        expected = jnp.kron(smooth.basis.penalty.value, jnp.eye(2)) / 2.0**2
         np.testing.assert_allclose(
             interaction_prior._op.materialize_precision(), expected, atol=1e-5
         )
