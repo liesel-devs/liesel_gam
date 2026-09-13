@@ -37,6 +37,7 @@ from .term_builder import (
     _biject_and_replace_star_gibbs_with,
     _format_name,
     _has_star_gibbs,
+    _resolve_vc_arguments,
 )
 from .var import CatVar, ScaleIG, VarIGPrior
 
@@ -1388,34 +1389,44 @@ class MVTermBuilder:
 
     def vc(
         self,
-        x: str | lsl.Var,
-        by: lsl.Var,
+        term: lsl.Var | str | None = None,
+        by: lsl.Var | str | None = None,
         *,
         dimension_scale: ScaleTypes = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         scales_inference: InferenceTypes | None | Literal["default"] = "default",
         prefix: str = "",
         name: str | None = None,
+        x: str | lsl.Var | None = None,
     ) -> MultivariateContribution:
         """Build a multivariate varying-coefficient effect.
 
         Parameters
         ----------
-        x
-            Named numeric source value or variable multiplying ``by``.
+        term
+            Ordinary or multivariate structured term supplying the coefficient.
         by
-            Ordinary or multivariate structured term that supplies the varying
-            coefficient.
+            Named numeric source value or variable multiplying ``term``,
+            following mgcv terminology.
+        x
+            Deprecated multiplier keyword from ``vc(x=x, by=term)``.
         dimension_scale
-            Cross-dimensional scale used when wrapping an ordinary ``by`` term.
+            Cross-dimensional scale used when wrapping an ordinary ``term``.
         inference
-            Inference specification used when wrapping an ordinary ``by`` term.
+            Inference specification used when wrapping an ordinary ``term``.
         scales_inference
             Inference specification for scale parameters.
         prefix
             Prefix added to the returned effect name.
         name
             Optional explicit effect name.
+
+        Notes
+        -----
+        The ``by`` result attribute refers to the coefficient term.
+        Old calls ``vc(x, by=term)`` emit a deprecation warning.
+        Summary and plotting helpers show reconstructed coefficient curves by
+        default, or multiplied contributions when ``newdata`` is supplied.
 
         Examples
         --------
@@ -1426,10 +1437,12 @@ class MVTermBuilder:
         ...     },
         ...     jnp.eye(2),
         ... )
-        >>> by = builder.ps("z", k=5, scale=1.0, dimension_scale=1.0)
-        >>> builder.vc("x", by).value.shape
+        >>> smooth = builder.ps("z", k=5, scale=1.0, dimension_scale=1.0)
+        >>> builder.vc(smooth, by="x").value.shape
         (8, 2)
         """
+        coefficient, multiplier = _resolve_vc_arguments(term, by, x)
+        by = coefficient
         if isinstance(by, MultivariateStrctTerm):
             if by.dimension_penalty is None or not jnp.allclose(
                 by.dimension_penalty.value, self.dimension_penalty.value
@@ -1454,9 +1467,7 @@ class MVTermBuilder:
         else:
             raise TypeError(f"Unsupported varying-coefficient term: {type(by)}")
 
-        if isinstance(x, CatVar):
-            raise TypeError("Varying-coefficient 'x' must be numeric, not a CatVar.")
-        x_var = self.bases._get_var_and_value(x)[0]
+        x_var = self.bases._get_var_and_value(multiplier)[0]
 
         def multiply(x, by):
             return jnp.expand_dims(x, -1) * by

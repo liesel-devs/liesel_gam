@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Literal, overload
 
@@ -20,6 +21,7 @@ from .registry import CategoryMapping, DictRegistry, PandasRegistry
 from .term import (
     LinTerm,
     MRFTerm,
+    MultivariateStrctTerm,
     RITerm,
     StrctInteractionTerm,
     StrctLinTerm,
@@ -2161,21 +2163,25 @@ class TermBuilder:
     # varying coefficient
     def vc(
         self,
-        x: str | lsl.Var,
-        by: StrctTerm,
+        term: StrctTerm | str | lsl.Var | None = None,
+        by: str | lsl.Var | None = None,
         prefix: str = "",
         name: str | None = None,
+        *,
+        x: str | lsl.Var | None = None,
     ) -> lsl.Var:
         r"""
         Varying coefficient term.
 
         Parameters
         ----------
-        x
-            Name of input variable.
+        term
+            Structured term supplying the smoothly varying coefficient.
         by
-            Smooth term, a :class:`.StrctTerm` that represents the smoothly varying
-            coefficient of this term, for example a P-spline :meth:`.ps`.
+            Name of a numeric covariate, or a numeric variable, multiplying
+            ``term``. As in mgcv, ``by`` denotes the multiplier.
+        x
+            Deprecated name for the multiplier in the old calling convention.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -2184,6 +2190,11 @@ class TermBuilder:
 
         Notes
         -----
+
+        The old
+        ``vc(x, by=term)`` and ``vc(x=x, by=term)`` conventions are deprecated.
+        Summary and plotting helpers show the coefficient curve by default;
+        supply ``newdata`` for both components to show the multiplied contribution.
 
         A varying coefficient term can be written as
 
@@ -2201,12 +2212,14 @@ class TermBuilder:
         >>> df = gam.demo_data(100)
         >>> tb = gam.TermBuilder.from_df(df)
         >>> psx = tb.ps("x_nonlin", k=20)
-        >>> tb.vc(x="x_lin", by=psx)
+        >>> tb.vc(psx, by="x_lin")
         Var(name="x_lin*ps(x_nonlin)")
         """
-        if isinstance(x, CatVar):
-            raise TypeError("Varying-coefficient 'x' must be numeric, not a CatVar.")
-        x_var = self.bases._get_var_and_value(x)[0]
+        coefficient, multiplier = _resolve_vc_arguments(term, by, x)
+        if not isinstance(coefficient, StrctTerm):
+            raise TypeError("TermBuilder.vc() requires a scalar structured term.")
+        x_var = self.bases._get_var_and_value(multiplier)[0]
+        by = coefficient
         fname = self.names.create(prefix + x_var.name + "*" + by.name)
         term_name = prefix + name if name is not None else fname
         fname = term_name
@@ -3801,3 +3814,38 @@ def _format_name(var: lsl.Var, fill: str) -> lsl.Var:
         var.name = fill
 
     return var
+
+
+def _resolve_vc_arguments(
+    term: lsl.Var | str | None,
+    by: lsl.Var | str | None,
+    x: lsl.Var | str | None,
+) -> tuple[StrctTerm | MultivariateStrctTerm, str | lsl.Var]:
+    """Normalize the current and deprecated varying-coefficient conventions."""
+    structured = (StrctTerm, MultivariateStrctTerm)
+    legacy = x is not None
+    if legacy:
+        if term is not None:
+            raise TypeError("Specify either 'term' or deprecated 'x', not both.")
+        term = x
+    if isinstance(term, structured) and isinstance(by, structured):
+        raise TypeError("Ambiguous vc() call: only 'term' may be a structured term.")
+    if isinstance(by, structured):
+        term, by = by, term
+        legacy = True
+    elif legacy:
+        raise TypeError("Deprecated 'x' requires the coefficient term in 'by'.")
+    if not isinstance(term, structured):
+        raise TypeError("vc() requires a structured coefficient: vc(term, by=...).")
+    if by is None or not isinstance(by, str | lsl.Var):
+        raise TypeError("vc() requires a numeric multiplier name or variable in 'by'.")
+    if isinstance(by, CatVar):
+        raise TypeError("Varying-coefficient 'by' must be numeric, not a CatVar.")
+    if legacy:
+        warnings.warn(
+            "vc(x, by=term) and vc(x=x, by=term) are deprecated; "
+            "use vc(term, by=x) instead.",
+            FutureWarning,
+            stacklevel=3,
+        )
+    return term, by

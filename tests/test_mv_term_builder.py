@@ -410,7 +410,7 @@ class TestMVTermBuilder:
 
         random_slope = builder.rs("x", "group", scale=1.0, dimension_scale=1.0)
         varying = builder.vc(
-            "x", _scalar_term(scalar_builder, "z"), dimension_scale=1.0
+            _scalar_term(scalar_builder, "z"), by="x", dimension_scale=1.0
         )
 
         assert random_slope.value.shape == (12, 3)
@@ -504,7 +504,7 @@ class TestMVTermBuilder:
         by = _scalar_term(scalar_builder, "z")
         by_name = by.name
 
-        term = builder.vc("x", by, prefix="p.", dimension_scale=1.0)
+        term = builder.vc(by, by="x", prefix="p.", dimension_scale=1.0)
 
         assert term.name == f"p.x*{by_name}"
         assert by.name == by_name
@@ -519,7 +519,7 @@ class TestMVTermBuilder:
         incompatible = _mv_term(random_walk, "z", dimension_scale=1.0)
 
         with pytest.raises(ValueError, match="different dimension penalty"):
-            identity.vc("x", incompatible)
+            identity.vc(incompatible, by="x")
 
     def test_varying_coefficient_rejects_incompatible_constraint(self) -> None:
         scalar_builder = gam.TermBuilder.from_df(_data())
@@ -532,7 +532,7 @@ class TestMVTermBuilder:
         )
 
         with pytest.raises(ValueError, match="different constraint"):
-            builder.vc("x", incompatible)
+            builder.vc(incompatible, by="x")
 
     def test_varying_coefficient_rejects_catvar_x(self) -> None:
         scalar_builder = gam.TermBuilder.from_df(_data())
@@ -540,7 +540,7 @@ class TestMVTermBuilder:
 
         with pytest.raises(TypeError, match="numeric"):
             builder.vc(
-                gam.CatVar(["a"] * 12, name="G"),
                 _scalar_term(scalar_builder, "z"),
+                by=gam.CatVar(["a"] * 12, name="G"),
                 dimension_scale=1.0,
             )
