@@ -120,8 +120,8 @@ class TestSmoothTerm:
         )
 
         assert term.scale is not None
-        var = term.scale.value_node[0]  # type: ignore
-        assert isinstance(var.inference, gs.MCMCSpec)  # type: ignore
+        var = term.scale.value_node[0]
+        assert isinstance(var.inference, gs.MCMCSpec)
 
     def test_scale_none(self) -> None:
         x = jnp.linspace(0, 1, 10)
@@ -176,8 +176,8 @@ class TestSmoothTerm:
         model = lsl.Model([term])
         assert isinstance(term.scale, lsl.Var)
         tau2 = term.scale.value_node[0]
-        kernel = tau2.inference.kernel([tau2.name], term.coef, term.scale)  # type: ignore
-        proposal = kernel._transition_fn(jax.random.key(1), model.state)  # type: ignore
+        kernel = tau2.inference.kernel([tau2.name], term.coef, term.scale)
+        proposal = kernel._transition_fn(jax.random.key(1), model.state)
         assert not jnp.isinf(proposal[tau2.name])
         assert not jnp.isnan(proposal[tau2.name])
         assert proposal[tau2.name] > 0.0
@@ -192,8 +192,8 @@ class TestSmoothTerm:
         model = lsl.Model([term])
         assert isinstance(term.scale, lsl.Var)
         tau2 = term.scale.value_node[0]
-        kernel = tau2.inference.kernel([tau2.name], term.coef, term.scale)  # type: ignore
-        proposal = kernel._transition_fn(jax.random.key(1), model.state)  # type: ignore
+        kernel = tau2.inference.kernel([tau2.name], term.coef, term.scale)
+        proposal = kernel._transition_fn(jax.random.key(1), model.state)
         assert not jnp.isinf(proposal[tau2.name])
         assert not jnp.isnan(proposal[tau2.name])
         assert proposal[tau2.name] > 0.0

@@ -1,9 +1,12 @@
 import inspect
+from typing import Any, assert_type
 
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
+import pandas as pd
 import pytest
+import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 
 import liesel_gam as gam
@@ -137,3 +140,22 @@ def test_scale_value_must_be_positive(function, value) -> None:
     else:
         with pytest.raises(ValueError, match="positive"):
             function(value, 3.0, 0.1)
+
+
+def test_term_scale_supports_direct_variance_transformation() -> None:
+    tb = gam.TermBuilder.from_df(pd.DataFrame({"age": jnp.linspace(0, 1, 20)}))
+    age_term = tb.ps("age", k=8)
+    scale_inference = gs.MCMCSpec(gs.NUTSKernel, kernel_group="age_year_scales")
+
+    assert_type(age_term.scale, Any)
+    age_variance = age_term.scale.value_node[0]
+    assert_type(age_variance, Any)
+    variance_before = float(age_variance.value)
+    age_variance.biject(tfb.Exp(), inference=scale_inference)
+
+    assert age_variance.bijected_var.inference is scale_inference
+    assert float(age_variance.bijected_var.value) == pytest.approx(
+        float(jnp.log(variance_before))
+    )
+    assert float(age_variance.value) == pytest.approx(variance_before)
+    assert float(age_term.scale.value) ** 2 == pytest.approx(variance_before)
