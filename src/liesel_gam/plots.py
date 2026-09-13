@@ -13,6 +13,8 @@ from jax.typing import ArrayLike
 from .registry import CategoryMapping
 from .summary import (
     _normalise_sample_dims,
+    _prepare_1d_smooth,
+    _vc_inputs,
     polys_to_df,
     summarise_1d_smooth,
     summarise_1d_smooth_clustered,
@@ -76,7 +78,12 @@ def plot_1d_smooth(
     ngrid: int = 150,
 ) -> p9.ggplot:
     """
-    Plots a posterior summary for a one-dimensional smooth.
+    Plots a posterior summary for a one-dimensional smooth or vc() result.
+
+    For varying coefficients, omitted ``newdata`` shows the coefficient curve
+    (multiplier one). Explicit ``newdata`` must supply both components and shows
+    their product. Multivariate contributions are faceted by reconstructed
+    output dimension.
 
     Parameters
     ----------
@@ -103,20 +110,8 @@ def plot_1d_smooth(
         Number of covariate values in the grid used for plotting, if ``newdata=None``.
 
     """
-    if not isinstance(term, StrctTerm):
-        raise TypeError(f"'term' must be a StrctTerm, got {type(term).__name__}.")
-
-    if newdata is None:
-        # TODO: Currently, this branch of the function assumes that term.basis.x is
-        # a strong node.
-        # That is not necessarily always the case.
-        xgrid = np.linspace(term.basis.x.value.min(), term.basis.x.value.max(), ngrid)
-        newdata_x: Mapping[str, ArrayLike] = {term.basis.input_name: xgrid}
-    else:
-        newdata_x = newdata
-        xgrid = np.asarray(newdata[term.basis.input_name])
-
-    newdata_x = _as_array_dict(newdata_x)
+    target, input_name, newdata_x = _prepare_1d_smooth(term, newdata, ngrid)
+    xgrid = np.asarray(newdata_x[input_name])
 
     term_summary = summarise_1d_smooth(
         term=term,
@@ -129,14 +124,20 @@ def plot_1d_smooth(
 
     p = p9.ggplot(term_summary) + p9.labs(
         title=f"Posterior summary of {term.name}",
-        x=term.basis.input_name,
+        x=input_name,
         y=term.name,
     )
+
+    if _vc_inputs(term) is not None:
+        quantity = "Coefficient curve" if newdata is None else "Contribution"
+        p = p + p9.labs(title=f"{quantity} of {term.name}", y=quantity)
+    if "dimension" in term_summary:
+        p = p + p9.facet_wrap("~dimension", labeller="label_both")
 
     if ci_quantiles is not None:
         p = p + p9.geom_ribbon(
             p9.aes(
-                term.basis.input_name,
+                input_name,
                 ymin=f"q_{ci_quantiles[0]!s}",
                 ymax=f"q_{ci_quantiles[1]!s}",
             ),
@@ -147,42 +148,48 @@ def plot_1d_smooth(
 
     if hdi_prob is not None:
         p = p + p9.geom_line(
-            p9.aes(term.basis.input_name, "hdi_low"),
+            p9.aes(input_name, "hdi_low"),
             linetype="dashed",
             data=term_summary,
         )
 
         p = p + p9.geom_line(
-            p9.aes(term.basis.input_name, "hdi_high"),
+            p9.aes(input_name, "hdi_high"),
             linetype="dashed",
             data=term_summary,
         )
 
     if show_n_samples is not None and show_n_samples > 0:
         term_samples = _normalise_sample_dims(
-            term.predict(gs.Position(samples), newdata=gs.Position(newdata_x)),
-            term.value.ndim,
+            target.predict(gs.Position(samples), newdata=gs.Position(newdata_x)),
+            target.value.ndim,
         )
         key = jax.random.key(seed) if isinstance(seed, int) else seed
         n_samples = min(show_n_samples, term_samples.shape[0] * term_samples.shape[1])
 
+        flattened = term_samples.reshape(*term_samples.shape[:2], -1)
         summary_samples_df = summarise_by_samples(
-            key=key, a=term_samples, name=term.name, n=n_samples
+            key=key, a=flattened, name=term.name, n=n_samples
         )
 
-        summary_samples_df[term.basis.input_name] = np.tile(
-            np.squeeze(xgrid), n_samples
-        )
+        if term_samples.ndim == 4:
+            ndim = term_samples.shape[-1]
+            summary_samples_df[input_name] = np.tile(np.repeat(xgrid, ndim), n_samples)
+            summary_samples_df["dimension"] = np.tile(
+                np.arange(ndim), len(xgrid) * n_samples
+            )
+        else:
+            summary_samples_df[input_name] = np.tile(np.squeeze(xgrid), n_samples)
 
         p = p + p9.geom_line(
-            p9.aes(term.basis.input_name, term.name, group="sample"),
+            p9.aes(input_name, term.name, group="sample"),
             color="grey",
             data=summary_samples_df,
             alpha=0.3,
         )
 
     p = p + p9.geom_line(
-        p9.aes(term.basis.input_name, "mean"), data=term_summary, size=1.3, color="blue"
+        p9.aes(input_name, "mean"), data=term_summary, size=1.3, color="blue"
     )
 
     return p

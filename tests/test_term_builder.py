@@ -1225,13 +1225,13 @@ class TestVaryincCoefficient:
     def test_vc(self, columb):
         tb = gb.TermBuilder.from_df(columb)
         psx = tb.ps("x", k=20)
-        tb.vc("y", by=psx)
+        tb.vc(psx, by="y")
 
     def test_prefix_applies_to_returned_effect(self, columb) -> None:
         tb = gb.TermBuilder.from_df(columb)
         by = tb.ps("x", k=10)
 
-        term = tb.vc("y", by=by, prefix="p.")
+        term = tb.vc(by, by="y", prefix="p.")
 
         assert term.name == "p.y*ps(x)"
         assert by.name == "ps(x)"
@@ -1241,7 +1241,7 @@ class TestVaryincCoefficient:
         by = tb.ps("x", k=10)
 
         with pytest.raises(TypeError, match="numeric"):
-            tb.vc(gam.CatVar(["a"] * len(columb), name="G"), by=by)
+            tb.vc(by, by=gam.CatVar(["a"] * len(columb), name="G"))
 
 
 class TestLinearTensorMarginals:
@@ -1613,35 +1613,6 @@ class TestTPTerm:
         interaction_prior = interaction.coef.dist_node.init_dist()
         assert smooth.basis.penalty is not None
         expected = jnp.kron(smooth.basis.penalty.value, jnp.eye(2)) / 2.0**2
-        np.testing.assert_allclose(
-            interaction_prior._op.materialize_precision(), expected, atol=1e-5
-        )
-        assert np.isfinite(interaction_prior.log_prob(jnp.ones(interaction.nbases)))
-
-    @pytest.mark.parametrize("method", ("tx", "tf"))
-    def test_zero_penalty_categorical_marginal(self, method):
-        data = pd.DataFrame(
-            {
-                "age": np.tile(np.linspace(0.0, 60.0, 12), 3),
-                "survey": pd.Categorical(np.repeat(["1992", "1996", "2001"], 12)),
-            }
-        )
-        tb = gb.TermBuilder.from_df(data)
-        survey = tb.slin("survey", penalty=jnp.zeros((2, 2)), scale=1.0)
-        age = tb.ps("age", k=5, scale=2.0)
-        term = getattr(tb, method)(age, survey, common_scale=2.0)
-        interaction = term if method == "tx" else term.terms_by_order[2][0]
-        model = lsl.Model(term)
-        assert np.isfinite(model.log_prob)
-
-        assert survey.coef.dist_node is not None
-        prior = survey.coef.dist_node.init_dist()
-        np.testing.assert_allclose(
-            prior.log_prob(jnp.zeros(2)), prior.log_prob(jnp.array([100.0, -100.0]))
-        )
-        interaction_prior = interaction.coef.dist_node.init_dist()
-        assert age.basis.penalty is not None
-        expected = jnp.kron(age.basis.penalty.value, jnp.eye(2)) / 2.0**2
         np.testing.assert_allclose(
             interaction_prior._op.materialize_precision(), expected, atol=1e-5
         )

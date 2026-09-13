@@ -11,10 +11,12 @@ from jax import Array
 from jax.typing import ArrayLike
 from liesel.goose.summary_m import SummaryQuantities
 
+from .mv_predictor import MultivariateContribution
 from .registry import CategoryMapping
 from .term import (
     LinTerm,
     MRFTerm,
+    MultivariateStrctTerm,
     RITerm,
     StrctInteractionTerm,
     StrctLinTerm,
@@ -111,6 +113,85 @@ def summarise_by_samples(
     return df
 
 
+def _vc_inputs(
+    term: lsl.Var | lsl.Node,
+) -> tuple[StrctTerm | MultivariateStrctTerm, lsl.Var] | None:
+    """Read varying-coefficient components from their existing graph references."""
+    if isinstance(term, MultivariateContribution):
+        coefficient = getattr(term, "by", None)
+        node = term.latent
+    else:
+        coefficient = None
+        node = term
+    if isinstance(node, lsl.Var):
+        node = node.value_node
+    if "by" not in node.kwinputs or "x" not in node.kwinputs:
+        return None
+    if coefficient is None:
+        coefficient = node["by"]
+    multiplier = node["x"]
+    if isinstance(coefficient, (StrctTerm, MultivariateStrctTerm)) and isinstance(
+        multiplier, lsl.Var
+    ):
+        return coefficient, multiplier
+    return None
+
+
+def _prepare_1d_smooth(
+    term: lsl.Var | lsl.Node,
+    newdata: Mapping[str, ArrayLike] | None,
+    ngrid: int,
+) -> tuple[lsl.Var, str, dict[str, ArrayLike]]:
+    """Resolve the curve and evaluation data shared by summaries and plots."""
+    components = _vc_inputs(term)
+    coefficient, multiplier = components if components is not None else (term, None)
+    if isinstance(coefficient, MultivariateStrctTerm) and multiplier is not None:
+        if len(coefficient.marginal_bases) != 1:
+            raise TypeError("Expected a one-dimensional coefficient covariate.")
+        basis = coefficient.marginal_bases[0]
+    elif isinstance(coefficient, StrctTerm):
+        basis = coefficient.basis
+    else:
+        raise TypeError("'term' must be a StrctTerm or a vc() result.")
+
+    if multiplier is not None and jnp.ndim(basis.x.value) != 1:
+        raise TypeError("Expected a one-dimensional coefficient covariate.")
+    input_name = basis.input_name
+    if newdata is None:
+        if isinstance(coefficient, MultivariateStrctTerm):
+            # Its latent inputs may belong to the contribution's model while
+            # the reconstructed coefficient itself is outside that graph.
+            coefficient = lsl.Model(coefficient, copy=True).vars[coefficient.name]
+        grid = np.linspace(basis.x.value.min(), basis.x.value.max(), ngrid)
+        return coefficient, input_name, _as_array_dict({input_name: grid})
+
+    if multiplier is not None:
+        required = {input_name}
+        pending = [multiplier]
+        visited = set()
+        while pending:
+            var = pending.pop()
+            if id(var) in visited:
+                continue
+            visited.add(id(var))
+            if var.parameter:
+                continue
+            if var.strong or var.name in newdata:
+                required.add(var.name)
+            else:
+                pending.extend(var.all_input_vars(to="value_node"))
+        missing = required - newdata.keys()
+        if missing:
+            raise ValueError(
+                "newdata for a vc() contribution must include both components; "
+                f"missing inputs: {', '.join(sorted(missing))}. "
+                "Omit newdata to show the coefficient curve."
+            )
+    if not isinstance(term, lsl.Var):
+        raise TypeError("'term' must be a variable.")
+    return term, input_name, _as_array_dict(newdata)
+
+
 @overload
 def summarise_1d_smooth(
     term: StrctTerm,
@@ -142,7 +223,12 @@ def summarise_1d_smooth(
     ngrid: int = 150,
 ) -> pd.DataFrame:
     """
-    Creates a summary dataframe for a one-dimensional :class:`.StrctTerm`.
+    Creates a summary dataframe for a one-dimensional smooth or vc() result.
+
+    For varying coefficients, omitted ``newdata`` shows the coefficient curve
+    (multiplier one). Explicit ``newdata`` must supply both components and shows
+    their product. Multivariate results use reconstructed output coordinates
+    and include a zero-based ``dimension`` column.
 
     Parameters
     ----------
@@ -163,24 +249,12 @@ def summarise_1d_smooth(
     ngrid
         Number of covariate values in the grid used for summary, if ``newdata=None``.
     """
-    if not isinstance(term, StrctTerm):
-        raise TypeError(f"'term' must be a StrctTerm, got {type(term).__name__}.")
-
-    if newdata is None:
-        # TODO: Currently, this branch of the function assumes that term.basis.x is
-        # a strong node.
-        # That is not necessarily always the case.
-        xgrid = np.linspace(term.basis.x.value.min(), term.basis.x.value.max(), ngrid)
-        newdata_x: Mapping[str, ArrayLike] = {term.basis.input_name: xgrid}
-    else:
-        newdata_x = newdata
-        xgrid = np.asarray(newdata[term.basis.input_name])
-
-    newdata_x = _as_array_dict(newdata_x)
+    target, input_name, newdata_x = _prepare_1d_smooth(term, newdata, ngrid)
+    xgrid = np.asarray(newdata_x[input_name])
 
     term_samples = _normalise_sample_dims(
-        term.predict(gs.Position(dict(samples)), newdata=gs.Position(newdata_x)),
-        term.value.ndim,
+        target.predict(gs.Position(dict(samples)), newdata=gs.Position(newdata_x)),
+        target.value.ndim,
     )
     term_summary = (
         gs.SamplesSummary.from_array(
@@ -194,7 +268,12 @@ def summarise_1d_smooth(
         .reset_index()
     )
 
-    term_summary[term.basis.input_name] = xgrid
+    if term_samples.ndim == 4:
+        ndim = term_samples.shape[-1]
+        term_summary[input_name] = np.repeat(xgrid, ndim)
+        term_summary["dimension"] = np.tile(np.arange(ndim), len(xgrid))
+    else:
+        term_summary[input_name] = xgrid
     return term_summary
 
 
