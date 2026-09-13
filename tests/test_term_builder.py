@@ -1451,7 +1451,7 @@ class TestTPTerm:
         assert len(scale_parameters) == expected_parameters
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
-    def test_zero_penalty_categorical_marginal(self, method):
+    def test_zero_penalty_categorical_marginal_with_supplied_basis(self, method):
         data = pd.DataFrame(
             {
                 "age": np.tile(np.linspace(0.0, 60.0, 12), 3),
