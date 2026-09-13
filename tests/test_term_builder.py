@@ -1074,6 +1074,10 @@ class TestGetParameter:
         a = lsl.Var.new_value(1.0, name="a")
         with pytest.raises(ValueError):
             _find_parameter(a)
+        assert _find_parameter(a, allow_none=True) is None
+
+        b = lsl.Var.new_calc(jnp.exp, a)
+        assert _find_parameter(b, allow_none=True) is None
 
     def test_multiple_params(self):
         a = lsl.Var.new_param(1.0, name="a")
@@ -1081,6 +1085,8 @@ class TestGetParameter:
         c = lsl.Var.new_calc(lambda a, b: a + b, a, b)
         with pytest.raises(ValueError):
             _find_parameter(c)
+        with pytest.raises(ValueError, match="cannot return a unique parameter"):
+            _find_parameter(c, allow_none=True)
 
     def test_weak(self):
         a = lsl.Var.new_param(1.0, name="a")
@@ -1408,12 +1414,72 @@ class TestTPTerm:
 
         assert psy.scale.value_node[0].inference is None
 
-    def test_no_parameter(self, columb):
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    @pytest.mark.parametrize("fixed_count", (1, 2))
+    @pytest.mark.parametrize("scale_kind", ("float", "variable", "calculated"))
+    def test_fixed_marginal_scales(self, columb, method, fixed_count, scale_kind):
         tb = gb.TermBuilder.from_df(columb)
-        psy = tb.ps("y", k=10, scale=lsl.Var(1.0, name="noparam"))
-        psx = tb.ps("x", k=10)
-        with pytest.raises(ValueError):
-            tb.tx(psy, psx)
+        marginals = []
+        for i, column in enumerate(("x", "y")):
+            scale = "default"
+            if i < fixed_count:
+                scale = 2.0
+                if scale_kind == "variable":
+                    scale = lsl.Var.new_value(2.0, name=f"scale_{column}")
+                elif scale_kind == "calculated":
+                    value = lsl.Var.new_value(4.0, name=f"variance_{column}")
+                    scale = lsl.Var.new_calc(jnp.sqrt, value, name=f"scale_{column}")
+            marginals.append(tb.ps(column, k=5, scale=scale))
+
+        fixed_scales = [term.scale for term in marginals[:fixed_count]]
+        term = getattr(tb, method)(*marginals)
+        model = lsl.Model(term)
+        assert np.isfinite(model.log_prob)
+        for marginal, scale in zip(marginals, fixed_scales):
+            assert isinstance(scale, lsl.Var)
+            assert marginal.scale is scale
+            assert scale.value == pytest.approx(2.0)
+            assert not scale.parameter
+            assert scale.inference is None
+        expected_parameters = 0 if fixed_count == 2 else 1
+        coefficient_names = {marginal.coef.name for marginal in marginals}
+        if method == "tx":
+            coefficient_names.add(term.coef.name)
+        else:
+            coefficient_names.add(term.terms_by_order[2][0].coef.name)
+        scale_parameters = set(model.parameters) - coefficient_names
+        assert len(scale_parameters) == expected_parameters
+
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_zero_penalty_categorical_marginal(self, method):
+        data = pd.DataFrame(
+            {
+                "age": np.tile(np.linspace(0.0, 60.0, 12), 3),
+                "survey": pd.Categorical(np.repeat(["1992", "1996", "2001"], 12)),
+            }
+        )
+        tb = gb.TermBuilder.from_df(data)
+        basis = tb.bases.lin("survey")
+        basis.update_penalty(jnp.zeros((basis.nbases, basis.nbases)))
+        survey = tb.slin(basis, scale=1.0)
+        age = tb.ps("age", k=5, scale=2.0)
+        term = getattr(tb, method)(age, survey)
+        interaction = term if method == "tx" else term.terms_by_order[2][0]
+        model = lsl.Model(term)
+        assert np.isfinite(model.log_prob)
+
+        assert survey.coef.dist_node is not None
+        prior = survey.coef.dist_node.init_dist()
+        np.testing.assert_allclose(
+            prior.log_prob(jnp.zeros(2)), prior.log_prob(jnp.array([100.0, -100.0]))
+        )
+        interaction_prior = interaction.coef.dist_node.init_dist()
+        assert age.basis.penalty is not None
+        expected = jnp.kron(age.basis.penalty.value, jnp.eye(2)) / 2.0**2
+        np.testing.assert_allclose(
+            interaction_prior._op.materialize_precision(), expected, atol=1e-5
+        )
+        assert np.isfinite(interaction_prior.log_prob(jnp.ones(interaction.nbases)))
 
     @pytest.mark.parametrize("method", ("tx", "tf"))
     def test_zero_penalty_categorical_marginal(self, method):

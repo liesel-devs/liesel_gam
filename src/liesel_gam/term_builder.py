@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import jax
 import jax.numpy as jnp
@@ -3178,6 +3178,8 @@ class TermBuilder:
 
         Includes only the tensor product interaction. Corresponds to ``mgcv::ti``.
 
+        Fixed marginal scales remain unchanged and receive no sampler.
+
         .. warning::
             This method removes any default gibbs samplers and replaces them with
             ``scales_inference`` on log level, since the full conditional for the
@@ -3419,6 +3421,8 @@ class TermBuilder:
 
         Corresponds to ``mgcv::te``.
 
+        Fixed marginal scales remain unchanged and receive no sampler.
+
         .. warning::
             This method removes any default gibbs samplers and replaces them with
             ``scales_inference`` on log level, since the full conditional for the
@@ -3629,13 +3633,23 @@ class TermBuilder:
         return term
 
 
-def _find_parameter(var: lsl.Var) -> lsl.Var:
+@overload
+def _find_parameter(var: lsl.Var, *, allow_none: Literal[False] = False) -> lsl.Var: ...
+
+
+@overload
+def _find_parameter(var: lsl.Var, *, allow_none: Literal[True]) -> lsl.Var | None: ...
+
+
+def _find_parameter(var: lsl.Var, *, allow_none: bool = False) -> lsl.Var | None:
     """
     Intended for the following use case: 'var' is a parameter that may be a
     weak transformation of a strong latent parameter, we want to find this
     strong latent parameter.
 
     Returns the strong latent parameter, if it can be determined unambiguously.
+    If allow_none is True, a graph without parameters returns None. Multiple
+    parameters always raise ValueError.
     """
     if var.strong and var.parameter:
         return var
@@ -3643,6 +3657,8 @@ def _find_parameter(var: lsl.Var) -> lsl.Var:
     with TemporaryModel(var, to_float32=False, silent=True) as model:
         params = model.parameters
         if not params:
+            if allow_none:
+                return None
             raise ValueError(f"No parameter found in the graph of {var}.")
         if len(params) > 1:
             raise ValueError(
@@ -3664,8 +3680,11 @@ def _biject_and_replace_star_gibbs_with(
     parameter that may have a default Gibbs kernel. This function removes any such
     Gibbs kernel and then transforms the variance parameter using the default event
     space bijector and sets the inference to the 'inference' supplied to the function.
+    Scales without parameter dependencies are returned unchanged and receive no sampler.
     """
-    param = _find_parameter(var)
+    param = _find_parameter(var, allow_none=True)
+    if param is None:
+        return var
 
     if param.inference is None and not override_none_inference:
         return var
