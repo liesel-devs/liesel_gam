@@ -1429,7 +1429,8 @@ class StrctInteractionTerm(UserVar):
     Parameters
     ----------
     *marginals
-        Marginal terms.
+        Marginal terms. A :class:`.LinTerm` contributes a zero penalty, without
+        modifying its basis or coefficient prior.
     common_scale
         A single, common scale to cover all marginal dimensions, resulting in an
         isotropic tensor product. This means setting
@@ -1597,7 +1598,7 @@ class StrctInteractionTerm(UserVar):
 
     def __init__(
         self,
-        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm | LinTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         name: str = "",
         inference: InferenceTypes = None,
@@ -1609,7 +1610,7 @@ class StrctInteractionTerm(UserVar):
             raise ValueError("StrctInteractionTerm requires at least two marginals.")
 
         for term__ in marginals:
-            if term__.scale is None:
+            if not isinstance(term__, LinTerm) and term__.scale is None:
                 raise ValueError(
                     f"Scale of {term__} is None, which is not allowed "
                     f"in {type(self).__name__}."
@@ -1631,7 +1632,13 @@ class StrctInteractionTerm(UserVar):
         indexed = tuple(isinstance(term, IndexingTerm) for term in marginals)
 
         if common_scale is None:
-            scales = [t.scale for t in marginals if t.scale is not None]
+            scales: list[lsl.Var | lsl.Node] = []
+            for marginal in marginals:
+                if isinstance(marginal, LinTerm):
+                    scales.append(lsl.Var.new_value(1.0))
+                else:
+                    assert marginal.scale is not None
+                    scales.append(marginal.scale)
         else:
             scale_ = _init_scale_ig(common_scale)
 
@@ -1731,16 +1738,19 @@ class StrctInteractionTerm(UserVar):
 
     @staticmethod
     def _get_bases(
-        marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm],
+        marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm | LinTerm],
     ) -> list[Basis]:
         return [term.basis for term in marginals]
 
     @staticmethod
     def _get_penalties(
-        marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm],
+        marginals: Sequence[StrctTerm | RITerm | MRFTerm | IndexingTerm | LinTerm],
     ) -> list[Array]:
         penalties = []
         for term in marginals:
+            if isinstance(term, LinTerm):
+                penalties.append(jnp.zeros((term.nbases, term.nbases)))
+                continue
             if isinstance(term, IndexingTerm):
                 penalty = term._penalty
                 if penalty is None:
@@ -1759,9 +1769,9 @@ class StrctInteractionTerm(UserVar):
         return penalties
 
     @staticmethod
-    def _validate_marginals(marginals: Sequence[StrctTerm]):
+    def _validate_marginals(marginals: Sequence[StrctTerm | LinTerm]):
         for t in marginals:
-            if t.scale is None:
+            if not isinstance(t, LinTerm) and t.scale is None:
                 raise ValueError(f"Invalid scale for {t}: {t.scale}")
 
     @property
@@ -1826,7 +1836,7 @@ class StrctInteractionTerm(UserVar):
     @classmethod
     def f(
         cls,
-        *marginals: StrctTerm,
+        *marginals: StrctTerm | LinTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         fname: str = "ta",
         inference: InferenceTypes = None,
@@ -1839,7 +1849,8 @@ class StrctInteractionTerm(UserVar):
         Parameters
         ----------
         *marginals
-            Marginal terms.
+            Marginal terms. A :class:`.LinTerm` contributes a zero penalty, without
+            modifying its basis or coefficient prior.
         common_scale
             A single, common scale to cover both marginal dimensions, resulting in an
             isotropic tensor product.
@@ -1894,7 +1905,8 @@ class StrctTensorProdTerm(UserVar):
     Parameters
     ----------
     *marginals
-        Marginal terms.
+        Marginal terms. A :class:`.LinTerm` contributes a zero penalty, without
+        modifying its basis or coefficient prior.
     common_scale
         A single, common scale to cover all marginal dimensions, resulting in an
         isotropic tensor product. This means setting
@@ -2077,7 +2089,7 @@ class StrctTensorProdTerm(UserVar):
 
     def __init__(
         self,
-        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm,
+        *marginals: StrctTerm | IndexingTerm | RITerm | MRFTerm | LinTerm,
         common_scale: ScaleIG | lsl.Var | ArrayLike | VarIGPrior | None = None,
         order: Sequence[int] | None = None,
         inference: InferenceTypes = None,
@@ -2089,7 +2101,7 @@ class StrctTensorProdTerm(UserVar):
         _update_on_init: bool = True,
     ):
         for term__ in marginals:
-            if term__.scale is None:
+            if not isinstance(term__, LinTerm) and term__.scale is None:
                 raise ValueError(
                     f"Scale of {term__} is None, which is not allowed "
                     f"in {type(self).__name__}."
@@ -2101,7 +2113,9 @@ class StrctTensorProdTerm(UserVar):
 
         self.order = order if order is not None else tuple(range(1, len(marginals) + 1))
 
-        self.terms_by_order: dict[int, list[StrctTerm | StrctInteractionTerm]] = {}
+        self.terms_by_order: dict[
+            int, list[StrctTerm | StrctInteractionTerm | LinTerm]
+        ] = {}
 
         if 1 in self.order:
             self.terms_by_order[1] = list(marginals)
@@ -2142,7 +2156,8 @@ class StrctTensorProdTerm(UserVar):
         if common_scale is not None:
             assert scale_ is not None
             for term_ in marginals:
-                term_.replace_scale(scale_)
+                if not isinstance(term_, LinTerm):
+                    term_.replace_scale(scale_)
 
         self.marginals = marginals
         self._terms_list = list(marginals) + interactions
@@ -2178,7 +2193,10 @@ class StrctTensorProdTerm(UserVar):
     @property
     def terms(
         self,
-    ) -> dict[str, StrctTerm | StrctInteractionTerm | IndexingTerm | RITerm | MRFTerm]:
+    ) -> dict[
+        str,
+        StrctTerm | StrctInteractionTerm | IndexingTerm | RITerm | MRFTerm | LinTerm,
+    ]:
         """
         Dictionary of terms contained in this tensor product.
 
@@ -2227,6 +2245,8 @@ class StrctTensorProdTerm(UserVar):
         for i in self.order:
             if i == 1:
                 for term in self.terms_by_order[i]:
+                    if isinstance(term, LinTerm):
+                        continue
                     if term.scale not in scales and term.scale is not None:
                         scales.append(term.scale)
             else:

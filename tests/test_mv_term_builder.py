@@ -317,6 +317,15 @@ class TestMVTermBuilder:
         assert tf1.value.shape == (12, 3)
         lsl.Model([tf1, tf2])
 
+    @pytest.mark.parametrize("method", ("tx", "tf"))
+    def test_linear_tensor_marginal(self, method):
+        builder = gam.MVTermBuilder.from_df(_data(), jnp.eye(3))
+        linear = builder.lin("group", dimension_scale=1.0)
+        smooth = builder.ps("x", k=5, scale=1.0, dimension_scale=1.0)
+        term = getattr(builder, method)(linear, smooth, dimension_scale=1.0)
+        assert term.value.shape == (12, 3)
+        assert jnp.isfinite(lsl.Model(term).log_prob)
+
     def test_tf_groups_terms_by_order(self) -> None:
         data = _data()
         scalar_builder = gam.TermBuilder.from_df(data)
