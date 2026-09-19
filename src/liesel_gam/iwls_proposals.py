@@ -15,7 +15,7 @@ from typing import Any, Self, cast
 import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
-from jax import Array, grad
+from jax import Array, grad, jvp
 from jax.flatten_util import ravel_pytree
 from jax.typing import ArrayLike
 from liesel.goose.types import ModelState, Position
@@ -223,6 +223,67 @@ class IWLSWeights:
             if max_weight is None:
                 return jnp.clip(weights, min=min_weight)
 
+            return jnp.clip(weights, min=min_weight, max=max_weight)
+
+        return working_weights
+
+    @staticmethod
+    def observed_information(
+        eta_name: str,
+        *,
+        min_weight: float = 1e-6,
+        max_weight: float | None = None,
+    ) -> WorkingWeightsFn:
+        """
+        Return clipped curvature weights from the observed log likelihood.
+
+        One Hessian-vector product with an all-ones vector computes negative
+        Hessian row sums without constructing the Hessian. When the log likelihood
+        is separable in the named predictor entries, holding other predictors
+        fixed, these equal the diagonal observed information. With coupled entries,
+        they are heuristic proposal weights instead. Separability is not checked.
+
+        The IWLS kernel's Metropolis-Hastings correction accounts for these
+        state-dependent weights, provided they yield a finite, positive-definite
+        proposal precision. Poor weights can reduce sampling efficiency. Negative
+        or zero weights are clipped to ``min_weight``; clipping does not repair NaNs.
+
+        Parameters
+        ----------
+        eta_name
+            Name of the model variable containing the linear predictor. Weak
+            variables, such as :attr:`.AdditivePredictor.linear_predictor`, are
+            supported.
+        min_weight
+            Lower clipping bound applied to the observed information.
+        max_weight
+            Optional upper clipping bound applied to the observed information.
+
+        Returns
+        -------
+        callable
+            Function that computes scalar or observation-wise weights from a model
+            and model state.
+        """
+
+        def working_weights(
+            model: lsl.Model | gs.LieselInterface,
+            model_state: ModelState,
+        ) -> Array:
+            pos = model.extract_position([eta_name], model_state)
+            flat_eta, unravel_fn = ravel_pytree(pos[eta_name])
+
+            def flat_log_lik_fn(flat_eta: Array) -> Array:
+                eta_position = Position({eta_name: unravel_fn(flat_eta)})
+                updated_state = _update_state_allowing_weak_vars(
+                    model, eta_position, model_state
+                )
+                return jnp.asarray(updated_state["_model_log_lik"].value)
+
+            _, curvature = jvp(
+                grad(flat_log_lik_fn), (flat_eta,), (jnp.ones_like(flat_eta),)
+            )
+            weights = unravel_fn(-curvature)
             return jnp.clip(weights, min=min_weight, max=max_weight)
 
         return working_weights
