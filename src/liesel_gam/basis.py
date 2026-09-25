@@ -214,6 +214,7 @@ class Basis(UserVar):
         self._validate_xname(value, xname)
         value_var = _ensure_var_or_node(value, xname)
         self._input_name = value_var.name
+        self._use_callback = use_callback
 
         if use_callback:
             value_ar = jnp.asarray(value_var.value)

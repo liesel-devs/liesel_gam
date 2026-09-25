@@ -8,6 +8,7 @@ import logging
 import warnings
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from functools import cache
 from typing import Any, Literal, assert_never
 
 import jax.numpy as jnp
@@ -16,6 +17,7 @@ import numpy as np
 import pandas as pd
 from liesel.goose.types import Position
 
+from .basis import Basis
 from .category_mapping import CategoryMapping, series_is_categorical
 from .var import CatVar
 
@@ -477,6 +479,100 @@ class DictRegistry:
             base_var,
             name=f"{prefix}matrix",
             cache=cache,
+        )
+
+    def precomputed_position(
+        self, model: lsl.Model, data: Mapping[str, Any] | pd.DataFrame
+    ) -> Position:
+        """Encode data with callback bases evaluated once for all rows.
+
+        Use this position for minibatch fitting to avoid repeating expensive basis
+        callbacks. It uses the model's fitted basis transformations and preserves
+        the original model. The full precomputed matrices must fit in memory.
+
+        Parameters
+        ----------
+        model
+            Model whose observed variables and bases define the position entries.
+        data
+            Mapping or DataFrame containing the source values to encode, as for
+            :meth:`observed_position`.
+
+        Returns
+        -------
+        Position
+            Encoded observations, with eligible covariates replaced by basis matrices.
+
+        Notes
+        -----
+        For nested callback bases, only the final matrices are returned.
+        Only cached callback bases are precomputed. Native JAX bases, approximated
+        bases, and transient bases retain their raw covariates. Covariates needed
+        outside the selected bases stay raw, together with the callbacks that need
+        them. Thus a linear term on ``x1`` can be precomputed alongside an
+        approximated spline on ``x2``; sharing ``x1`` between both terms keeps it raw.
+
+        As with covariate batching, selecting rows must preserve each observation's
+        likelihood contribution. Use :meth:`observed_position` for raw inputs when
+        predicting from new covariates.
+        """
+        position = self.observed_position(model, data)
+        bases = [
+            var
+            for var in model.vars.values()
+            if isinstance(var, Basis)
+            and var._use_callback
+            and var.approximation is None
+            and not isinstance(var.value_node, lsl.TransientNode)
+        ]
+        parents = {
+            basis: model.node_parental_subgraph(basis.value_node) for basis in bases
+        }
+        bases = [
+            basis
+            for basis in bases
+            if all(
+                basis is other or basis.value_node not in parents[other]
+                for other in bases
+            )
+        ]
+        data_inputs = {
+            basis: {
+                name
+                for name in position
+                if model.vars[name].value_node in parents[basis]
+            }
+            for basis in bases
+        }
+        # Dropping one basis may leave a covariate needed by another callback.
+        while bases:
+            basis_nodes = {basis.value_node for basis in bases}
+
+            @cache
+            def covered(node: lsl.Node) -> bool:
+                if node in basis_nodes:
+                    return True
+                children = tuple(model.node_graph.successors(node))
+                return bool(children) and all(covered(child) for child in children)
+
+            removable = {
+                name for name in position if covered(model.vars[name].value_node)
+            }
+            eligible = [basis for basis in bases if data_inputs[basis] <= removable]
+            if len(eligible) == len(bases):
+                break
+            bases = eligible
+        if not bases:
+            return position
+        basis_model = model.parental_submodel(*bases)
+        inputs = {
+            name: value for name, value in position.items() if name in basis_model.vars
+        }
+        state = basis_model.update_state(inputs)
+        evaluated = basis_model.extract_position([basis.name for basis in bases], state)
+        return Position(
+            {name: value for name, value in position.items() if name not in inputs}
+            | evaluated
         )
 
     def observed_position(
