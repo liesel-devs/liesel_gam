@@ -490,6 +490,9 @@ class DictRegistry:
         callbacks. It uses the model's fitted basis transformations and preserves
         the original model. The full precomputed matrices must fit in memory.
 
+        See :ref:`precomputed-batches` for a precompute, split, and minibatch-fit
+        example.
+
         Parameters
         ----------
         model
