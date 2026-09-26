@@ -1055,6 +1055,8 @@ class LinBasis(Basis):
         two-column basis named ``V``. Column names can also be replaced later through
         :attr:`.column_names`.
 
+    Notes
+    -----
     See :class:`.Basis` for general usage information. This class additionally offers
 
     - :attr:`.model_spec`: The model spec used internally by ``formulaic`` to set up

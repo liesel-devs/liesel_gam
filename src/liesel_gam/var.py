@@ -138,6 +138,8 @@ class CatVar(UserVar):
     dist
         Optional Liesel distribution for the encoded integer values.
 
+    Notes
+    -----
     The ordinary constructor rejects integer labels because later integer inputs would
     be ambiguous with encoded category codes. Convert semantic integer labels to a
     non-integer representation first. Use :meth:`from_codes` only when the supplied

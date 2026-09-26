@@ -7,4 +7,5 @@ Composite Smooths
    :maxdepth: 1
    :glob:
 
+   Overview <self>
    notebooks/composite/*
