@@ -651,10 +651,12 @@ class DictRegistry:
 
 
 class PandasRegistry(DictRegistry):
-    """A :class:`DictRegistry` with DataFrame missing-data handling and metadata.
+    """A :class:`~liesel_gam.DictRegistry` with DataFrame missing-data handling
+    and metadata.
 
     Missing-data handling is applied before custom value conversion. Unlike
-    :class:`DictRegistry`, this class retains ``columns`` and ``shape`` attributes.
+    :class:`~liesel_gam.DictRegistry`, this class retains ``columns`` and ``shape``
+    attributes.
 
     Parameters
     ----------
@@ -665,8 +667,8 @@ class PandasRegistry(DictRegistry):
     prefix_names_by
         Prefix for generated Liesel variable names.
     convert
-        Default Liesel value converter; see :class:`DictRegistry` for converter
-        semantics and the compiled-update warning.
+        Default Liesel value converter; see :class:`~liesel_gam.DictRegistry`
+        for converter semantics and the compiled-update warning.
     """
 
     data: pd.DataFrame

@@ -139,5 +139,9 @@ remove_from_toctrees = []
 myst_heading_anchors = 3  # auto-generate 3 levels of heading anchors
 myst_enable_extensions = ["amsmath", "dollarmath", "html_image"]
 myst_dmath_double_inline = True
-# Don’t execute notebooks during docs builds:
-nb_execution_mode = "off"
+# Maintained MyST guides execute on every build; legacy JSON examples are archived.
+nb_execution_mode = "force"
+nb_execution_timeout = 600
+nb_execution_allow_errors = False
+nb_execution_raise_on_error = True
+nb_execution_excludepatterns = ["**/*.ipynb"]

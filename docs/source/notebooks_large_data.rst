@@ -7,6 +7,7 @@ Large-data workflows
    :maxdepth: 1
    :glob:
 
+   Overview <self>
    notebooks/large_data/*
 
 .. _precomputed-batches:

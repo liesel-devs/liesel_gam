@@ -3236,8 +3236,8 @@ class TermBuilder:
 
         .. note::
             The methods :meth:`.tf` and :meth:`.tx`
-            are closely related. The former loosely corresponds to ``mgcv::ti``, and the
-            latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
+            are closely related. The former loosely corresponds to ``mgcv::te``, and the
+            latter loosely corresponds to ``mgcv::ti``, meaning that, when you supply
             centered marginals, :class:`.tx` will *only* include the
             highest-order interaction of the supplied marginals, while
             :class:`.tf` will include the highest-order interaction *and*
@@ -3506,8 +3506,8 @@ class TermBuilder:
 
         .. note::
             The methods :meth:`.tf` and :meth:`.tx`
-            are closely related. The former loosely corresponds to ``mgcv::ti``, and the
-            latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
+            are closely related. The former loosely corresponds to ``mgcv::te``, and the
+            latter loosely corresponds to ``mgcv::ti``, meaning that, when you supply
             centered marginals, :class:`.tx` will *only* include the
             highest-order interaction of the supplied marginals, while
             :class:`.tf` will include the highest-order interaction *and*
