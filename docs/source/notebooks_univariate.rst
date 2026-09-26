@@ -7,4 +7,5 @@ Univariate Smooths
    :maxdepth: 1
    :glob:
 
+   Overview <self>
    notebooks/univariate/*

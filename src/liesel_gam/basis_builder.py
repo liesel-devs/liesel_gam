@@ -4,7 +4,7 @@ import ast
 import logging
 import re
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 import formulaic as fo
 import jax
@@ -71,29 +71,32 @@ def _validate_penalty_order(penalty_order: int):
 
 class BasisBuilder:
     """
-    Initializes :class:`.Basis` objects from data in a :class:`.DictRegistry`.
+    Initializes :class:`Basis <liesel_gam.Basis>` objects from data in a
+    :class:`DictRegistry <liesel_gam.DictRegistry>`.
 
     Parameters
     ----------
     registry
-        A :class:`.DictRegistry` or :class:`.PandasRegistry` giving access to named
+        A :class:`DictRegistry <liesel_gam.DictRegistry>` or :class:`PandasRegistry
+        <liesel_gam.PandasRegistry>` giving access to named
         source values.
     names
         A name manager for creating unique names.
     approximation
         Default approximation policy for eligible univariate continuous bases.
         ``False`` keeps exact evaluation, ``True`` uses
-        :class:`.ApproximationSpec` defaults, and an ``ApproximationSpec`` supplies
+        :class:`ApproximationSpec <liesel_gam.ApproximationSpec>` defaults, and an
+        :class:`ApproximationSpec <liesel_gam.ApproximationSpec>` supplies
         shared tolerances and the grid-size guard. Builder-level specifications
         cannot define bounds because bounds belong to individual covariates.
 
     See Also
     --------
 
-    .TermBuilder : Initializes structured additive terms.
-    .Basis : Basic basis class.
-    .LinBasis : Specialized basis for linear effects.
-    .MRFBasis : Specialized basis for Gaussian Markov random fields.
+    liesel_gam.TermBuilder : Initializes structured additive terms.
+    liesel_gam.Basis : Basic basis class.
+    liesel_gam.LinBasis : Specialized basis for linear effects.
+    liesel_gam.MRFBasis : Specialized basis for Gaussian Markov random fields.
 
     Notes
     -----
@@ -110,6 +113,19 @@ class BasisBuilder:
     >>> bb.ps("x_nonlin", k=20)
     Basis(name="B(x_nonlin)")
     """
+
+    if TYPE_CHECKING:
+        registry: DictRegistry
+        """Registry supplying observed inputs."""
+
+        names: NameManager
+        """Manager that creates unique basis names."""
+
+        mappings: dict[str, CategoryMapping]
+        """Category mappings associated with constructed bases."""
+
+        approximation: bool | ApproximationSpec
+        """Default approximation policy for eligible univariate bases."""
 
     def __init__(
         self,
@@ -164,26 +180,29 @@ class BasisBuilder:
             If *True*, the basis function is evaluated using a Python callback,
             which means that it does not have to be jit-compatible via JAX. This also
             means that the basis must remain constant throughout estimation.
-            Passed on to :class:`.Basis`.
+            Passed on to :class:`Basis <liesel_gam.Basis>`.
         cache_basis
             If ``True`` the computed basis is cached in a persistent
-            calculation node (``lsl.Calc``), which avoids re-computation
-            when not required. Passed on to :class:`.Basis`.
+            calculation node (:class:`lsl.Calc <liesel.model.Calc>`), which avoids
+            re-computation
+            when not required. Passed on to :class:`Basis <liesel_gam.Basis>`.
         penalty
             Penalty matrix associated with the basis.
-            Passed on to :class:`.Basis`.
+            Passed on to :class:`Basis <liesel_gam.Basis>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will
             be ``"B(x)"``. Names are made unique by appending a counter if necessary.
         approximation
             ``None`` inherits the builder policy, ``False`` keeps exact evaluation,
             ``True`` uses default approximation settings, and an
-            :class:`.ApproximationSpec` supplies custom settings. Approximation
+            :class:`ApproximationSpec <liesel_gam.ApproximationSpec>` supplies custom
+            settings. Approximation
             requires exactly one scalar covariate.
         row_wise
             Whether each output row depends only on the corresponding input row.
-            Passed on to :class:`.Basis`.
+            Passed on to :class:`Basis <liesel_gam.Basis>`.
 
         Examples
         --------
@@ -384,7 +403,8 @@ class BasisBuilder:
         """Get a calculation node that column-stacks named or supplied variables.
 
         All inputs must be either names of numeric registry variables or named
-        ``lsl.Var`` objects. Registry-backed matrices are cached by the registry;
+        :class:`lsl.Var <liesel.model.Var>` objects. Registry-backed matrices are cached
+        by the registry;
         matrices from supplied variables are created directly.
         """
         all_str = all(isinstance(x_, str) for x_ in x)
@@ -460,25 +480,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX.
 
@@ -564,30 +586,33 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         See Also
         --------
 
-        .cs : Cubic regression splines with additinal shrinkage on the null space.
+        liesel_gam.BasisBuilder.cs : Cubic regression splines with additinal shrinkage
+          on the null space.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -656,25 +681,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -745,25 +772,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         Cyclicity is enforced by matching the function and its derivatives at the domain
         boundaries. The basis and penalty are constructed natively in JAX.
@@ -836,25 +865,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX.
 
@@ -941,25 +972,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -1135,18 +1168,20 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
         remove_null_space_completely
             If ``True``, the unpenalized part of the smooth, corresponding to the null
@@ -1156,7 +1191,7 @@ class BasisBuilder:
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -1246,25 +1281,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -1350,25 +1387,27 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         Notes
         -----
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -1679,7 +1718,8 @@ class BasisBuilder:
         Parameters
         ----------
         cluster
-            Registry name of the cluster variable or a named :class:`.CatVar`.
+            Registry name of the cluster variable or a named :class:`CatVar
+            <liesel_gam.CatVar>`.
         basis_name
             Name of the basis variable.
         penalty
@@ -1689,7 +1729,8 @@ class BasisBuilder:
 
         Notes
         ------
-        See the integer-code warning on :class:`.CatVar` when supplying a direct
+        See the integer-code warning on :class:`CatVar <liesel_gam.CatVar>` when
+        supplying a direct
         variable.
 
         If the penalty is iid, then each column of the basis consists only of binary
@@ -1752,12 +1793,13 @@ class BasisBuilder:
         Gaussian Markov random field basis and penalty.
 
         The preferred way to initialize these is by supplying ``polys``, because this
-        enables plotting via :func:`.plot_regions`.
+        enables plotting via :func:`plot_regions <liesel_gam.plot_regions>`.
 
         Parameters
         ----------
         x
-            Registry name of the region variable or a named :class:`.CatVar`.
+            Registry name of the region variable or a named :class:`CatVar
+            <liesel_gam.CatVar>`.
         k
             If ``-1``, this is a "full-rank" (up to identifiability constraint) Markov
             random field. If ``k`` is an integer smaller than the number of unique
@@ -1787,30 +1829,33 @@ class BasisBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         basis_name
             Function-name for the basis matrix. If ``"B"``, and the basis is a function
-            of the variable ``"x"``, the full name of the :class:`.Basis` object will be
+            of the variable ``"x"``, the full name of the :class:`Basis
+            <liesel_gam.Basis>` object will be
             ``"B(x)"``. Names are made unique by appending a counter if necessary.
 
         See Also
         --------
-        .plot_regions : Plots MCMC results on a map of the regions.
-        .plot_polys : Plots a map based on polygons.
-        .plot_forest : Plots regions with uncertainty in a forest plot.
+        liesel_gam.plot_regions : Plots MCMC results on a map of the regions.
+        liesel_gam.plot_polys : Plots a map based on polygons.
+        liesel_gam.plot_forest : Plots regions with uncertainty in a forest plot.
 
         Notes
         -----
 
-        See the integer-code warning on :class:`.CatVar` when supplying a direct
+        See the integer-code warning on :class:`CatVar <liesel_gam.CatVar>` when
+        supplying a direct
         variable.
 
         .. warning::
@@ -1820,7 +1865,7 @@ class BasisBuilder:
             established MRF input convention.
 
         This native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX. The mgcv
         documentation describes the corresponding mathematical smooth family.
@@ -1828,8 +1873,9 @@ class BasisBuilder:
         Returns
         -------
 
-            Comments on the :class:`.MRFSpec` attached to the returned
-            :class:`.MRFBasis` variable:
+            Comments on the :class:`MRFSpec <liesel_gam.MRFSpec>` attached to the
+            returned
+            :class:`MRFBasis <liesel_gam.MRFBasis>` variable:
 
             - If either polys or nb are supplied, the returned MRFSpec will contain
               nb.

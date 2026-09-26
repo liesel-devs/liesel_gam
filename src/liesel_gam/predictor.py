@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import liesel.goose as gs
 import liesel.model as lsl
@@ -20,10 +20,11 @@ class AdditivePredictor(UserVar):
     This is a special variable that allows you to add other Liesel varibales using the
     ``+=`` syntax (see examples).
 
-    The untransformed additive sum is available as :attr:`linear_predictor`. The
+    The untransformed additive sum is available as :attr:`linear_predictor
+    <liesel_gam.AdditivePredictor.linear_predictor>`. The
     predictor's own value is the result of applying ``inv_link`` to this linear
     predictor. The linear predictor is a variable, not a term, and is not included in
-    :attr:`terms`.
+    :attr:`terms <liesel_gam.AdditivePredictor.terms>`.
 
     Parameters
     ----------
@@ -32,7 +33,7 @@ class AdditivePredictor(UserVar):
     inv_link
         Inverse link function. If supplied, variables are added on the *link* level,
         and the predictor variable's value will be the inverse link function applied
-        to :attr:`linear_predictor`.
+        to :attr:`linear_predictor <liesel_gam.AdditivePredictor.linear_predictor>`.
     intercept
         Whether this predictor should be initialized with an intercept. You can supply
         booleans, or a :class:`liesel.model.Var`. In the latter case, this var is
@@ -127,6 +128,10 @@ class AdditivePredictor(UserVar):
     >>> loc.terms
     {'s(x1)': Var(name="s(x1)"), 's(x2)': Var(name="s(x2)")}
     """
+
+    if TYPE_CHECKING:
+        terms: dict[str, term_types]
+        """Component terms indexed by their names."""
 
     def __init__(
         self,

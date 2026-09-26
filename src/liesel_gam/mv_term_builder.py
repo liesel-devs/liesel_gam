@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import jax
 import jax.numpy as jnp
@@ -49,12 +49,15 @@ class MVTermBuilder:
     """Convenience builder for multivariate structured additive terms.
 
     The builder delegates covariate-basis construction to an ordinary
-    :class:`.TermBuilder` and adds one shared cross-dimensional penalty and one
+    :class:`TermBuilder <liesel_gam.TermBuilder>` and adds one shared cross-dimensional
+    penalty and one
     term-specific cross-dimensional scale. Its term methods mirror
-    :class:`.TermBuilder`; the ordinary ``scale`` controls smoothness within a
+    :class:`TermBuilder <liesel_gam.TermBuilder>`; the ordinary ``scale`` controls
+    smoothness within a
     dimension, while ``dimension_scale`` controls smoothness across dimensions.
 
-    Usually, :meth:`from_predictor` is the most convenient constructor because it
+    Usually, :meth:`from_predictor <liesel_gam.MVTermBuilder.from_predictor>` is the
+    most convenient constructor because it
     shares the predictor's penalty and any previously applied constraint.
 
     Parameters
@@ -71,7 +74,7 @@ class MVTermBuilder:
         Default initializer for covariate-side scales.
     default_dimension_scale_fn
         Function that initializes a term-specific cross-dimensional scale, analogous
-        to :class:`.TermBuilder`'s ``default_scale_fn``.
+        to :class:`TermBuilder <liesel_gam.TermBuilder>`'s ``default_scale_fn``.
     default_scales_inference
         Default inference specification for covariate-side and cross-dimensional
         scale parameters.
@@ -92,6 +95,28 @@ class MVTermBuilder:
     >>> term.latent.value.shape, term.value.shape
     ((20, 3), (20, 4))
     """
+
+    if TYPE_CHECKING:
+        marginal_builder: TermBuilder
+        """Univariate builder supplying the covariate-side terms."""
+
+        registry: Any
+        """Registry shared with the marginal builder."""
+
+        names: Any
+        """Name manager shared with the marginal builder."""
+
+        bases: Any
+        """Basis builder shared with the marginal builder."""
+
+        default_inference: InferenceTypes
+        """Default inference specification for coefficients."""
+
+        default_scales_inference: InferenceTypes
+        """Default inference specification for cross-dimensional scales."""
+
+        predictor: MVAdditivePredictor | None
+        """Linked multivariate predictor, when supplied."""
 
     def __init__(
         self,
@@ -257,7 +282,8 @@ class MVTermBuilder:
         Parameters
         ----------
         data
-            DataFrame used by the underlying :class:`.TermBuilder`.
+            DataFrame used by the underlying :class:`TermBuilder
+            <liesel_gam.TermBuilder>`.
         dimension_penalty
             Square cross-dimensional penalty.
         prefix_names_by
@@ -300,11 +326,14 @@ class MVTermBuilder:
         dimension_penalty: ArrayLike | lsl.Value,
         **kwargs: Any,
     ) -> Self:
-        """Initialize with a :class:`.DictRegistry` around ``data``.
+        """Initialize with a :class:`DictRegistry <liesel_gam.DictRegistry>` around
+        ``data``.
 
-        Construct :class:`.DictRegistry` or :class:`.PandasRegistry` directly for
+        Construct :class:`DictRegistry <liesel_gam.DictRegistry>` or
+        :class:`PandasRegistry <liesel_gam.PandasRegistry>` directly for
         custom conversion or pandas missing-data handling. Nested mappings are not
-        aligned; use :meth:`from_df` for a DataFrame or
+        aligned; use :meth:`from_df <liesel_gam.MVTermBuilder.from_df>` for a DataFrame
+        or
         ``dataframe.to_dict("list")`` when converting one manually.
 
         Parameters
@@ -314,7 +343,8 @@ class MVTermBuilder:
         dimension_penalty
             Square cross-dimensional penalty.
         **kwargs
-            Additional arguments forwarded to :class:`MVTermBuilder`.
+            Additional arguments forwarded to :class:`MVTermBuilder
+            <liesel_gam.MVTermBuilder>`.
 
         Examples
         --------
@@ -382,7 +412,8 @@ class MVTermBuilder:
     def labels_to_integers(self, newdata: dict[str, Any]) -> dict[str, Any]:
         """Encode categorical labels for prediction paths that require codes.
 
-        Models containing :class:`.CatVar` accept labels directly in ``newdata``;
+        Models containing :class:`CatVar <liesel_gam.CatVar>` accept labels directly in
+        ``newdata``;
         this compatibility helper is not normally needed for those models.
 
         Parameters
@@ -586,17 +617,20 @@ class MVTermBuilder:
         **kwargs: Any,
     ) -> MultivariateStrctLinTerm:
         """
-        Initialize a multivariate linear term from a formula or :class:`.LinBasis`.
+        Initialize a multivariate linear term from a formula or :class:`LinBasis
+        <liesel_gam.LinBasis>`.
 
-        When a ``LinBasis`` is supplied, this method attaches the required zero
+        When a :class:`LinBasis <liesel_gam.LinBasis>` is supplied, this method attaches
+        the required zero
         marginal penalty to that same object. The basis may therefore no longer be
-        accepted by :meth:`.TermBuilder.lin` afterwards.
+        accepted by :meth:`TermBuilder.lin <liesel_gam.TermBuilder.lin>` afterwards.
 
         Parameters
         ----------
         *args
-            Formula or :class:`.LinBasis` and any positional arguments forwarded to
-            :meth:`.TermBuilder.lin`.
+            Formula or :class:`LinBasis <liesel_gam.LinBasis>` and any positional
+            arguments forwarded to
+            :meth:`TermBuilder.lin <liesel_gam.TermBuilder.lin>`.
         prior
             Scalar-term prior. Custom priors are not supported for multivariate
             linear terms.
@@ -607,7 +641,8 @@ class MVTermBuilder:
         scales_inference
             Inference specification for scale parameters.
         **kwargs
-            Additional arguments forwarded to :meth:`.TermBuilder.lin`.
+            Additional arguments forwarded to :meth:`TermBuilder.lin
+            <liesel_gam.TermBuilder.lin>`.
 
         Examples
         --------
@@ -660,14 +695,17 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.slin`.
+            Positional arguments forwarded to :meth:`TermBuilder.slin
+            <liesel_gam.TermBuilder.slin>`.
         penalty
-            Covariate-side penalty forwarded to :meth:`.TermBuilder.slin`.
+            Covariate-side penalty forwarded to :meth:`TermBuilder.slin
+            <liesel_gam.TermBuilder.slin>`.
             None uses the identity penalty for formulas or preserves a supplied
             LinBasis penalty. An explicit penalty is only accepted with formulas.
             This does not replace the builder's cross-dimensional penalty.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.slin` and multivariate
+            Keyword arguments for :meth:`TermBuilder.slin <liesel_gam.TermBuilder.slin>`
+            and multivariate
             wrapping, including ``dimension_scale`` and ``scales_inference``.
 
         Examples
@@ -700,9 +738,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.cr`.
+            Positional arguments forwarded to :meth:`TermBuilder.cr
+            <liesel_gam.TermBuilder.cr>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.cr` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.cr <liesel_gam.TermBuilder.cr>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -720,9 +760,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.cs`.
+            Positional arguments forwarded to :meth:`TermBuilder.cs
+            <liesel_gam.TermBuilder.cs>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.cs` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.cs <liesel_gam.TermBuilder.cs>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -740,9 +782,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.cc`.
+            Positional arguments forwarded to :meth:`TermBuilder.cc
+            <liesel_gam.TermBuilder.cc>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.cc` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.cc <liesel_gam.TermBuilder.cc>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -760,9 +804,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.bs`.
+            Positional arguments forwarded to :meth:`TermBuilder.bs
+            <liesel_gam.TermBuilder.bs>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.bs` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.bs <liesel_gam.TermBuilder.bs>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -780,9 +826,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.ps`.
+            Positional arguments forwarded to :meth:`TermBuilder.ps
+            <liesel_gam.TermBuilder.ps>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.ps` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.ps <liesel_gam.TermBuilder.ps>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -800,9 +848,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.np`.
+            Positional arguments forwarded to :meth:`TermBuilder.np
+            <liesel_gam.TermBuilder.np>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.np` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.np <liesel_gam.TermBuilder.np>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -820,9 +870,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.cp`.
+            Positional arguments forwarded to :meth:`TermBuilder.cp
+            <liesel_gam.TermBuilder.cp>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.cp` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.cp <liesel_gam.TermBuilder.cp>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -840,9 +892,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.ri`.
+            Positional arguments forwarded to :meth:`TermBuilder.ri
+            <liesel_gam.TermBuilder.ri>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.ri` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.ri <liesel_gam.TermBuilder.ri>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -859,9 +913,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.mrf`.
+            Positional arguments forwarded to :meth:`TermBuilder.mrf
+            <liesel_gam.TermBuilder.mrf>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.mrf` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.mrf <liesel_gam.TermBuilder.mrf>`
+            and multivariate wrapping.
 
         Examples
         --------
@@ -886,9 +942,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.f`.
+            Positional arguments forwarded to :meth:`TermBuilder.f
+            <liesel_gam.TermBuilder.f>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.f` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.f <liesel_gam.TermBuilder.f>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -915,9 +973,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.kriging`.
+            Positional arguments forwarded to :meth:`TermBuilder.kriging
+            <liesel_gam.TermBuilder.kriging>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.kriging` and multivariate
+            Keyword arguments for :meth:`TermBuilder.kriging
+            <liesel_gam.TermBuilder.kriging>` and multivariate
             wrapping.
 
         Examples
@@ -941,9 +1001,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.tp`.
+            Positional arguments forwarded to :meth:`TermBuilder.tp
+            <liesel_gam.TermBuilder.tp>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.tp` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.tp <liesel_gam.TermBuilder.tp>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -966,9 +1028,11 @@ class MVTermBuilder:
         Parameters
         ----------
         *args
-            Positional arguments forwarded to :meth:`.TermBuilder.ts`.
+            Positional arguments forwarded to :meth:`TermBuilder.ts
+            <liesel_gam.TermBuilder.ts>`.
         **kwargs
-            Keyword arguments for :meth:`.TermBuilder.ts` and multivariate wrapping.
+            Keyword arguments for :meth:`TermBuilder.ts <liesel_gam.TermBuilder.ts>` and
+            multivariate wrapping.
 
         Examples
         --------
@@ -1301,7 +1365,8 @@ class MVTermBuilder:
         x
             Named numeric source value or variable multiplied by the cluster effect.
         cluster
-            Registry name or named :class:`.CatVar` identifying clusters.
+            Registry name or named :class:`CatVar <liesel_gam.CatVar>` identifying
+            clusters.
         dimension_scale
             Cross-dimensional scale specification.
         scales_inference
@@ -1311,7 +1376,7 @@ class MVTermBuilder:
         name
             Optional explicit effect name.
         **kwargs
-            Additional arguments forwarded to :meth:`ri`.
+            Additional arguments forwarded to :meth:`ri <liesel_gam.MVTermBuilder.ri>`.
 
         Examples
         --------
