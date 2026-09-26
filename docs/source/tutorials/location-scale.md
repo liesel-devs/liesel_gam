@@ -69,7 +69,7 @@ with a constant prior and its own centered smooth with the default inverse-gamma
 prior on smoothing variance.
 
 The exponential inverse link makes `sigma` positive. Its terms add on the
-**log-standard-deviation** scale, while `sigma.value` is on the response scale.
+**log-standard-deviation** scale, while {attr}`sigma.value <liesel.model.Var.value>` is on the response scale.
 `mu` uses the identity link.
 
 ```{code-cell} ipython3

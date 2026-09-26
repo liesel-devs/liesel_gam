@@ -26,14 +26,14 @@ parameters, such as the normal response standard deviation.
 
 The default smoothing prior is not independent of the units, basis, or penalty
 scaling. Current constructors use design-aware penalty scaling where supported;
-see {meth}`liesel_gam.Basis.scale_penalty` for its definition. Choose hyperpriors
+see {meth}`liesel_gam.Basis.scale_penalty <liesel_gam.Basis.scale_penalty>` for its definition. Choose hyperpriors
 in the context of plausible effect sizes and check sensitivity. An improper
 coefficient prior also requires the likelihood and identification constraints
 to yield a proper posterior.
 
 ## Change a smoothing prior
 
-Use {class}`~liesel_gam.VarIGPrior` to keep a conjugate inverse-gamma variance
+Use {class}`VarIGPrior <liesel_gam.VarIGPrior>` to keep a conjugate inverse-gamma variance
 prior. This is a complete term setup:
 
 The examples use `gam` and a builder `tb` for `gam.demo_data(n=200, seed=1)`.
@@ -100,7 +100,7 @@ For a builder-wide custom prior, `default_scale_fn` must construct a fresh
 variable for each term unless sharing a scale is intentional.
 
 If optimization must update the smoothing variance itself,
-{func}`~liesel_gam.scale_ig` supplies an
+{func}`scale_ig <liesel_gam.scale_ig>` supplies an
 inverse-gamma variance prior with a writable log variance. Give that transformed
 parameter its own sampling specification. The development tutorial
 {doc}`../tutorials/laplace` shows Laplace fitting and initialization with this
@@ -108,7 +108,7 @@ setup; it requires Liesel's unmerged `laplace-loss` branch.
 
 ## Choose coefficient updates
 
-`TermBuilder` and the default predictor intercept use
+{class}`TermBuilder <liesel_gam.TermBuilder>` and the default predictor intercept use
 `gs.MCMCSpec(gs.IWLSKernel.untuned)`. A usual structured term with the default
 variance prior gets a conjugate Gibbs update for its variance. A term's
 `inference` argument changes only the coefficient update, not its scale update:

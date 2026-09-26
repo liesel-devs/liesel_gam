@@ -21,8 +21,11 @@ ArrayLike = jax.typing.ArrayLike
 
 class VarIGPrior(NamedTuple):
     concentration: float
+    """Concentration of the inverse-gamma variance prior."""
     scale: float
+    """Scale of the inverse-gamma variance prior."""
     value: float = 1.0
+    """Initial variance value."""
 
 
 def _append_name(name: str, append: str) -> str:
@@ -125,7 +128,8 @@ class CatVar(UserVar):
         Pandas Series, pandas categoricals, and NumPy arrays are supported. All
         entries share one category mapping.
     name
-        Optional variable name. Builders require a directly supplied ``CatVar`` to
+        Optional variable name. Builders require a directly supplied :class:`CatVar
+        <liesel_gam.CatVar>` to
         be named and one-dimensional.
     categories
         Optional ordered non-integer categories. They may include unobserved
@@ -142,7 +146,8 @@ class CatVar(UserVar):
     -----
     The ordinary constructor rejects integer labels because later integer inputs would
     be ambiguous with encoded category codes. Convert semantic integer labels to a
-    non-integer representation first. Use :meth:`from_codes` only when the supplied
+    non-integer representation first. Use :meth:`from_codes
+    <liesel_gam.CatVar.from_codes>` only when the supplied
     integers are already contiguous, zero-based codes.
 
     A catch-all category does not accept invalid integer codes or missing values. It
@@ -196,7 +201,8 @@ class CatVar(UserVar):
     coefficient. If no training observation maps to it, that coefficient is informed
     by its prior and shared hyperparameters rather than directly by data.
 
-    Use :meth:`from_codes` for existing encoded data. An optional distribution sees
+    Use :meth:`from_codes <liesel_gam.CatVar.from_codes>` for existing encoded data. An
+    optional distribution sees
     these codes:
 
     >>> import jax.numpy as jnp
@@ -206,7 +212,8 @@ class CatVar(UserVar):
     >>> dist = lsl.Dist(tfd.Categorical, logits=jnp.zeros(2))
     >>> group = gam.CatVar.from_codes([0, 1], mapping=mapping, name="group", dist=dist)
 
-    Models containing a ``CatVar`` accept labels in prediction data:
+    Models containing a :class:`CatVar <liesel_gam.CatVar>` accept labels in prediction
+    data:
 
     >>> coef = lsl.Var.new_param(jnp.zeros(2), name="coef")
     >>> effect = lsl.Var.new_calc(
@@ -373,10 +380,11 @@ class ScaleIG(UserVar):
 
     This class assumes that this variable represents the scale parameter
     :math:`\tau` in a structured additive term prior as described in
-    :class:`.StrctTerm`.
+    :class:`StrctTerm <liesel_gam.StrctTerm>`.
 
     This class allows for easy setup of Gibbs sampling for :math:`\tau^2` via
-    :meth:`.setup_gibbs_inference`. The Gibbs sampler is defined as follows.
+    :meth:`setup_gibbs_inference <liesel_gam.ScaleIG.setup_gibbs_inference>`. The Gibbs
+    sampler is defined as follows.
 
     We have
 
@@ -385,7 +393,8 @@ class ScaleIG(UserVar):
         \tau^2 \sim \operatorname{InverseGamma}(a, b),
 
     where a is the init argument ``concentration`` and b is the init argument
-    ``scale`` for :class:`.ScaleIG`. The value of this variable (ScaleIG) is
+    ``scale`` for :class:`ScaleIG <liesel_gam.ScaleIG>`. The value of this variable
+    (ScaleIG) is
     :math:`\tau = \sqrt{\tau^2}`.
 
     In a structured additive term,
@@ -457,14 +466,16 @@ class ScaleIG(UserVar):
         Sets up a :class:`liesel.goose.GibbsKernel` for this variable, assuming
         that it is used as the variance parameter in a structured additive term.
 
-        See the docs for the class :class:`.ScaleIG` for a description of the
+        See the docs for the class :class:`ScaleIG <liesel_gam.ScaleIG>` for a
+        description of the
         Gibbs sampler.
 
         .. note::
             Usually, this method does not have to be called manually, when you are
             working
-            with :class:`.StrctTernm` objects or initializing terms using
-            :class:`.TermBuilder`.
+            with :class:`StrctTerm <liesel_gam.StrctTerm>` objects or initializing terms
+            using
+            :class:`TermBuilder <liesel_gam.TermBuilder>`.
 
         Parameters
         ----------
@@ -476,7 +487,7 @@ class ScaleIG(UserVar):
 
         See Also
         --------
-        .StrctTerm : Structured additive term class.
+        liesel_gam.StrctTerm : Structured additive term class.
 
         """
         if self.value.size != 1:

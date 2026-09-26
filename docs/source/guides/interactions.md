@@ -10,8 +10,8 @@ kernelspec:
 
 An interaction lets the effect of one covariate depend on another. Build it
 from marginal terms, then decide which effects belong in the predictor.
-{meth}`~liesel_gam.TermBuilder.tx` returns the highest-order interaction;
-{meth}`~liesel_gam.TermBuilder.tf` bundles main effects and interactions by default.
+{meth}`tx <liesel_gam.TermBuilder.tx>` returns the highest-order interaction;
+{meth}`tf <liesel_gam.TermBuilder.tf>` bundles main effects and interactions by default.
 The graphs below show that difference for two centered P-spline marginals.
 
 ## Build an interaction with tx
@@ -60,7 +60,7 @@ interaction.plot(width=10, height=7)
 The marginal bases and scales feed one interaction coefficient vector.
 The main-effect coefficient vectors are absent from this subgraph.
 
-`tx` adds only the highest-order interaction. The centered marginal bases
+{meth}`tx <liesel_gam.TermBuilder.tx>` adds only the highest-order interaction. The centered marginal bases
 separate it from their main effects. With linear or categorical marginals,
 contrast coding and identification need their own care: those design matrices
 are reused without additional centering.
@@ -91,7 +91,7 @@ the interaction prior.
 
 ## Bundle all effects with tf
 
-Use a fresh builder for the alternative construction. `tf` collects the two
+Use a fresh builder for the alternative construction. {meth}`tf <liesel_gam.TermBuilder.tf>` collects the two
 main effects and their interaction in one term, which you add once to the
 predictor:
 
@@ -123,18 +123,18 @@ mystnb:
 full_surface.plot(width=10, height=9)
 ```
 
-The `tf` node collects the same three effect components that were added
+The {meth}`tf <liesel_gam.TermBuilder.tf>` node collects the same three effect components that were added
 separately above. The predictor supplies the intercept outside this term.
 
 These are alternative model constructions. Do not add the same main effects
-again alongside `tf`. With more than two marginals, its default includes the
+again alongside {meth}`tf <liesel_gam.TermBuilder.tf>`. With more than two marginals, its default includes the
 lower-order interactions as well; `order` can select which orders to include.
 For example, `order=(2, 3)` includes pairs and the three-way interaction for
 three marginals, while omitting their main effects.
 
-Choose the graph root for the question: `interaction.plot()` shows a single
-interaction, `full_surface.plot()` shows the bundled surface, and `mu.plot()`
-shows a predictor. After connecting a response distribution, `model.plot()`
+Choose the graph root for the question: {meth}`interaction.plot() <liesel.model.Var.plot>` shows a single
+interaction, {meth}`full_surface.plot() <liesel.model.Var.plot>` shows the bundled surface, and {meth}`mu.plot() <liesel.model.Var.plot>`
+shows a predictor. After connecting a response distribution, {meth}`model.plot() <liesel.model.Model.plot>`
 shows the complete model, as in {doc}`../tutorials/location-scale`.
 
 ## Account for shared scales
@@ -142,9 +142,9 @@ shows the complete model, as in {doc}`../tutorials/location-scale`.
 By default, the tensor uses its marginal terms' scales. Reusing those terms
 as main effects therefore shares smoothing parameters between the main effects
 and the interaction. This is a model assumption. `common_scale` instead
-constructs an isotropic tensor. For `tx` it leaves main-effect scales alone;
-for `tf` it also changes the supplied structured main effects' scales.
-See {meth}`~liesel_gam.TermBuilder.tx` and {meth}`~liesel_gam.TermBuilder.tf`.
+constructs an isotropic tensor. For {meth}`tx <liesel_gam.TermBuilder.tx>` it leaves main-effect scales alone;
+for {meth}`tf <liesel_gam.TermBuilder.tf>` it also changes the supplied structured main effects' scales.
+See {meth}`tx <liesel_gam.TermBuilder.tx>` and {meth}`tf <liesel_gam.TermBuilder.tf>`.
 
 The anisotropic prior generally needs nonconjugate scale updates. The constructors
 replace default variance Gibbs samplers with HMC specifications on the log scale,

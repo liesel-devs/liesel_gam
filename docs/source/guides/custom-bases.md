@@ -8,7 +8,7 @@ kernelspec:
 
 # Use a custom basis
 
-Use {meth}`liesel_gam.TermBuilder.f` when the built-in constructors do not
+Use {meth}`liesel_gam.TermBuilder.f <liesel_gam.TermBuilder.f>` when the built-in constructors do not
 represent your effect. Supply a basis function and penalty; Liesel-GAM adds the
 coefficient prior and inference specification.
 
@@ -82,7 +82,7 @@ Apply constraints before building and fitting the model. `sumzero_term` centers
 the effect over the training observations, separating it from the predictor's
 intercept. `sumzero_coef` instead constrains the coefficients to sum to zero;
 these are generally different constraints. A custom constraint matrix expresses
-$A\beta = 0$; see {meth}`~liesel_gam.StrctTerm.constrain`.
+$A\beta = 0$; see {meth}`constrain <liesel_gam.StrctTerm.constrain>`.
 
 The fitted transformation is reused for prediction, so the effect need not sum
 to zero on a new covariate grid. Re-centering at prediction time would change the
@@ -101,4 +101,4 @@ new prediction rows, but the basis must stay constant during estimation and JAX
 cannot differentiate through its inputs.
 Formulaic-based linear design matrices likewise require care with dynamic inputs;
 native smooth bases and arbitrary Python callbacks do not have identical JAX
-capabilities. See {class}`~liesel_gam.Basis` for callback and caching rules.
+capabilities. See {class}`Basis <liesel_gam.Basis>` for callback and caching rules.

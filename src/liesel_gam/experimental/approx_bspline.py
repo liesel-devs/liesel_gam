@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
@@ -111,13 +112,15 @@ class BSplineApprox:
         Number of grid points used to precompute the basis (default 1000).
     Z
         Optional matrix to post-multiply the basis. In ``B(x) @ Z``, ``B(x)`` is the
-        basis matrix and ``Z`` is the postmultiplication matrix. Can be used to apply
+        basis matrix and :attr:`Z <liesel_gam.experimental.BSplineApprox.Z>` is the
+        postmultiplication matrix. Can be used to apply
         linear constraints via reparameterization matrices such as those returned by
-        :class:`.LinearConstraintEVD`.
+        :class:`LinearConstraintEVD <liesel_gam.LinearConstraintEVD>`.
 
     See Also
     --------
-    .LinearConstraintEVD : Compute reparameterization matrices for linear constraints.
+    liesel_gam.LinearConstraintEVD : Compute reparameterization matrices for linear
+      constraints.
 
     Examples
     --------
@@ -156,6 +159,49 @@ class BSplineApprox:
     (40,)
 
     """
+
+    if TYPE_CHECKING:
+        knots: Array
+        """Knot positions."""
+
+        dknots: Array
+        """Mean spacing between successive knots."""
+
+        degree: int
+        """Polynomial degree of the spline."""
+
+        nparam: int
+        """Number of unconstrained basis coefficients."""
+
+        subscripts: str
+        """Einstein summation expression used for coefficient products."""
+
+        min_knot: Array
+        """Lower boundary knot of the approximation domain."""
+
+        max_knot: Array
+        """Upper boundary knot of the approximation domain."""
+
+        step: Array
+        """Grid step used for interpolation."""
+
+        ngrid: int
+        """Number of grid points requested for precomputation."""
+
+        grid: Array
+        """Interpolation grid including boundary padding."""
+
+        Z: Array | None
+        """Optional matrix applied to the basis, for example for constraints."""
+
+        basis_grid: Array
+        """Precomputed basis evaluations on the grid."""
+
+        basis_deriv_grid: Array
+        """Precomputed first basis derivatives on the grid."""
+
+        basis_deriv2_grid: Array
+        """Precomputed second basis derivatives on the grid."""
 
     def __init__(
         self,

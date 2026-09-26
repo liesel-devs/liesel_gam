@@ -63,7 +63,7 @@ df = pd.DataFrame(
 )
 ```
 
-Use {func}`~liesel_gam.scale_ig` for each smooth. It places an inverse-gamma
+Use {func}`scale_ig <liesel_gam.scale_ig>` for each smooth. It places an inverse-gamma
 prior on the smoothing variance and makes **log variance** the writable
 parameter. Optimizer steps can then range over the real line while the
 variance stays positive. This smoothing variance controls the coefficient prior;
