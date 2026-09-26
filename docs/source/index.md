@@ -83,7 +83,7 @@ prior controls roughness; see {doc}`guides/priors` for defaults and alternatives
 
 ```{toctree}
 :maxdepth: 1
-:caption: Start here
+:caption: Guides
 
 Overview <self>
 tutorials/smooth-curve
@@ -94,7 +94,6 @@ Location and scale <tutorials/location-scale>
 
 ```{toctree}
 :maxdepth: 1
-:caption: Common tasks
 
 guides/terms
 Priors and samplers <guides/priors>
@@ -114,13 +113,8 @@ Start with the tutorials above for the main fitting and prediction workflow.
 
 ```{toctree}
 :maxdepth: 1
-:caption: Example library
 
-notebooks_lin
-notebooks_univariate
-notebooks_composite
-notebooks_multivariate
-notebooks_large_data
+Example library <example-library>
 ```
 
 ## Relevant Literature
@@ -155,53 +149,26 @@ regression.
 
 ## API Reference
 
-### High-level API
+(high-level-api)=
+(terms-and-variables)=
+### Models
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
-   :caption: High-level API
    :nosignatures:
+   :caption: Models
 
    ~liesel_gam.AdditivePredictor
    ~liesel_gam.MVAdditivePredictor
    ~liesel_gam.TermBuilder
    ~liesel_gam.MVTermBuilder
    ~liesel_gam.BasisBuilder
-```
 
-### Plots
+.. toctree::
+   :maxdepth: 1
 
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :caption: Plots
-   :nosignatures:
-
-   ~liesel_gam.plot_1d_smooth
-   ~liesel_gam.plot_2d_smooth
-   ~liesel_gam.plot_forest
-   ~liesel_gam.plot_polys
-   ~liesel_gam.plot_regions
-   ~liesel_gam.plot_1d_smooth_clustered
-```
-
-### Summary
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :caption: Summary
-   :nosignatures:
-
-   ~liesel_gam.summarise_1d_smooth
-   ~liesel_gam.summarise_nd_smooth
-   ~liesel_gam.summarise_lin
-   ~liesel_gam.summarise_cluster
-   ~liesel_gam.summarise_regions
-   ~liesel_gam.summarise_1d_smooth_clustered
-   ~liesel_gam.summarise_by_samples
-   ~liesel_gam.polys_to_df
+   reference/terms
 ```
 
 ### Bases
@@ -209,92 +176,69 @@ regression.
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
-   :caption: Bases
    :nosignatures:
+   :caption: Bases
 
    ~liesel_gam.Basis
    ~liesel_gam.ApproximationSpec
    ~liesel_gam.MRFBasis
    ~liesel_gam.LinBasis
+   ~liesel_gam.LinearConstraintEVD
+   ~liesel_gam.basis_setup_sample
 ```
 
-### Terms and Variables
+(distribution)=
+### Priors
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
-   :caption: Terms
    :nosignatures:
+   :caption: Priors
 
-   ~liesel_gam.StrctTerm
-   ~liesel_gam.StrctInteractionTerm
-   ~liesel_gam.StrctTensorProdTerm
-   ~liesel_gam.MultivariateStrctTerm
-   ~liesel_gam.MultivariateStrctInteractionTerm
-   ~liesel_gam.MultivariateStrctLinTerm
-   ~liesel_gam.MultivariateTPTerm
-   ~liesel_gam.MultivariateIntercept
-   ~liesel_gam.MultivariateContribution
-   ~liesel_gam.LinTerm
-   ~liesel_gam.StrctLinTerm
-   ~liesel_gam.LinMixin
-   ~liesel_gam.IndexingTerm
-   ~liesel_gam.RITerm
-   ~liesel_gam.MRFTerm
-   ~liesel_gam.BasisDot
    ~liesel_gam.ScaleIG
-   ~liesel_gam.CatVar
-   ~liesel_gam.UserVar
-```
-
-### Distribution
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :caption: Distribution
-   :nosignatures:
-
+   ~liesel_gam.VarIGPrior
+   ~liesel_gam.scale_ig
+   ~liesel_gam.scale_wb
    ~liesel_gam.MultivariateNormalSingular
    ~liesel_gam.MultivariateNormalStructured
    ~liesel_gam.StructuredPenaltyOperator
 ```
 
-### Other
+(plots)=
+(summary)=
+### Results
+
+```{eval-rst}
+.. toctree::
+   :maxdepth: 1
+   :caption: Results
+
+   reference/summaries
+   reference/plots
+```
+
+(other)=
+### Data
+
+Utilities for model data and spatial specifications.
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
-   :caption: Other
    :nosignatures:
+   :caption: Data
 
-   ~liesel_gam.DictRegistry
-   ~liesel_gam.PandasRegistry
-   ~liesel_gam.CategoryMapping
    ~liesel_gam.MRFSpec
-   ~liesel_gam.NameManager
-   ~liesel_gam.VarIGPrior
-   ~liesel_gam.scale_ig
-   ~liesel_gam.scale_wb
    ~liesel_gam.demo_data
    ~liesel_gam.demo_data_ta
-   ~liesel_gam.LinearConstraintEVD
-   ~liesel_gam.basis_setup_sample
    ~liesel_gam.category_coverage_indices
-```
 
-```{rubric} In/Out
+.. toctree::
+   :maxdepth: 1
 
-```
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated
-   :caption: In/Out
-   :nosignatures:
-
-   ~liesel_gam.io.read_bnd
-   ~liesel_gam.io.polygon_is_closed
+   reference/registries
+   reference/io
 ```
 
 ### Experimental
@@ -306,8 +250,8 @@ future.
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
-   :caption: Experimental
    :nosignatures:
+   :caption: Experimental
 
    ~liesel_gam.experimental.BSplineApprox
 ```
