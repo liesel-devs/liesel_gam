@@ -44,10 +44,14 @@ dev = [
     "sphinx-book-theme>=1.1.4",
     "sphinx-copybutton>=0.5.2",
     "sphinx-remove-toctrees>=1.0.0.post1",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = "tests"
+# Run tests in 4 parallel workers. loadscope keeps each test class, and each
+# notebook's cells, on one worker. Use `-n 0` to run serially, e.g. with --pdb.
+addopts = ["-n", "4", "--dist", "loadscope"]
 # turn warnings into errors and filter out specific warnings
 filterwarnings = [
     "error",
