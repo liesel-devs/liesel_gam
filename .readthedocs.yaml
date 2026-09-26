@@ -15,7 +15,7 @@ build:
     install:
       - python -m pip install --upgrade pip
       - python -m pip install . --group dev
-      - python -m pip install "liesel @ git+https://github.com/liesel-devs/liesel.git@de73db78af7f9385d1b50db01aa90a25e882e634"
+      - python -m pip install "liesel @ git+https://github.com/liesel-devs/liesel.git@a68a8f4fe71001ebbf90e1e8872c8be0a3263914"
       - python -m pip list
     build:
       html:

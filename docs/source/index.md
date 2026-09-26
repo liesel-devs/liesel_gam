@@ -12,6 +12,7 @@ Build Bayesian additive models for the mean, scale, or other parameters of a
 response distribution. Liesel-GAM supplies linear effects, smooths, spatial
 terms, group effects, and their priors. You connect the predictors to a response
 distribution in Liesel, then use Goose for MCMC inference.
+The development tutorial also covers Laplace fitting and MCMC initialization.
 
 ## Install
 
@@ -22,11 +23,11 @@ pip install liesel_gam
 ```
 
 These guides assume a Liesel version with the `optim-base` optimizer API
-(tested at `de73db7`). Until that API is in your installed release, install
+(tested at `a68a8f4`). Until that API is in your installed release, install
 the pinned development version in the same environment:
 
 ```bash
-pip install "liesel @ git+https://github.com/liesel-devs/liesel.git@de73db78af7f9385d1b50db01aa90a25e882e634"
+pip install "liesel @ git+https://github.com/liesel-devs/liesel.git@a68a8f4fe71001ebbf90e1e8872c8be0a3263914"
 ```
 
 Smooth bases and penalties use the native `smoothcon` package. No R installation
@@ -88,6 +89,7 @@ prior controls roughness; see {doc}`guides/priors` for defaults and alternatives
 Overview <self>
 tutorials/smooth-curve
 Location and scale <tutorials/location-scale>
+Laplace (development) <tutorials/laplace>
 ```
 
 ## Common tasks

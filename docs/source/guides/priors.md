@@ -99,6 +99,13 @@ numeric `scale=1.0` instead fixes the scale; it does not estimate it.
 For a builder-wide custom prior, `default_scale_fn` must construct a fresh
 variable for each term unless sharing a scale is intentional.
 
+If optimization must update the smoothing variance itself,
+{func}`scale_ig <liesel_gam.scale_ig>` supplies an
+inverse-gamma variance prior with a writable log variance. Give that transformed
+parameter its own sampling specification. The development tutorial
+{doc}`../tutorials/laplace` shows Laplace fitting and initialization with this
+setup; it requires Liesel's unmerged `laplace-loss` branch.
+
 ## Choose coefficient updates
 
 {class}`TermBuilder <liesel_gam.TermBuilder>` and the default predictor intercept use
