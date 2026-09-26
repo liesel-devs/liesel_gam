@@ -129,7 +129,7 @@ updated values and still samples the smoothing parameters. Keep basis evaluation
 inside the model and pass raw covariates for prediction.
 
 A single fitted state does not disperse chains. Follow the
-[Goose initialization guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-initialization.rst)
+[Goose initialization guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-initialization.md)
 for distinct starts, and retain the warmup and diagnostics required by your
 kernels. For optimizer controls and loss monitoring, see the
 [Liesel optimization guide](https://github.com/liesel-devs/liesel/blob/optim-base/docs/source/optimization.md).

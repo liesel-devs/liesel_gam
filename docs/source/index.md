@@ -36,8 +36,8 @@ is required. Install Graphviz separately to render model graphs locally.
 ## Prerequisites
 
 These guides assume Liesel model construction and a basic Goose sampling workflow.
-For those topics, see the [model-building guide draft](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-building.md)
-and [Goose guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/sampling.rst).
+For those topics, see the [model-building guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-building.md)
+and [Goose guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/sampling.md).
 The tutorials here keep the complete runnable code while focusing on additive
 terms, smoothing priors, and effect interpretation.
 

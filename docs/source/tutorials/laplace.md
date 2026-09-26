@@ -353,7 +353,7 @@ These chains target the full model posterior, with smoothing parameters sampled
 alongside the coefficients. The Laplace fit only supplied their starting states;
 it did not replace the sampling target. Initialization does not remove the need
 for adaptation or convergence checks, and nearby Gaussian starts can miss other
-modes. See the [Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-diagnostics.rst)
+modes. See the [Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-diagnostics.md)
 for the checks and {doc}`../guides/prediction` to use
 `results.get_posterior_samples()` for GAM predictions.
 

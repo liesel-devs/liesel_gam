@@ -10,7 +10,7 @@ kernelspec:
 
 Choose the quantity before choosing a plotting function. A term contribution,
 a distribution parameter, and a new observation answer different questions.
-For general input/shape rules, see the [Liesel prediction guide draft](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-prediction.md).
+For general input/shape rules, see the [Liesel prediction guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-prediction.md).
 The {doc}`location-scale tutorial <../tutorials/location-scale>` shows mean and
 scale predictions. The group example below is self-contained.
 
@@ -160,7 +160,7 @@ it does not create an independent random effect for each new label.
 For mean curves and response intervals in a distributional GAM, see the
 {doc}`location-scale tutorial <../tutorials/location-scale>`. General response
 simulation, sample shapes, and conditioning rules belong to the
-[Liesel simulation guide draft](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-simulation.md).
+[Liesel simulation guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-simulation.md).
 
 ## Use effect helpers
 
