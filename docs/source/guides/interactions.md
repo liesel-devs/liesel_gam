@@ -193,7 +193,7 @@ summary.error_df()[["count", "relative"]]
 
 Inspect the effective sample sizes alongside R-hat: a relatively small ESS
 can reveal slow mixing of a smoothing variance despite a long run. Distinguish
-warmup divergences from errors in retained samples. Use the [Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-diagnostics.rst).
+warmup divergences from errors in retained samples. Use the [Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-diagnostics.md).
 
 A slice holds one covariate fixed while varying the other. Here, sweep across
 `x` three times, holding `y` at 0.2, 0.5, and 0.8. Add the main-effect and

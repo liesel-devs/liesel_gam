@@ -11,7 +11,7 @@ kernelspec:
 Choose the coefficient and smoothing-scale priors for your terms, then attach
 any inference specifications their constructors do not supply. This guide covers
 Liesel-GAM's defaults and overrides; general kernel choice and grouping belong to
-the [Goose kernel guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-kernels.rst).
+the [Goose kernel guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-kernels.md).
 
 ## Understand the defaults
 
@@ -94,7 +94,7 @@ custom_smooth.plot()
 ```
 
 The scale is positive; Goose samples its unconstrained log-scale parameter.
-See the [Liesel transformation guide draft](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-transformations.md) for the general bijector workflow. Passing a
+See the [Liesel transformation guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-transformations.md) for the general bijector workflow. Passing a
 numeric `scale=1.0` instead fixes the scale; it does not estimate it.
 For a builder-wide custom prior, `default_scale_fn` must construct a fresh
 variable for each term unless sharing a scale is intentional.

@@ -10,8 +10,8 @@ kernelspec:
 
 Fit a nonlinear mean with a P-spline and learn how much smoothing the data support.
 You will build a normal response model, sample its posterior, and plot the fitted
-curve with uncertainty. This tutorial assumes the [Liesel model](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-building.md)
-and [Goose sampling](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/sampling.rst)
+curve with uncertainty. This tutorial assumes the [Liesel model](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-building.md)
+and [Goose sampling](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/sampling.md)
 workflows (currently guide drafts). It runs from top to bottom without external data.
 
 ## Generate observations
@@ -148,7 +148,7 @@ summary.error_df().reset_index().reindex(
 Inspect effective sample sizes and R-hat for each parameter. For the NUTS
 response-scale update, distinguish divergences during warmup from those in
 retained posterior draws. See the
-[Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-diagnostics.rst)
+[Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-diagnostics.md)
 for interpreting these checks and investigating divergences. Results can vary
 by platform.
 

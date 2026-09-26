@@ -130,7 +130,7 @@ summary.aggregate_diagnostics().round({"ess_bulk": 0, "ess_tail": 0, "rhat": 3})
 summary.error_df()
 ```
 
-Inspect effective sample sizes, R-hat, and sampler errors above. Use the [Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-diagnostics.rst)
+Inspect effective sample sizes, R-hat, and sampler errors above. Use the [Goose diagnostics guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-diagnostics.md)
 for diagnostic definitions and next steps. These checks concern sampling, not
 the adequacy of the normal response model.
 
@@ -190,7 +190,7 @@ function; basis size and prior sensitivity also deserve checking in an applicati
 ## Compare response intervals
 
 Use the same fitted GAM to compare mean uncertainty with response variation.
-The simulation below follows the [Liesel simulation guide draft](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-simulation.md);
+The simulation below follows the [Liesel simulation guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-simulation.md);
 the response placeholder matches the new grid length.
 
 ```{code-cell} ipython3
@@ -249,8 +249,8 @@ is a simultaneous statement about the whole curve. In particular, averaging
 $\mu \pm \sigma$ over draws does not give a 90% predictive interval.
 
 For posterior predictive checks, compare spread and tails across covariate values
-at the observed design. See the [Liesel simulation guide draft](https://github.com/liesel-devs/liesel/blob/model-docs-guides/docs/source/model-simulation.md)
-for the general workflow, and the [Goose model-comparison draft](https://github.com/liesel-devs/liesel/blob/docs/goose-guides/docs/source/goose-model-comparison.rst)
+at the observed design. See the [Liesel simulation guide draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/model-simulation.md)
+for the general workflow, and the [Goose model-comparison draft](https://github.com/liesel-devs/liesel/blob/docs/model-goose-guides/docs/source/goose-model-comparison.md)
 for predictive model comparison. Change GAM assumptions with
 {doc}`../guides/priors`, or continue to {doc}`../guides/prediction` for group
 predictions and effect summaries.
