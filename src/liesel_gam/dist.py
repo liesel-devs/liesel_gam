@@ -20,7 +20,8 @@ class MultivariateNormalSingular(tfd.Distribution):
     Potentially rank-deficient multivariate Gaussian distribution used as a prior in
     structured additive terms.
 
-    Implements the :class:`tfp.distributions.Distribution` interface.
+    Implements the :class:`Distribution
+    <tensorflow_probability.substrates.jax.distributions.Distribution>` interface.
 
     Parameters
     -----------
@@ -41,9 +42,10 @@ class MultivariateNormalSingular(tfd.Distribution):
 
     See Also
     --------
-    .StrctTerm : Structured additive term object, a Liesel var that uses this
+    liesel_gam.StrctTerm : Structured additive term object, a Liesel var that uses this
       distribution.
-    .MultivariateNormalStructured : More general distribution, implementing the prior
+    liesel_gam.MultivariateNormalStructured : More general distribution, implementing
+      the prior
       for tensor product terms.
 
     Notes
@@ -587,7 +589,8 @@ class MultivariateNormalStructured(tfd.Distribution):
     Potentially rank-deficient multivariate Gaussian distribution for the prior used in
     structured tensor product terms.
 
-    Implements the :class:`tfp.distributions.Distribution` interface.
+    Implements the :class:`Distribution
+    <tensorflow_probability.substrates.jax.distributions.Distribution>` interface.
 
     Parameters
     ----------
@@ -608,7 +611,7 @@ class MultivariateNormalStructured(tfd.Distribution):
     -----
 
     This distribution is the prior used for the coefficient vector
-    in :class:`.StrctTensorProdTerm`.
+    in :class:`StrctTensorProdTerm <liesel_gam.StrctTensorProdTerm>`.
 
     It is a potentially rank-deficient multivariate
     Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as

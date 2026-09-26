@@ -187,7 +187,8 @@ class IWLSWeights:
         ----------
         eta_name
             Name of the model variable containing the linear predictor. Weak
-            variables, such as :attr:`.AdditivePredictor.linear_predictor`, are
+            variables, such as :attr:`AdditivePredictor.linear_predictor
+            <liesel_gam.AdditivePredictor.linear_predictor>`, are
             supported.
         min_weight
             Lower clipping bound applied to the squared scores.

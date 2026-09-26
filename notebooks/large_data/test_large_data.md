@@ -47,7 +47,7 @@ pd.Series(
 ).to_frame("value")
 ```
 
-`category_coverage_indices()` returns positional rows that a splitter should retain in training. Here all rows are training rows for this first setup example.
+{func}`category_coverage_indices() <liesel_gam.category_coverage_indices>` returns positional rows that a splitter should retain in training. Here all rows are training rows for this first setup example.
 
 ```{code-cell} ipython3
 required_train_indices = gam.category_coverage_indices(df, columns=categorical)
@@ -63,7 +63,7 @@ pd.Series(
 ).to_frame("value")
 ```
 
-`basis_setup_sample()` keeps the eligible continuous boundaries and categorical metadata, then fills the sample randomly without replacement.
+{func}`basis_setup_sample() <liesel_gam.basis_setup_sample>` keeps the eligible continuous boundaries and categorical metadata, then fills the sample randomly without replacement.
 
 ```{code-cell} ipython3
 setup_df = gam.basis_setup_sample(
@@ -114,7 +114,7 @@ tb, model, coef_keys = make_model(setup_df)
 sorted(model.observed)
 ```
 
-`PandasRegistry.observed_position()` now encodes exactly the observed model variables for all rows. It uses the category mapping established from `setup_df` and ignores unrelated DataFrame columns.
+{meth}`PandasRegistry.observed_position() <liesel_gam.PandasRegistry.observed_position>` now encodes exactly the observed model variables for all rows. It uses the category mapping established from `setup_df` and ignores unrelated DataFrame columns.
 
 ```{code-cell} ipython3
 full_position = tb.registry.observed_position(model, df)

@@ -82,7 +82,7 @@ mystnb:
 mu.plot()
 ```
 
-`AdditivePredictor` already includes an intercept. `lin` and `slin` omit
+{class}`AdditivePredictor <liesel_gam.AdditivePredictor>` already includes an intercept. {meth}`lin <liesel_gam.TermBuilder.lin>` and {meth}`slin <liesel_gam.TermBuilder.slin>` omit
 their intercept column by default. With treatment coding, category coefficients
 are contrasts to the reference category; they are not separate category means.
 Set the category order or contrast explicitly when that reference matters.
@@ -91,22 +91,22 @@ smooth tensor product.
 
 ## Choose the basis size
 
-`k` is the number of unconstrained basis functions for `ps`. The centering
+`k` is the number of unconstrained basis functions for {meth}`ps <liesel_gam.TermBuilder.ps>`. The centering
 constraint reduces the coefficient dimension. Increasing `k` gives a richer
 function space; the smoothing prior controls roughness within that space.
 Check that your conclusions do not depend on a basis that is too small.
 Changing the basis or penalty scaling can also change the interpretation of a
 smoothing prior; see {doc}`priors`.
 
-For a linear trend plus a separate nonlinear deviation, use `lin` with `np`.
-A regular `ps` term already contains a linear component, so adding another
+For a linear trend plus a separate nonlinear deviation, use {meth}`lin <liesel_gam.TermBuilder.lin>` with {meth}`np <liesel_gam.TermBuilder.np>`.
+A regular {meth}`ps <liesel_gam.TermBuilder.ps>` term already contains a linear component, so adding another
 unconstrained linear effect can make their decomposition unidentified.
 
 See fitted examples for {doc}`random intercepts <../notebooks/univariate/test_ri>`,
 {doc}`regional effects <../notebooks/univariate/test_mrf>`, and
 {doc}`varying coefficients <../notebooks/composite/test_vc>`.
 
-For other smooth families (`ts`, `cr`, `cs`, `cc`, `bs`), see
-{class}`~liesel_gam.TermBuilder`. The example library also includes
+For other smooth families ({meth}`ts <liesel_gam.TermBuilder.ts>`, {meth}`cr <liesel_gam.TermBuilder.cr>`, {meth}`cs <liesel_gam.TermBuilder.cs>`, {meth}`cc <liesel_gam.TermBuilder.cc>`, {meth}`bs <liesel_gam.TermBuilder.bs>`), see
+{class}`TermBuilder <liesel_gam.TermBuilder>`. The example library also includes
 {doc}`a thin-plate surface <../notebooks/multivariate/test_tp_2d>` and
 {doc}`kriging <../notebooks/multivariate/test_kriging>`.

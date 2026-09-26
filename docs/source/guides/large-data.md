@@ -90,7 +90,7 @@ validation position for evaluation.
 
 ## Keep categories represented
 
-Use {func}`~liesel_gam.category_coverage_indices` when designing a split that
+Use {func}`category_coverage_indices <liesel_gam.category_coverage_indices>` when designing a split that
 should retain every observed category in training. It returns positional indices
 for a split policy; it does not perform the split itself. Do not use held-out
 responses to select basis settings or tune the model. Known category metadata
@@ -100,7 +100,7 @@ does not imply that a level has training observations.
 
 The example uses exact basis evaluation. `TermBuilder(..., approximation=True)`
 enables the default approximation policy for eligible smooths. Use
-{class}`~liesel_gam.ApproximationSpec` to set tolerances and grid limits, and check
+{class}`ApproximationSpec <liesel_gam.ApproximationSpec>` to set tolerances and grid limits, and check
 whether approximation changes predictions enough to matter for your use case.
 Reducing setup cost and reducing repeated evaluation cost are separate decisions.
 

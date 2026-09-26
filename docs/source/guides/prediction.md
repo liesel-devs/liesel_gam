@@ -44,7 +44,7 @@ within a scientifically defensible domain; a smooth extrapolation is not evidenc
 that an effect continues outside the observed range.
 
 For a model with categorical inputs such as a random intercept, pass labels, for
-example `newdata={"group": ["a", "b"]}`. The fitted `CatVar` converts labels
+example `newdata={"group": ["a", "b"]}`. The fitted {class}`CatVar <liesel_gam.CatVar>` converts labels
 through its training mapping. Unknown labels are not automatically new random
 effects. Levels known to the setup but without observations have no direct data
 support; their uncertainty depends on the prior and any spatial structure.
@@ -154,7 +154,7 @@ observation in the same new group. Spatial effects instead depend on their
 specified neighbourhood structure.
 
 Undeclared labels are rejected by the usual fitted category mapping. A deliberately
-configured {class}`~liesel_gam.CatVar` catch-all category has different semantics;
+configured {class}`CatVar <liesel_gam.CatVar>` catch-all category has different semantics;
 it does not create an independent random effect for each new label.
 
 For mean curves and response intervals in a distributional GAM, see the
@@ -164,12 +164,12 @@ simulation, sample shapes, and conditioning rules belong to the
 
 ## Use effect helpers
 
-Use {func}`~liesel_gam.plot_1d_smooth` for a centered one-dimensional smooth,
-{func}`~liesel_gam.plot_2d_smooth` for a surface,
-{func}`~liesel_gam.plot_forest` for linear or group effects, and
-{func}`~liesel_gam.plot_regions` for regional effects. Their corresponding
+Use {func}`plot_1d_smooth <liesel_gam.plot_1d_smooth>` for a centered one-dimensional smooth,
+{func}`plot_2d_smooth <liesel_gam.plot_2d_smooth>` for a surface,
+{func}`plot_forest <liesel_gam.plot_forest>` for linear or group effects, and
+{func}`plot_regions <liesel_gam.plot_regions>` for regional effects. Their corresponding
 `summarise_*` functions return tables for your own plotnine plots.
 
-For a varying-coefficient term, `plot_1d_smooth` without `newdata` shows the
+For a varying-coefficient term, {func}`plot_1d_smooth <liesel_gam.plot_1d_smooth>` without `newdata` shows the
 coefficient curve at multiplier one. Supply both inputs to show the multiplied
 contribution. This distinction matters when interpreting the vertical axis.

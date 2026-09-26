@@ -42,10 +42,15 @@ class ApproximationSpec(NamedTuple):
     """
 
     bounds: tuple[float, float] | None = None
+    """Approximation domain; ``None`` uses the observed range."""
     rtol: float | None = None
+    """Relative tolerance for midpoint validation and grid refinement."""
     atol: float | None = None
+    """Absolute tolerance for midpoint validation and grid refinement."""
     max_grid_size: int = 16_385
+    """Maximum number of grid nodes before refinement fails."""
     grid_size: int = 1_000
+    """Initial number of regular-grid nodes."""
 
 
 def make_callback(function, output_shape, dtype, m: int = 0):
@@ -91,7 +96,8 @@ class Basis(UserVar):
     """
     General basis for a structured additive term.
 
-    The ``Basis`` class wraps an observation variable (or an array) and a
+    The :class:`Basis <liesel_gam.Basis>` class wraps an observation variable (or an
+    array) and a
     basis-generation function. It constructs an internal calculation node that produces
     the basis (design) matrix by computing ``basis_fn(value)``. The basis function may
     be executed via a callback, in which case it does not need to be jax-compatible.
@@ -118,12 +124,13 @@ class Basis(UserVar):
         variable that will be created.
     use_callback
         If ``True`` (default) the basis_fn is wrapped in a JAX ``pure_callback`` via
-        :func:`make_callback` to allow arbitrary Python basis functions while preserving
+        ``make_callback`` to allow arbitrary Python basis functions while preserving
         JAX tracing. If ``False`` the function is used directly and must be jittable via
         JAX.
     cache_basis
         If ``True`` the computed basis is cached in a persistent calculation node
-        (``lsl.Calc``), which avoids re-computation when not required, but uses memory.
+        (:class:`lsl.Calc <liesel.model.Calc>`), which avoids re-computation when not
+        required, but uses memory.
         If ``False`` a transient calculation node (``lsl.TransientCalc``) is used and
         the basis will be recomputed with each evaluation of ``Basis.value``, but not
         stored in memory.
@@ -144,9 +151,9 @@ class Basis(UserVar):
     See Also
     ---------
 
-    .TermBuilder : Initializes structured additive terms.
-    .BasisBuilder : Initializesstructured additive terms.
-    .StrctTerm : A general structured additive term.
+    liesel_gam.TermBuilder : Initializes structured additive terms.
+    liesel_gam.BasisBuilder : Initializesstructured additive terms.
+    liesel_gam.StrctTerm : A general structured additive term.
 
     Notes
     -----
@@ -304,7 +311,7 @@ class Basis(UserVar):
         """
         The type of constraint applied to this basis and penalty (if any).
 
-        See :meth:`.Basis.constrain` for details.
+        See :meth:`Basis.constrain <liesel_gam.Basis.constrain>` for details.
         """
         return self._constraint
 
@@ -314,7 +321,7 @@ class Basis(UserVar):
         Reparameterization matrix used for constraint of this basis and penalty (if
         any).
 
-        See :meth:`.Basis.constrain` for details.
+        See :meth:`Basis.constrain <liesel_gam.Basis.constrain>` for details.
         """
         return self._reparam_matrix
 
@@ -400,7 +407,8 @@ class Basis(UserVar):
         """
         Updates the penalty matrix for this basis.
 
-        If :attr:`.Basis.penalty` is not None, this method will only update the
+        If :attr:`Basis.penalty <liesel_gam.Basis.penalty>` is not None, this method
+        will only update the
         value of the penalty node, not the whole object. Even if the argument to
         this method is a node.
 
@@ -441,7 +449,7 @@ class Basis(UserVar):
 
         Returns
         -------
-        A :class:`.Basis` instance that produces a (n_obs, n_features)
+        A :class:`Basis <liesel_gam.Basis>` instance that produces a (n_obs, n_features)
         design matrix.
         """
 
@@ -713,7 +721,7 @@ class Basis(UserVar):
         matrix during prediction.
 
         This design-free transformation leaves null-space directions unscaled. Native
-        smooth builders instead use :meth:`smoothcon.Smooth.diagonalize_penalty`,
+        smooth builders instead use ``smoothcon.Smooth.diagonalize_penalty``,
         which balances those directions using the basis setup sample.
 
         References
@@ -765,7 +773,7 @@ class Basis(UserVar):
         """
         Scale the penalty relative to the size of the basis matrix.
 
-        This uses the scaling convention from :func:`mgcv::smoothCon`: the penalty
+        This uses the scaling convention from ``mgcv::smoothCon``: the penalty
         one-norm is matched to the squared infinity-norm of the design matrix. This
         convention is invariant to an equivalent reciprocal rescaling of the basis and
         its coefficients.
@@ -831,8 +839,9 @@ class Basis(UserVar):
         Apply a linear constraint to the basis and corresponding penalty.
 
         When a constraint is applied, the type of constraint is saved to
-        :attr:`.Basis.constraint`, and the reparamterization matrix is saved to
-        :attr:`.Basis.reparam_matrix`.
+        :attr:`Basis.constraint <liesel_gam.Basis.constraint>`, and the
+        reparamterization matrix is saved to
+        :attr:`Basis.reparam_matrix <liesel_gam.Basis.reparam_matrix>`.
 
         Parameters
         ----------
@@ -884,7 +893,8 @@ class Basis(UserVar):
             \mathbf{s} = \mathbf{B} \boldsymbol{\beta},
 
         where :math:`\mathbf{B}` is the basis matrix of dimension :math:`N
-        \times J`. We consider :math:`\boldsymbol{\beta} \in \mathbb{R}^J` to be subject to linear constraints of the
+        \times J`. We consider :math:`\boldsymbol{\beta} \in \mathbb{R}^J` to be subject
+        to linear constraints of the
         form
 
         .. math::
@@ -1014,8 +1024,10 @@ class MRFBasis(Basis):
     """
     Dedicated basis object for Markov random fields.
 
-    See :class:`.Basis` for general usage information. This class additionally offers
-    information about the Markov random field setup in :attr:`.mrf_spec`.
+    See :class:`Basis <liesel_gam.Basis>` for general usage information. This class
+    additionally offers
+    information about the Markov random field setup in :attr:`mrf_spec
+    <liesel_gam.MRFBasis.mrf_spec>`.
     """
 
     _mrf_spec: MRFSpec | None = None
@@ -1025,10 +1037,6 @@ class MRFBasis(Basis):
         """
         A named tuple, containing information about the Markov random field setup.
 
-        The :class:`.MRFSpec` has the attributes ``nb`` (neighborhood structure),
-        ``mapping`` (label-integer map for the region labels), and ``ordered_labels``
-        (ordered labels, such that the order correspond to the columns of the basis
-        matrix.)
         """
         if self._mrf_spec is None:
             raise ValueError("No MRF spec defined.")
@@ -1053,17 +1061,21 @@ class LinBasis(Basis):
         Optional names for the columns of the basis matrix. By default, names are
         generated from the basis name, for example ``V[0]`` and ``V[1]`` for a
         two-column basis named ``V``. Column names can also be replaced later through
-        :attr:`.column_names`.
+        :attr:`column_names <liesel_gam.LinBasis.column_names>`.
 
     Notes
     -----
-    See :class:`.Basis` for general usage information. This class additionally offers
+    See :class:`Basis <liesel_gam.Basis>` for general usage information. This class
+    additionally offers
 
-    - :attr:`.model_spec`: The model spec used internally by ``formulaic`` to set up
+    - :attr:`model_spec <liesel_gam.LinBasis.model_spec>`: The model spec used
+      internally by ``formulaic`` to set up
       the basis matrix.
-    - :attr:`.mappings`: A dictionary of label-integer mappings for all categorical
+    - :attr:`mappings <liesel_gam.LinBasis.mappings>`: A dictionary of label-integer
+      mappings for all categorical
       variables in this basis.
-    - :attr:`.column_names`: List of column names for this basis.
+    - :attr:`column_names <liesel_gam.LinBasis.column_names>`: List of column names for
+      this basis.
 
     Examples
     --------
@@ -1142,6 +1154,7 @@ class LinBasis(Basis):
 
     @property
     def column_names(self) -> list[str]:
+        """Column names in basis-matrix order."""
         if self._column_names is None:
             raise ValueError("No model spec defined.")
         return self._column_names
@@ -1173,13 +1186,13 @@ class MRFSpec(NamedTuple):
     """
     A named tuple, containing information about the Markov random field setup.
 
-    The :class:`.MRFSpec` has the attributes ``nb`` (neighborhood structure),
-    ``mapping`` (label-integer map for the region labels), and ``ordered_labels``
-    (ordered labels, such that the order correspond to the columns of the basis
-    matrix.)
     """
 
     mapping: CategoryMapping
+    """Category mapping for region labels."""
     nb: dict[Any, list[Any]] | None
+    """Neighbourhood structure, when available."""
     ordered_labels: list[Any] | None
+    """Region labels in basis-column order, when available."""
     polys: Mapping[Any, ArrayLike] | None
+    """Region polygons, when available."""
