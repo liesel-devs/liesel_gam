@@ -36,4 +36,4 @@ jobs:
         run: uv sync --locked --group dev
 
       - name: Run pytest
-        run: uv run pytest --doctest-modules src/liesel_gam
+        run: uv run pytest -n 0 --doctest-modules src/liesel_gam
