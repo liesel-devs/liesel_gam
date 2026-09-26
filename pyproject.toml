@@ -50,7 +50,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = "tests"
 # Run tests in 4 parallel workers. loadscope keeps each test class, and each
-# notebook's cells, on one worker. Use `-n 0` to run serially, e.g. with --pdb.
+# notebook's cells, on one worker. Use `-n 0` to run serially, e.g. with --pdb,
+# and for doctests: under parallel load, an asynchronous JAX callback can run
+# after its doctest has finished and its names have been cleared.
 addopts = ["-n", "4", "--dist", "loadscope"]
 # turn warnings into errors and filter out specific warnings
 filterwarnings = [
