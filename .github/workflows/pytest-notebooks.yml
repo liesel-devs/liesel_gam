@@ -36,5 +36,11 @@ jobs:
       - name: Install Package
         run: uv sync --locked --group dev
 
+      - name: Prepare large-data notebook
+        if: matrix.notebook-dir == 'large_data'
+        run: |
+          uv run mystnb-to-jupyter notebooks/large_data/test_large_data.md
+          uv pip install "liesel @ git+https://github.com/liesel-devs/liesel.git@de73db78af7f9385d1b50db01aa90a25e882e634"
+
       - name: Run pytest
-        run: uv run pytest notebooks/${{ matrix.notebook-dir }} --nbval-lax --nbval-current-env
+        run: uv run --no-sync pytest notebooks/${{ matrix.notebook-dir }} --nbval-lax --nbval-current-env
