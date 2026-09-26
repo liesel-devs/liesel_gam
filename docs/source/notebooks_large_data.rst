@@ -20,7 +20,7 @@ their rows during minibatch fitting. The full matrices must fit in memory.
 This example requires a Liesel version with ``liesel.optim`` and support for
 computed variables as split and batch data.
 
-Assume you have a :class:`.TermBuilder` named ``tb``, a Liesel ``model`` built
+Assume you have a :class:`~liesel_gam.TermBuilder` named ``tb``, a Liesel ``model`` built
 from its terms, and a DataFrame ``data`` containing the observations to fit.
 Here, all observations belong to training, and each data entry has one row per
 observation.
@@ -54,5 +54,5 @@ training loss across batches; ``result.position_min_monitor`` contains the
 parameter values selected by that monitor.
 
 Covariates shared with terms that still need raw inputs remain raw. See
-:meth:`.DictRegistry.precomputed_position` for the selection rules. For
-prediction on new covariates, use :meth:`.DictRegistry.observed_position`.
+:meth:`~liesel_gam.DictRegistry.precomputed_position` for the selection rules. For
+prediction on new covariates, use :meth:`~liesel_gam.DictRegistry.observed_position`.

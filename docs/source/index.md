@@ -159,136 +159,144 @@ regression.
 
 ### High-level API
 
-```{autosummary}
-:toctree: generated
- :caption: High-level API
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: High-level API
+   :nosignatures:
 
- ~liesel_gam.AdditivePredictor
- ~liesel_gam.MVAdditivePredictor
- ~liesel_gam.TermBuilder
- ~liesel_gam.MVTermBuilder
- ~liesel_gam.BasisBuilder
+   ~liesel_gam.AdditivePredictor
+   ~liesel_gam.MVAdditivePredictor
+   ~liesel_gam.TermBuilder
+   ~liesel_gam.MVTermBuilder
+   ~liesel_gam.BasisBuilder
 ```
 
 ### Plots
 
-```{autosummary}
-:toctree: generated
- :caption: Plots
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Plots
+   :nosignatures:
 
- ~liesel_gam.plot_1d_smooth
- ~liesel_gam.plot_2d_smooth
- ~liesel_gam.plot_forest
- ~liesel_gam.plot_polys
- ~liesel_gam.plot_regions
- ~liesel_gam.plot_1d_smooth_clustered
+   ~liesel_gam.plot_1d_smooth
+   ~liesel_gam.plot_2d_smooth
+   ~liesel_gam.plot_forest
+   ~liesel_gam.plot_polys
+   ~liesel_gam.plot_regions
+   ~liesel_gam.plot_1d_smooth_clustered
 ```
 
 ### Summary
 
-```{autosummary}
-:toctree: generated
- :caption: Summary
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Summary
+   :nosignatures:
 
- ~liesel_gam.summarise_1d_smooth
- ~liesel_gam.summarise_nd_smooth
- ~liesel_gam.summarise_lin
- ~liesel_gam.summarise_cluster
- ~liesel_gam.summarise_regions
- ~liesel_gam.summarise_1d_smooth_clustered
- ~liesel_gam.summarise_by_samples
- ~liesel_gam.polys_to_df
+   ~liesel_gam.summarise_1d_smooth
+   ~liesel_gam.summarise_nd_smooth
+   ~liesel_gam.summarise_lin
+   ~liesel_gam.summarise_cluster
+   ~liesel_gam.summarise_regions
+   ~liesel_gam.summarise_1d_smooth_clustered
+   ~liesel_gam.summarise_by_samples
+   ~liesel_gam.polys_to_df
 ```
 
 ### Bases
 
-```{autosummary}
-:toctree: generated
- :caption: Bases
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Bases
+   :nosignatures:
 
- ~liesel_gam.Basis
- ~liesel_gam.ApproximationSpec
- ~liesel_gam.MRFBasis
- ~liesel_gam.LinBasis
+   ~liesel_gam.Basis
+   ~liesel_gam.ApproximationSpec
+   ~liesel_gam.MRFBasis
+   ~liesel_gam.LinBasis
 ```
 
 ### Terms and Variables
 
-```{autosummary}
-:toctree: generated
- :caption: Terms
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Terms
+   :nosignatures:
 
- ~liesel_gam.StrctTerm
- ~liesel_gam.StrctInteractionTerm
- ~liesel_gam.StrctTensorProdTerm
- ~liesel_gam.MultivariateStrctTerm
- ~liesel_gam.MultivariateStrctInteractionTerm
- ~liesel_gam.MultivariateStrctLinTerm
- ~liesel_gam.MultivariateTPTerm
- ~liesel_gam.MultivariateIntercept
- ~liesel_gam.MultivariateContribution
- ~liesel_gam.LinTerm
- ~liesel_gam.StrctLinTerm
- ~liesel_gam.LinMixin
- ~liesel_gam.IndexingTerm
- ~liesel_gam.RITerm
- ~liesel_gam.MRFTerm
- ~liesel_gam.BasisDot
- ~liesel_gam.ScaleIG
- ~liesel_gam.CatVar
- ~liesel_gam.UserVar
+   ~liesel_gam.StrctTerm
+   ~liesel_gam.StrctInteractionTerm
+   ~liesel_gam.StrctTensorProdTerm
+   ~liesel_gam.MultivariateStrctTerm
+   ~liesel_gam.MultivariateStrctInteractionTerm
+   ~liesel_gam.MultivariateStrctLinTerm
+   ~liesel_gam.MultivariateTPTerm
+   ~liesel_gam.MultivariateIntercept
+   ~liesel_gam.MultivariateContribution
+   ~liesel_gam.LinTerm
+   ~liesel_gam.StrctLinTerm
+   ~liesel_gam.LinMixin
+   ~liesel_gam.IndexingTerm
+   ~liesel_gam.RITerm
+   ~liesel_gam.MRFTerm
+   ~liesel_gam.BasisDot
+   ~liesel_gam.ScaleIG
+   ~liesel_gam.CatVar
+   ~liesel_gam.UserVar
 ```
 
 ### Distribution
 
-```{autosummary}
-:toctree: generated
- :caption: Distribution
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Distribution
+   :nosignatures:
 
- ~liesel_gam.MultivariateNormalSingular
- ~liesel_gam.MultivariateNormalStructured
- ~liesel_gam.StructuredPenaltyOperator
+   ~liesel_gam.MultivariateNormalSingular
+   ~liesel_gam.MultivariateNormalStructured
+   ~liesel_gam.StructuredPenaltyOperator
 ```
 
 ### Other
 
-```{autosummary}
-:toctree: generated
- :caption: Other
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Other
+   :nosignatures:
 
- ~liesel_gam.DictRegistry
- ~liesel_gam.PandasRegistry
- ~liesel_gam.CategoryMapping
- ~liesel_gam.MRFSpec
- ~liesel_gam.NameManager
- ~liesel_gam.VarIGPrior
- ~liesel_gam.scale_ig
- ~liesel_gam.scale_wb
- ~liesel_gam.demo_data
- ~liesel_gam.demo_data_ta
- ~liesel_gam.LinearConstraintEVD
- ~liesel_gam.basis_setup_sample
- ~liesel_gam.category_coverage_indices
+   ~liesel_gam.DictRegistry
+   ~liesel_gam.PandasRegistry
+   ~liesel_gam.CategoryMapping
+   ~liesel_gam.MRFSpec
+   ~liesel_gam.NameManager
+   ~liesel_gam.VarIGPrior
+   ~liesel_gam.scale_ig
+   ~liesel_gam.scale_wb
+   ~liesel_gam.demo_data
+   ~liesel_gam.demo_data_ta
+   ~liesel_gam.LinearConstraintEVD
+   ~liesel_gam.basis_setup_sample
+   ~liesel_gam.category_coverage_indices
 ```
 
 ```{rubric} In/Out
 
 ```
 
-```{autosummary}
-:toctree: generated
- :caption: In/Out
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: In/Out
+   :nosignatures:
 
- ~liesel_gam.io.read_bnd
- ~liesel_gam.io.polygon_is_closed
+   ~liesel_gam.io.read_bnd
+   ~liesel_gam.io.polygon_is_closed
 ```
 
 ### Experimental
@@ -297,12 +305,13 @@ The API of modules, classes and functions in the experimental module is less sta
 than in other modules of `liesel_gam`. If you depend on this, expect changes in the
 future.
 
-```{autosummary}
-:toctree: generated
- :caption: Experimental
- :nosignatures:
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+   :caption: Experimental
+   :nosignatures:
 
- ~liesel_gam.experimental.BSplineApprox
+   ~liesel_gam.experimental.BSplineApprox
 ```
 
 ## Acknowledgements and Funding
