@@ -59,13 +59,14 @@ class LinearConstraintEVD:
     unconstrained version of ``coef``, with penalty matrix ``Z.T @ K @ Z``, where ``K``
     is the penalty matrix in the prior for ``coef``.
 
-    See :meth:`.Basis.constrain` for more detailed documentation and
+    See :meth:`Basis.constrain <liesel_gam.Basis.constrain>` for more detailed
+    documentation and
     Kneib et al. (2019) for an in-depth reference.
 
     See Also
     ---------
-    .Basis.constrain : Uses this class to apply constraints.
-    .StrctTerm.constrain : Uses this class to apply constraints.
+    liesel_gam.Basis.constrain : Uses this class to apply constraints.
+    liesel_gam.StrctTerm.constrain : Uses this class to apply constraints.
 
     References
     ----------

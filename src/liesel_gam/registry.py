@@ -9,7 +9,7 @@ import warnings
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from functools import cache
-from typing import Any, Literal, assert_never
+from typing import TYPE_CHECKING, Any, Literal, assert_never
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -50,7 +50,8 @@ class DictRegistry:
     """Registry for constructing Liesel variables from a mapping.
 
     The registry makes a shallow copy of the mapping. Values may have unrelated
-    shapes. Mutating :attr:`data` later affects uncached keys, while already-created
+    shapes. Mutating :attr:`data <liesel_gam.DictRegistry.data>` later affects uncached
+    keys, while already-created
     variables remain authoritative. Nested mappings receive no special alignment.
 
     Parameters
@@ -68,7 +69,8 @@ class DictRegistry:
         A custom converter may perform host-only work for raw values. It may be called
         repeatedly, so it must be idempotent on converted values. If its variable
         participates in compiled state updates, the converter also needs a JAX-safe
-        path for already-converted arrays or tracers. :class:`.CatVar` demonstrates
+        path for already-converted arrays or tracers. :class:`CatVar
+        <liesel_gam.CatVar>` demonstrates
         this dual-path behavior.
 
     Examples
@@ -78,6 +80,16 @@ class DictRegistry:
     >>> registry.get_obs("x").value
     Array([1., 2.], dtype=float32)
     """
+
+    if TYPE_CHECKING:
+        data: Any
+        """Source values used to construct observed variables."""
+
+        prefix: str
+        """Prefix applied to generated variable names."""
+
+        convert: Converter
+        """Default converter applied when constructing variables."""
 
     def __init__(
         self,
@@ -311,7 +323,8 @@ class DictRegistry:
         """Get a categorical observed variable and its category mapping.
 
         Registry inference intentionally rejects semantic integer labels; convert
-        them to strings first. Use :meth:`.CatVar.from_codes` only for already encoded
+        them to strings first. Use :meth:`CatVar.from_codes
+        <liesel_gam.CatVar.from_codes>` only for already encoded
         integer codes.
         """
         source = self._source_value(name)
@@ -499,7 +512,7 @@ class DictRegistry:
             Model whose observed variables and bases define the position entries.
         data
             Mapping or DataFrame containing the source values to encode, as for
-            :meth:`observed_position`.
+            :meth:`observed_position <liesel_gam.DictRegistry.observed_position>`.
 
         Returns
         -------
@@ -516,7 +529,8 @@ class DictRegistry:
         approximated spline on ``x2``; sharing ``x1`` between both terms keeps it raw.
 
         As with covariate batching, selecting rows must preserve each observation's
-        likelihood contribution. Use :meth:`observed_position` for raw inputs when
+        likelihood contribution. Use :meth:`observed_position
+        <liesel_gam.DictRegistry.observed_position>` for raw inputs when
         predicting from new covariates.
         """
         position = self.observed_position(model, data)
@@ -651,10 +665,14 @@ class DictRegistry:
 
 
 class PandasRegistry(DictRegistry):
-    """A :class:`DictRegistry` with DataFrame missing-data handling and metadata.
+    """A :class:`DictRegistry <liesel_gam.DictRegistry>` with DataFrame missing-data
+    handling
+    and metadata.
 
     Missing-data handling is applied before custom value conversion. Unlike
-    :class:`DictRegistry`, this class retains ``columns`` and ``shape`` attributes.
+    :class:`DictRegistry <liesel_gam.DictRegistry>`, this class retains ``columns`` and
+    ``shape``
+    attributes.
 
     Parameters
     ----------
@@ -665,11 +683,20 @@ class PandasRegistry(DictRegistry):
     prefix_names_by
         Prefix for generated Liesel variable names.
     convert
-        Default Liesel value converter; see :class:`DictRegistry` for converter
-        semantics and the compiled-update warning.
+        Default Liesel value converter; see :class:`DictRegistry
+        <liesel_gam.DictRegistry>`
+        for converter semantics and the compiled-update warning.
     """
 
+    if TYPE_CHECKING:
+        original_data: pd.DataFrame
+        """Copy of the source DataFrame before missing-data handling."""
+
+        na_action: Literal["error", "drop", "ignore"]
+        """Policy for handling rows with missing data."""
+
     data: pd.DataFrame
+    """Source DataFrame after missing-data handling."""
 
     def __init__(
         self,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from itertools import combinations
 from math import prod
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 import jax
 import jax.numpy as jnp
@@ -202,7 +202,8 @@ class StrctTerm(UserVar):
     r"""
     General structured additive term.
 
-    You probably want to initialize a term using :meth:`.StrctTerm.f`, which will
+    You probably want to initialize a term using :meth:`StrctTerm.f
+    <liesel_gam.StrctTerm.f>`, which will
     automatically take the penalty matrix from the supplied basis and has automatic
     naming that is convenient in most situations.
 
@@ -215,7 +216,8 @@ class StrctTerm(UserVar):
     Parameters
     ----------
     basis
-        A :class:`.Basis` instance that produces the design matrix for the term. The
+        A :class:`Basis <liesel_gam.Basis>` instance that produces the design matrix for
+        the term. The
         basis must evaluate to a 2-D array with shape ``(n_obs, n_bases)``.
     penalty
         Penalty matrix or a variable/value wrapping the penalty used to construct the
@@ -237,17 +239,18 @@ class StrctTerm(UserVar):
         hold a scalar scale. This is appropriate for most cases. If ``False``, the term
         will also allow an array-valued ``scale`` variable of shape ``(nbases,)``. This
         only really makes sense when also reparameterizing the term using
-        :meth:`.factor_scale`. Only use this if you know exactly what you are doing and
+        :meth:`factor_scale <liesel_gam.StrctTerm.factor_scale>`. Only use this if you
+        know exactly what you are doing and
         you are certain that this is what you want.
 
     See Also
     ---------
 
-    .TermBuilder : Initializes structured additive terms.
-    .BasisBuilder : Initializes structured additive term basis matrices.
-    .Basis : Basis matrix object.
-    .StrctTerm.f : Alternative, more convenient constructor.
-    .StrctTensorProdTerm : Anisotropic tensor product terms.
+    liesel_gam.TermBuilder : Initializes structured additive terms.
+    liesel_gam.BasisBuilder : Initializes structured additive term basis matrices.
+    liesel_gam.Basis : Basis matrix object.
+    liesel_gam.StrctTerm.f : Alternative, more convenient constructor.
+    liesel_gam.StrctTensorProdTerm : Anisotropic tensor product terms.
 
     Notes
     -----
@@ -369,7 +372,8 @@ class StrctTerm(UserVar):
     @property
     def scale_is_factored(self) -> bool:
         """
-        Whether the term has been reparameterized using :meth:`.factor_scale`.
+        Whether the term has been reparameterized using :meth:`factor_scale
+        <liesel_gam.StrctTerm.factor_scale>`.
 
         Examples
         --------
@@ -434,7 +438,8 @@ class StrctTerm(UserVar):
         return type is :obj:`~typing.Any` to support subclass-specific methods
         and access to the scale's internal graph without casts. Static checking
         of those operations is left to the caller. The concrete type depends on
-        construction and can change through :meth:`.replace_scale`.
+        construction and can change through :meth:`replace_scale
+        <liesel_gam.StrctTerm.replace_scale>`.
 
         Examples
         --------
@@ -606,7 +611,7 @@ class StrctTerm(UserVar):
         factor_scale: bool = False,
     ) -> Self:
         """
-        Construct a smooth term from a :class:`.Basis`.
+        Construct a smooth term from a :class:`Basis <liesel_gam.Basis>`.
 
         This convenience constructor builds a named ``term`` using the
         provided basis. The penalty matrix is taken from ``basis.penalty`` and
@@ -630,7 +635,8 @@ class StrctTerm(UserVar):
             creation, a :class:`liesel.goose.MCMCSpec`.
         factor_scale
             If ``True``, the term is reparameterized by factoring out the scale \
-            form via :meth:`.factor_scale` before being returned.
+            form via :meth:`factor_scale <liesel_gam.StrctTerm.factor_scale>` before
+            being returned.
         coef_name
             Coefficient name. The default coefficient name is a LaTeX-like string \
             ``"$\\beta_{f(x)}$"`` to improve readability in printed summaries.
@@ -703,7 +709,8 @@ class StrctTerm(UserVar):
 
         See Also
         --------
-        .Basis.diagonalize_penalty : The term calls this method internally. More details
+        liesel_gam.Basis.diagonalize_penalty : The term calls this method internally.
+          More details
             are documented there.
 
         Examples
@@ -727,7 +734,7 @@ class StrctTerm(UserVar):
         Scale the penalty relative to the size of the basis matrix.
 
         This delegates to the design-aware scaling convention implemented by
-        :meth:`.Basis.scale_penalty`.
+        :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
 
         Returns
         -------
@@ -735,7 +742,8 @@ class StrctTerm(UserVar):
 
         See Also
         --------
-        .Basis.scale_penalty : The term calls this method internally. More details
+        liesel_gam.Basis.scale_penalty : The term calls this method internally. More
+          details
             are documented there.
 
         Examples
@@ -775,7 +783,7 @@ class StrctTerm(UserVar):
 
         See Also
         --------
-        .Basis.constrain : The term calls this method internally. More details
+        liesel_gam.Basis.constrain : The term calls this method internally. More details
             are documented there.
 
         Examples
@@ -803,12 +811,14 @@ class MRFTerm(StrctTerm):
     """
     Term object for Markov random fields.
 
-    Derived from :class:`.StrctTerm`, with a few additional attributes that give
+    Derived from :class:`StrctTerm <liesel_gam.StrctTerm>`, with a few additional
+    attributes that give
     access to information about the Markov random field setup.
 
     Examples
     --------
-    ``MRFTerm`` objects are usually created by :class:`.TermBuilder`, which also
+    :class:`MRFTerm <liesel_gam.MRFTerm>` objects are usually created by
+    :class:`TermBuilder <liesel_gam.TermBuilder>`, which also
     attaches label and neighborhood metadata.
 
     >>> import pandas as pd
@@ -865,7 +875,8 @@ class MRFTerm(StrctTerm):
         """
         Set the neighborhood dictionary for the term.
 
-        This setter is primarily used by :meth:`.TermBuilder.mrf` after constructing
+        This setter is primarily used by :meth:`TermBuilder.mrf
+        <liesel_gam.TermBuilder.mrf>` after constructing
         the Markov random field basis.
         """
         self._neighbors = value
@@ -904,7 +915,8 @@ class MRFTerm(StrctTerm):
         """
         Set polygon coordinates keyed by region label.
 
-        This setter is primarily used by :meth:`.TermBuilder.mrf`.
+        This setter is primarily used by :meth:`TermBuilder.mrf
+        <liesel_gam.TermBuilder.mrf>`.
         """
         self._polygons = value
 
@@ -936,7 +948,8 @@ class MRFTerm(StrctTerm):
         """
         Set the region labels.
 
-        This setter is primarily used by :meth:`.TermBuilder.mrf`.
+        This setter is primarily used by :meth:`TermBuilder.mrf
+        <liesel_gam.TermBuilder.mrf>`.
         """
         self._labels = value
 
@@ -970,7 +983,8 @@ class MRFTerm(StrctTerm):
         """
         Set the label-integer mapping for the regions.
 
-        This setter is primarily used by :meth:`.TermBuilder.mrf`.
+        This setter is primarily used by :meth:`TermBuilder.mrf
+        <liesel_gam.TermBuilder.mrf>`.
         """
         self._mapping = value
 
@@ -1005,7 +1019,8 @@ class MRFTerm(StrctTerm):
         """
         Set labels ordered like the basis and penalty columns.
 
-        This setter is primarily used by :meth:`.TermBuilder.mrf` when the basis
+        This setter is primarily used by :meth:`TermBuilder.mrf
+        <liesel_gam.TermBuilder.mrf>` when the basis
         still has a clear parameter-to-label correspondence.
         """
         self._ordered_labels = value
@@ -1015,7 +1030,7 @@ class IndexingTerm(StrctTerm):
     """
     Term object for memory-efficient representation of sparse bases.
 
-    Derived from :class:`.StrctTerm`.
+    Derived from :class:`StrctTerm <liesel_gam.StrctTerm>`.
     If the basis matrix of a term is a dummy matrix, where each column consists only of
     binary (0/1) entries, and each row has only one non-zero entry, then it is not
     necessary to store the full matrix in memory and evaluate the term as a dot product
@@ -1028,7 +1043,7 @@ class IndexingTerm(StrctTerm):
     This class implements such a sparse representation.
 
     In case you do need to materialize the full, sparse basis of such a term, you can
-    use :meth:`.IndexingTerm.init_full_basis`.
+    use :meth:`IndexingTerm.init_full_basis <liesel_gam.IndexingTerm.init_full_basis>`.
 
     Examples
     --------
@@ -1105,7 +1120,8 @@ class IndexingTerm(StrctTerm):
 
     def init_full_basis(self) -> Basis:
         """
-        Materializes a :class:`.Basis` object that holds the full basis matrix
+        Materializes a :class:`Basis <liesel_gam.Basis>` object that holds the full
+        basis matrix
         corresponding to this term.
 
         Examples
@@ -1125,8 +1141,9 @@ class RITerm(IndexingTerm):
     """
     Term object for memory-efficient representation of independent random intercepts.
 
-    Specialized subclass of :class:`.IndexingTerm`, which itself is derived from
-    :class:`.StrctTerm`.
+    Specialized subclass of :class:`IndexingTerm <liesel_gam.IndexingTerm>`, which
+    itself is derived from
+    :class:`StrctTerm <liesel_gam.StrctTerm>`.
 
     Examples
     --------
@@ -1187,7 +1204,8 @@ class RITerm(IndexingTerm):
         """
         Set the labels for all clusters.
 
-        This setter is primarily used by :meth:`.TermBuilder.ri`.
+        This setter is primarily used by :meth:`TermBuilder.ri
+        <liesel_gam.TermBuilder.ri>`.
         """
         if not len(value) == self.nclusters:
             raise ValueError(f"Expected {self.nclusters} labels, got {len(value)}.")
@@ -1216,7 +1234,8 @@ class RITerm(IndexingTerm):
         """
         Set the label-integer mapping for the clusters.
 
-        This setter is primarily used by :meth:`.TermBuilder.ri`.
+        This setter is primarily used by :meth:`TermBuilder.ri
+        <liesel_gam.TermBuilder.ri>`.
         """
         self._mapping = value
 
@@ -1225,7 +1244,8 @@ class BasisDot(UserVar):
     """
     Basic term variable for a dot-product ``basis @ coef``.
 
-    In comparison to :class:`.StrctTerm`, this class makes fewer assumptions, since it
+    In comparison to :class:`StrctTerm <liesel_gam.StrctTerm>`, this class makes fewer
+    assumptions, since it
     does not assume any prior distribution, or structure of the prior distribution, for
     the coefficients. Instead, a prior for the coefficients of this term (if desired) is
     defined manually as a :class:`liesel.model.Dist` in the ``prior`` argument.
@@ -1238,6 +1258,16 @@ class BasisDot(UserVar):
     >>> term.coef.value.shape, term.value.shape
     ((2,), (4,))
     """
+
+    if TYPE_CHECKING:
+        basis: Basis
+        """Basis variable used to evaluate the term."""
+
+        coef: lsl.Var
+        """Coefficient variable for this term."""
+
+        nbases: int
+        """Number of basis coefficients."""
 
     def __init__(
         self,
@@ -1306,8 +1336,9 @@ class LinMixin:
         """
         Set the :class:`formulaic.ModelSpec` used by this linear term.
 
-        This setter is primarily used by :meth:`.TermBuilder.lin` and
-        :meth:`.TermBuilder.slin`.
+        This setter is primarily used by :meth:`TermBuilder.lin
+        <liesel_gam.TermBuilder.lin>` and
+        :meth:`TermBuilder.slin <liesel_gam.TermBuilder.slin>`.
         """
         if not isinstance(value, ModelSpec):
             raise TypeError(
@@ -1339,8 +1370,9 @@ class LinMixin:
         """
         Set categorical label mappings for this linear term.
 
-        This setter is primarily used by :meth:`.TermBuilder.lin` and
-        :meth:`.TermBuilder.slin`.
+        This setter is primarily used by :meth:`TermBuilder.lin
+        <liesel_gam.TermBuilder.lin>` and
+        :meth:`TermBuilder.slin <liesel_gam.TermBuilder.slin>`.
         """
         if not isinstance(value, dict):
             raise TypeError(f"Replacement must be of type dict, got {type(value)}.")
@@ -1376,8 +1408,9 @@ class LinMixin:
         """
         Set column names for this term.
 
-        This setter is primarily used by :meth:`.TermBuilder.lin` and
-        :meth:`.TermBuilder.slin`.
+        This setter is primarily used by :meth:`TermBuilder.lin
+        <liesel_gam.TermBuilder.lin>` and
+        :meth:`TermBuilder.slin <liesel_gam.TermBuilder.slin>`.
         """
         if not isinstance(value, Sequence):
             raise TypeError(f"Replacement must be a sequence, got {type(value)}.")
@@ -1396,7 +1429,7 @@ class LinMixin:
 
 class LinTerm(BasisDot, LinMixin):
     """
-    Specialized :class:`.BasisDot` for general linear effects.
+    Specialized :class:`BasisDot <liesel_gam.BasisDot>` for general linear effects.
 
     Examples
     --------
@@ -1410,7 +1443,7 @@ class LinTerm(BasisDot, LinMixin):
 
 class StrctLinTerm(StrctTerm, LinMixin):
     """
-    Specialized :class:`.StrctTerm` for linear effects.
+    Specialized :class:`StrctTerm <liesel_gam.StrctTerm>` for linear effects.
 
     This term can be used, for example, to set up linear effects with a ridge prior.
 
@@ -1435,7 +1468,8 @@ class StrctInteractionTerm(UserVar):
     Parameters
     ----------
     *marginals
-        Marginal terms. A :class:`.LinTerm` contributes a zero penalty, without
+        Marginal terms. A :class:`LinTerm <liesel_gam.LinTerm>` contributes a zero
+        penalty, without
         modifying its basis or coefficient prior.
     common_scale
         A single, common scale to cover all marginal dimensions, resulting in an
@@ -1456,23 +1490,26 @@ class StrctInteractionTerm(UserVar):
 
     See Also
     --------
-    .StrctTerm : Basic (isotropic) structured additive term.
-    .StrctTensorProdTerm : Full anisotropic tensor product term.
-    .TermBuilder : Initializes structured additive terms.
-    .BasisBuilder : Initializes structured additive term basis matrices.
-    .Basis : Basis matrix object.
-    .StrctTerm.f : Alternative, more convenient constructor.
+    liesel_gam.StrctTerm : Basic (isotropic) structured additive term.
+    liesel_gam.StrctTensorProdTerm : Full anisotropic tensor product term.
+    liesel_gam.TermBuilder : Initializes structured additive terms.
+    liesel_gam.BasisBuilder : Initializes structured additive term basis matrices.
+    liesel_gam.Basis : Basis matrix object.
+    liesel_gam.StrctTerm.f : Alternative, more convenient constructor.
 
     Notes
     -----
 
     .. note::
-        The classes :class:`.StrctInteractionTerm` and :class:`.StrctTensorProdTerm`
+        The classes :class:`StrctInteractionTerm <liesel_gam.StrctInteractionTerm>` and
+        :class:`StrctTensorProdTerm <liesel_gam.StrctTensorProdTerm>`
         are closely related. The former loosely corresponds to ``mgcv::ti``, and the
         latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
-        centered marginals, :class:`.StrctInteractionTerm` will *only* include the
+        centered marginals, :class:`StrctInteractionTerm
+        <liesel_gam.StrctInteractionTerm>` will *only* include the
         highest-order interaction of the supplied marginals, while
-        :class:`.StrctTensorProdTerm` will include the highest-order interaction *and*
+        :class:`StrctTensorProdTerm <liesel_gam.StrctTensorProdTerm>` will include the
+        highest-order interaction *and*
         all lower-order interactions, including the main effects.
 
     Assumes that the term is a tensor product of :math:`M` marginal bases that can be
@@ -1513,7 +1550,9 @@ class StrctInteractionTerm(UserVar):
 
     The tensor-product basis is never materialized. Instead, the coefficient tensor is
     contracted with the marginal bases one dimension at a time. Consequently, this
-    class exposes :attr:`marginal_bases`, but intentionally has no ``basis`` attribute.
+    class exposes :attr:`marginal_bases
+    <liesel_gam.StrctInteractionTerm.marginal_bases>`, but intentionally has no
+    ``basis`` attribute.
 
     The coefficient vector is equipped with a potentially rank-deficient multivariate
     Gaussian prior, which, in the notation of Bach & Klein (2025), can be written as
@@ -1567,7 +1606,8 @@ class StrctInteractionTerm(UserVar):
 
     This term exploits the clearly defined structure of the precision matrix
     to obtain a computationally and memory-efficient evaluation of the prior,
-    implemented in the :class:`.MultivariateNormalStructured` distribution class.
+    implemented in the :class:`MultivariateNormalStructured
+    <liesel_gam.MultivariateNormalStructured>` distribution class.
     We also implement the results obtained by Bach & Klein (2025) for efficiently
     computing the pseudo-determinant; a key prerequisite for making higher-dimensional
     tensor products feasible.
@@ -1601,6 +1641,40 @@ class StrctInteractionTerm(UserVar):
     >>> [basis.value.shape for basis in term.marginal_bases]
     [(4, 2), (4, 2)]
     """
+
+    if TYPE_CHECKING:
+        xnames: str
+        """Comma-separated names of the observed inputs."""
+
+        marginals: Sequence[StrctTerm | LinTerm]
+        """Marginal terms defining the tensor product."""
+
+        marginal_bases: Sequence[Basis]
+        """Marginal basis variables, without materializing a tensor-product matrix."""
+
+        bases: Sequence[Basis]
+        """Basis variables of the marginal terms."""
+
+        marginal_sizes: tuple[int, ...]
+        """Number of coefficients for each covariate margin."""
+
+        penalties: Sequence[Array]
+        """Penalty matrices of the marginal terms."""
+
+        scales: Sequence[lsl.Var | lsl.Node]
+        """Scale variables of the marginal terms."""
+
+        nbases: int
+        """Number of basis coefficients."""
+
+        coef: lsl.Var
+        """Coefficient variable for this term."""
+
+        scale: lsl.Var | lsl.Node
+        """Scale variable or node used by the coefficient prior."""
+
+        include_main_effects: bool
+        """Whether the term includes the marginal main effects."""
 
     def __init__(
         self,
@@ -1855,7 +1929,8 @@ class StrctInteractionTerm(UserVar):
         Parameters
         ----------
         *marginals
-            Marginal terms. A :class:`.LinTerm` contributes a zero penalty, without
+            Marginal terms. A :class:`LinTerm <liesel_gam.LinTerm>` contributes a zero
+            penalty, without
             modifying its basis or coefficient prior.
         common_scale
             A single, common scale to cover both marginal dimensions, resulting in an
@@ -1911,7 +1986,8 @@ class StrctTensorProdTerm(UserVar):
     Parameters
     ----------
     *marginals
-        Marginal terms. A :class:`.LinTerm` contributes a zero penalty, without
+        Marginal terms. A :class:`LinTerm <liesel_gam.LinTerm>` contributes a zero
+        penalty, without
         modifying its basis or coefficient prior.
     common_scale
         A single, common scale to cover all marginal dimensions, resulting in an
@@ -1950,23 +2026,26 @@ class StrctTensorProdTerm(UserVar):
 
     See Also
     --------
-    .StrctTerm : Basic (isotropic) structured additive term.
-    .StrctTensorProdTerm : Full anisotropic tensor product term.
-    .TermBuilder : Initializes structured additive terms.
-    .BasisBuilder : Initializes structured additive term basis matrices.
-    .Basis : Basis matrix object.
-    .StrctTerm.f : Alternative, more convenient constructor.
+    liesel_gam.StrctTerm : Basic (isotropic) structured additive term.
+    liesel_gam.StrctTensorProdTerm : Full anisotropic tensor product term.
+    liesel_gam.TermBuilder : Initializes structured additive terms.
+    liesel_gam.BasisBuilder : Initializes structured additive term basis matrices.
+    liesel_gam.Basis : Basis matrix object.
+    liesel_gam.StrctTerm.f : Alternative, more convenient constructor.
 
     Notes
     -----
 
     .. note::
-        The classes :class:`.StrctInteractionTerm` and :class:`.StrctTensorProdTerm`
+        The classes :class:`StrctInteractionTerm <liesel_gam.StrctInteractionTerm>` and
+        :class:`StrctTensorProdTerm <liesel_gam.StrctTensorProdTerm>`
         are closely related. The former loosely corresponds to ``mgcv::ti``, and the
         latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
-        centered marginals, :class:`.StrctInteractionTerm` will *only* include the
+        centered marginals, :class:`StrctInteractionTerm
+        <liesel_gam.StrctInteractionTerm>` will *only* include the
         highest-order interaction of the supplied marginals, while
-        :class:`.StrctTensorProdTerm` will include the highest-order interaction *and*
+        :class:`StrctTensorProdTerm <liesel_gam.StrctTensorProdTerm>` will include the
+        highest-order interaction *and*
         all lower-order interactions, including the main effects.
 
     Assumes that the term is a tensor product of :math:`M` marginal bases that can be
@@ -2060,7 +2139,8 @@ class StrctTensorProdTerm(UserVar):
 
     This term exploits the clearly defined structure of the precision matrix
     to obtain a computationally and memory-efficient evaluation of the prior,
-    implemented in the :class:`.MultivariateNormalPenaltyOperator` distribution class.
+    implemented in the :class:`MultivariateNormalStructured
+    <liesel_gam.MultivariateNormalStructured>` distribution class.
     We also implement the results obtained by Bach & Klein (2025) for efficiently
     computing the pseudo-determinant; a key prerequisite for making higher-dimensional
     tensor products feasible.
@@ -2092,6 +2172,28 @@ class StrctTensorProdTerm(UserVar):
     >>> len(term.terms), term.value.shape
     (3, (4,))
     """
+
+    if TYPE_CHECKING:
+        order: Sequence[int]
+        """Interaction orders included in the tensor product."""
+
+        terms_by_order: dict[int, list[StrctTerm | StrctInteractionTerm | LinTerm]]
+        """Included component terms grouped by interaction order."""
+
+        marginals: Sequence[StrctTerm | LinTerm]
+        """Marginal terms defining the tensor product."""
+
+        bases: Sequence[Basis]
+        """Basis variables of the marginal terms."""
+
+        penalties: Sequence[Array]
+        """Penalty matrices of the marginal terms."""
+
+        xnames: str
+        """Comma-separated names of the observed inputs."""
+
+        term_groups: dict[int, lsl.Var]
+        """Optional sum variables grouped by interaction order."""
 
     def __init__(
         self,
@@ -2292,7 +2394,8 @@ class MultivariateStrctTerm(UserVar):
     """A structured term with shared cross-dimensional smoothing.
 
     This class wraps one ordinary marginal term. Use
-    :class:`MultivariateStrctInteractionTerm` for two or more marginals.
+    :class:`MultivariateStrctInteractionTerm
+    <liesel_gam.MultivariateStrctInteractionTerm>` for two or more marginals.
 
     Parameters
     ----------
@@ -2316,7 +2419,8 @@ class MultivariateStrctTerm(UserVar):
     _update_on_init
         Whether to evaluate the term during initialization.
     _factorized
-        Internal flag used by :class:`MultivariateStrctInteractionTerm`.
+        Internal flag used by :class:`MultivariateStrctInteractionTerm
+        <liesel_gam.MultivariateStrctInteractionTerm>`.
 
     Examples
     --------
@@ -2334,6 +2438,64 @@ class MultivariateStrctTerm(UserVar):
     >>> term.value.shape
     (4, 2)
     """
+
+    if TYPE_CHECKING:
+        xnames: str
+        """Comma-separated names of the observed inputs."""
+
+        marginal_terms: Sequence[StrctTerm]
+        """Marginal terms defining the covariate contribution."""
+
+        marginal_bases: Sequence[Basis]
+        """Marginal basis variables, without materializing a tensor-product matrix."""
+
+        marginal_sizes: tuple[int, ...]
+        """Number of coefficients for each covariate margin."""
+
+        marginal_penalties: Sequence[Array]
+        """Covariate-side penalty matrices."""
+
+        dimension_penalties: Sequence[ArrayLike | lsl.Value]
+        """Cross-dimensional penalty matrices."""
+
+        dimension_penalty_values: list[lsl.Value]
+        """Cross-dimensional penalties stored as value nodes."""
+
+        dimension_penalty: lsl.Value | None
+        """Single cross-dimensional penalty node, or ``None`` for multiple penalties."""
+
+        marginal_scales: Sequence[lsl.Var | lsl.Node]
+        """Covariate-side scale variables."""
+
+        dimension_scales: Sequence[lsl.Var]
+        """Scale variables for the cross-dimensional penalties."""
+
+        dimension_scale: lsl.Var | None
+        """Single cross-dimensional scale variable, or ``None`` for multiple scales."""
+
+        scale: lsl.Var | lsl.Node
+        """Scale variable or node used by the coefficient prior."""
+
+        nbases: int
+        """Number of basis coefficients."""
+
+        latent_ndim: int
+        """Number of latent cross-dimensional coordinates."""
+
+        ndim: int
+        """Number of reconstructed output dimensions."""
+
+        dimension_reparam: lsl.Value
+        """Matrix node mapping latent coordinates to output dimensions."""
+
+        coef: lsl.Var
+        """Coefficient variable for this term."""
+
+        latent: lsl.Var
+        """Contribution in latent cross-dimensional coordinates."""
+
+        basis: Basis | lsl.Var
+        """Basis variable used to evaluate the term."""
 
     def __init__(
         self,
@@ -2612,7 +2774,8 @@ class MultivariateStrctInteractionTerm(MultivariateStrctTerm):
     The coefficient vector is reshaped to a tensor with one axis per marginal and a
     trailing latent-dimension axis. Factorized contractions evaluate the effect without
     constructing an observation-by-product-dimension basis matrix. The term exposes
-    :attr:`marginal_bases`, but intentionally has no ``basis`` attribute.
+    :attr:`marginal_bases <liesel_gam.MultivariateStrctTerm.marginal_bases>`, but
+    intentionally has no ``basis`` attribute.
 
     Parameters
     ----------
@@ -2690,7 +2853,8 @@ class MultivariateStrctInteractionTerm(MultivariateStrctTerm):
     ) -> Self:
         """Construct a multivariate interaction with automatic names.
 
-        Unlike :meth:`MultivariateStrctTerm.f`, this factory intentionally has no
+        Unlike :meth:`MultivariateStrctTerm.f <liesel_gam.MultivariateStrctTerm.f>`,
+        this factory intentionally has no
         ``basis_name`` argument because an interaction retains only its marginal
         bases and never materializes a tensor-product basis.
 
@@ -2756,8 +2920,9 @@ class MultivariateStrctInteractionTerm(MultivariateStrctTerm):
 class MultivariateStrctLinTerm(MultivariateStrctTerm, LinMixin):
     """Multivariate structured linear term retaining formula metadata.
 
-    It is normally created by :meth:`.MVTermBuilder.lin` or
-    :meth:`.MVTermBuilder.slin`.
+    It is normally created by :meth:`MVTermBuilder.lin <liesel_gam.MVTermBuilder.lin>`
+    or
+    :meth:`MVTermBuilder.slin <liesel_gam.MVTermBuilder.slin>`.
 
     Parameters
     ----------
@@ -2781,7 +2946,8 @@ class MultivariateStrctLinTerm(MultivariateStrctTerm, LinMixin):
     _update_on_init
         Whether to evaluate the term during initialization.
     _factorized
-        Internal flag inherited from :class:`MultivariateStrctTerm`.
+        Internal flag inherited from :class:`MultivariateStrctTerm
+        <liesel_gam.MultivariateStrctTerm>`.
 
     Examples
     --------
@@ -2850,6 +3016,55 @@ class MultivariateTPTerm(UserVar):
     >>> tensor.value.shape
     (4, 2)
     """
+
+    if TYPE_CHECKING:
+        order: Sequence[int]
+        """Interaction orders included in the tensor product."""
+
+        terms_by_order: dict[int, list[MultivariateStrctTerm]]
+        """Included component terms grouped by interaction order."""
+
+        marginals: Sequence[StrctTerm]
+        """Marginal terms defining the tensor product."""
+
+        marginal_terms: Sequence[StrctTerm]
+        """Marginal terms defining the covariate contribution."""
+
+        marginal_bases: Sequence[Basis]
+        """Marginal basis variables, without materializing a tensor-product matrix."""
+
+        marginal_penalties: Sequence[Array]
+        """Covariate-side penalty matrices."""
+
+        dimension_penalties: Sequence[ArrayLike | lsl.Value]
+        """Cross-dimensional penalty matrices."""
+
+        dimension_scales: Sequence[lsl.Var]
+        """Scale variables for the cross-dimensional penalties."""
+
+        dimension_scale: lsl.Var | None
+        """Single cross-dimensional scale variable, or ``None`` for multiple scales."""
+
+        dimension_reparam: lsl.Value
+        """Matrix node mapping latent coordinates to output dimensions."""
+
+        dimension_penalty: lsl.Value | None
+        """Single cross-dimensional penalty node, or ``None`` for multiple penalties."""
+
+        latent_ndim: int
+        """Number of latent cross-dimensional coordinates."""
+
+        ndim: int
+        """Number of reconstructed output dimensions."""
+
+        xnames: str
+        """Comma-separated names of the observed inputs."""
+
+        latent: lsl.Var
+        """Contribution in latent cross-dimensional coordinates."""
+
+        term_groups: dict[int, lsl.Var]
+        """Optional sum variables grouped by interaction order."""
 
     def __init__(
         self,

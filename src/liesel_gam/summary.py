@@ -68,7 +68,8 @@ def summarise_by_samples(
     Parameters
     ----------
     key
-        Jax key-array (created by ``jax.random.key``) for drawing subsamples.
+        Jax key-array (created by :func:`jax.random.key <jax.random.key>`) for drawing
+        subsamples.
     a
         The array to be summarized, assumed to have shape ``(C, S, N)``, where
         ``C`` is the number of MCMC chains, ``S`` is the number of samples, and
@@ -398,7 +399,8 @@ def summarise_nd_smooth(
     Parameters
     ----------
     term
-        The term to summarise,  a :class:`.StrctTerm` or :class:`.StrctTensorProdTerm`.
+        The term to summarise,  a :class:`StrctTerm <liesel_gam.StrctTerm>` or
+        :class:`StrctTensorProdTerm <liesel_gam.StrctTensorProdTerm>`.
     samples
         Either a Model position or Posterior samples. Values may have zero, one (draws),
         or two (chains, draws) leading sample dimensions. Must contain values for
@@ -582,7 +584,8 @@ def summarise_cluster(
     hdi_prob: float = 0.9,
 ) -> pd.DataFrame:
     """
-    Summarises a discrete term represented by :class:`.RITerm` or :class:`.MRFTerm`.
+    Summarises a discrete term represented by :class:`RITerm <liesel_gam.RITerm>` or
+    :class:`MRFTerm <liesel_gam.MRFTerm>`.
 
     Parameters
     ----------
@@ -714,7 +717,8 @@ def summarise_regions(
     Parameters
     ----------
     term
-        The term to summarise, a :class:`.RITerm` or :class:`.MRFTerm`.
+        The term to summarise, a :class:`RITerm <liesel_gam.RITerm>` or :class:`MRFTerm
+        <liesel_gam.MRFTerm>`.
     samples
         Either a Model position or Posterior samples. Values may have zero, one (draws),
         or two (chains, draws) leading sample dimensions. Must contain values for
@@ -885,7 +889,8 @@ def summarise_1d_smooth_clustered(
     """
     Summarises a clustered smooth or linear function.
 
-    Intended for terms, as returned by :meth:`.TermBuilder.rs`.
+    Intended for terms, as returned by :meth:`TermBuilder.rs
+    <liesel_gam.TermBuilder.rs>`.
 
     Parameters
     ----------

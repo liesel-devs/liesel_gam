@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Any, Literal, Self, cast
+from typing import TYPE_CHECKING, Any, Literal, Self, cast
 
 import jax
 import jax.numpy as jnp
@@ -57,6 +57,16 @@ class MultivariateContribution(UserVar):
     >>> contribution.value.tolist()
     [[1.0, -1.0]]
     """
+
+    if TYPE_CHECKING:
+        latent: lsl.Var | lsl.Node
+        """Contribution in latent cross-dimensional coordinates."""
+
+        dimension_reparam: lsl.Value
+        """Matrix node mapping latent coordinates to output dimensions."""
+
+        dimension_penalty: lsl.Value
+        """Cross-dimensional penalty node."""
 
     def __init__(
         self,
@@ -148,6 +158,16 @@ class MultivariateIntercept(MultivariateContribution):
     >>> intercept.value.shape
     (2,)
     """
+
+    if TYPE_CHECKING:
+        coef: lsl.Var
+        """Coefficient variable for this term."""
+
+        coef_name: str
+        """Name of the coefficient variable."""
+
+        scale: lsl.Var | None
+        """Scale variable or node used by the coefficient prior."""
 
     def __init__(
         self,
@@ -262,8 +282,10 @@ class MVAdditivePredictor(UserVar):
     reconstructed full-dimensional views. By default, the penalty is divided by its
     infinity norm.
 
-    Call :meth:`constrain` before constructing or adding terms. A linked
-    :class:`.MVTermBuilder` then reuses the projected penalty and reconstruction
+    Call :meth:`constrain <liesel_gam.MVAdditivePredictor.constrain>` before
+    constructing or adding terms. A linked
+    :class:`MVTermBuilder <liesel_gam.MVTermBuilder>` then reuses the projected penalty
+    and reconstruction
     matrix for every term.
 
     Parameters
@@ -295,6 +317,13 @@ class MVAdditivePredictor(UserVar):
     >>> predictor.ndim, predictor.latent_ndim
     (4, 3)
     """
+
+    if TYPE_CHECKING:
+        terms: dict[str, lsl.Var]
+        """Reconstructed component terms indexed by name."""
+
+        latent_terms: dict[str, lsl.Var | lsl.Node]
+        """Component contributions in latent coordinates, indexed by name."""
 
     def __init__(
         self,
@@ -495,7 +524,8 @@ class MVAdditivePredictor(UserVar):
 
     @property
     def reparam_matrix(self) -> Array | None:
-        """Accumulated reconstruction matrix created by :meth:`constrain`.
+        """Accumulated reconstruction matrix created by :meth:`constrain
+        <liesel_gam.MVAdditivePredictor.constrain>`.
 
         Examples
         --------
@@ -705,7 +735,8 @@ class MVAdditivePredictor(UserVar):
         Parameters
         ----------
         terms
-            Sequence of terms accepted by :meth:`append`.
+            Sequence of terms accepted by :meth:`append
+            <liesel_gam.MVAdditivePredictor.append>`.
 
         Examples
         --------
@@ -752,7 +783,8 @@ class MVAdditivePredictor(UserVar):
         order
             Difference order, between one and ``ndim - 1``.
         **kwargs
-            Additional arguments forwarded to :class:`MVAdditivePredictor`.
+            Additional arguments forwarded to :class:`MVAdditivePredictor
+            <liesel_gam.MVAdditivePredictor>`.
 
         Examples
         --------
@@ -780,7 +812,8 @@ class MVAdditivePredictor(UserVar):
         ndim
             Positive number of output dimensions.
         **kwargs
-            Additional arguments forwarded to :class:`MVAdditivePredictor`.
+            Additional arguments forwarded to :class:`MVAdditivePredictor
+            <liesel_gam.MVAdditivePredictor>`.
 
         Examples
         --------
@@ -802,7 +835,8 @@ class MVAdditivePredictor(UserVar):
         ndim
             Positive number of output dimensions.
         **kwargs
-            Additional arguments forwarded to :class:`MVAdditivePredictor`.
+            Additional arguments forwarded to :class:`MVAdditivePredictor
+            <liesel_gam.MVAdditivePredictor>`.
 
         Examples
         --------

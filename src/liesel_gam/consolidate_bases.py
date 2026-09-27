@@ -1,5 +1,5 @@
 """
-Instances of :class:`.Basis` may use non-jittable basis functions.
+Instances of :class:`Basis <liesel_gam.Basis>` may use non-jittable basis functions.
 In batched optimization, this may lead to inefficient repeated basis evaluation.
 
 To solve these issues, this module provides utility functions to create models that
@@ -57,7 +57,8 @@ def consolidate_bases(
     model: lsl.Model, copy: bool = True
 ) -> tuple[lsl.Model, lsl.Model]:
     """
-    Turns all :class:`.Basis` variables in the provided model into strong,
+    Turns all :class:`Basis <liesel_gam.Basis>` variables in the provided model into
+    strong,
     observed :class:`liesel.model.Var` variables.
 
     Returns a new model that depends only on the strong bases, and a model that
@@ -99,7 +100,8 @@ def consolidate_bases(
 
 def evaluate_bases(newdata: Position, model: lsl.Model) -> Position:
     """
-    Evaluates all :class:`.Basis` variables in the provided model at the provided
+    Evaluates all :class:`Basis <liesel_gam.Basis>` variables in the provided model at
+    the provided
     newdata position.
     """
     state = model.update_state(newdata)

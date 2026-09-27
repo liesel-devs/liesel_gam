@@ -96,6 +96,8 @@ html_logo = "_static/logo-light.png"
 html_theme_options = {
     "repository_url": "https://github.com/liesel-devs/liesel_gam",
     "use_repository_button": True,
+    "show_navbar_depth": 1,
+    "max_navbar_depth": 2,
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -128,7 +130,7 @@ autosummary_filename_map = {}
 autosummary_ignore_module_all = False
 
 # Remove auto-generated API docs from the sidebar. They take too long to build.
-remove_from_toctrees = []
+remove_from_toctrees = ["notebooks_*.rst"]
 
 
 # --------------------------------------------------------------------------------------
@@ -139,5 +141,9 @@ remove_from_toctrees = []
 myst_heading_anchors = 3  # auto-generate 3 levels of heading anchors
 myst_enable_extensions = ["amsmath", "dollarmath", "html_image"]
 myst_dmath_double_inline = True
-# Don’t execute notebooks during docs builds:
-nb_execution_mode = "off"
+# Maintained MyST guides execute on every build; legacy JSON examples are archived.
+nb_execution_mode = "force"
+nb_execution_timeout = 600
+nb_execution_allow_errors = False
+nb_execution_raise_on_error = True
+nb_execution_excludepatterns = ["**/*.ipynb"]

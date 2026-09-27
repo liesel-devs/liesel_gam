@@ -87,12 +87,14 @@ class CategoryMapping:
 
     @property
     def labels_to_integers_map(self) -> Mapping[Any, int]:
-        """Compatibility alias for :attr:`labels_to_codes_map`."""
+        """Compatibility alias for :attr:`labels_to_codes_map
+        <liesel_gam.CategoryMapping.labels_to_codes_map>`."""
         return self.labels_to_codes_map
 
     @property
     def integers_to_labels_map(self) -> Mapping[int, Any]:
-        """Compatibility alias for :attr:`codes_to_labels_map`."""
+        """Compatibility alias for :attr:`codes_to_labels_map
+        <liesel_gam.CategoryMapping.codes_to_labels_map>`."""
         return self.codes_to_labels_map
 
     @classmethod
@@ -204,7 +206,8 @@ class CategoryMapping:
         .. warning::
 
             Integer inputs are interpreted as codes, not semantic integer labels. This
-            makes the conversion idempotent. Use :meth:`labels_to_codes` when you
+            makes the conversion idempotent. Use :meth:`labels_to_codes
+            <liesel_gam.CategoryMapping.labels_to_codes>` when you
             explicitly need to encode integer-valued labels. Invalid integer codes are
             rejected even when a catch-all category is configured.
         """
@@ -227,7 +230,8 @@ class CategoryMapping:
     def to_integers(
         self, labels_or_integers: np.typing.ArrayLike | Sequence[int] | Sequence[str]
     ) -> np.typing.NDArray[np.int_]:
-        """Compatibility alias for :meth:`to_codes`.
+        """Compatibility alias for :meth:`to_codes
+        <liesel_gam.CategoryMapping.to_codes>`.
 
         Parameters
         ----------
@@ -268,7 +272,7 @@ class CategoryMapping:
         """Convert category labels to integer codes.
 
         Unknown nonmissing labels map to the configured catch-all category. If no
-        catch-all is configured, they raise :class:`UnknownLabelError`. Missing labels
+        catch-all is configured, they raise ``UnknownLabelError``. Missing labels
         always raise.
 
         Parameters
@@ -295,7 +299,8 @@ class CategoryMapping:
     def labels_to_integers(
         self, labels: np.typing.ArrayLike | Sequence[Any]
     ) -> np.typing.NDArray[np.int_]:
-        """Compatibility alias for :meth:`labels_to_codes`.
+        """Compatibility alias for :meth:`labels_to_codes
+        <liesel_gam.CategoryMapping.labels_to_codes>`.
 
         Parameters
         ----------
@@ -331,7 +336,8 @@ class CategoryMapping:
     def integers_to_labels(
         self, integers: np.typing.ArrayLike | Sequence[int]
     ) -> np.typing.NDArray[Any]:
-        """Compatibility alias for :meth:`codes_to_labels`.
+        """Compatibility alias for :meth:`codes_to_labels
+        <liesel_gam.CategoryMapping.codes_to_labels>`.
 
         Parameters
         ----------

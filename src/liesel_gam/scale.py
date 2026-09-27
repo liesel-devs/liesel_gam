@@ -93,7 +93,8 @@ def scale_wb(
         Bijector from the unconstrained parameterization to :math:`\tau^2`.
     name
         Name of the returned scale variable. The variance is named ``f"{name}^2"``.
-        The default placeholder is filled by :class:`.TermBuilder` when the scale is
+        The default placeholder is filled by :class:`TermBuilder
+        <liesel_gam.TermBuilder>` when the scale is
         used for a term.
     inference
         Inference specification for the bijected variance parameter.
@@ -150,7 +151,8 @@ def scale_ig(
         Bijector from the unconstrained parameterization to :math:`\tau^2`.
     name
         Name of the returned scale variable. The variance is named ``f"{name}^2"``.
-        The default placeholder is filled by :class:`.TermBuilder` when the scale is
+        The default placeholder is filled by :class:`TermBuilder
+        <liesel_gam.TermBuilder>` when the scale is
         used for a term.
     inference
         Inference specification for the bijected variance parameter.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import jax
 import jax.numpy as jnp
@@ -67,29 +67,37 @@ class TermBuilder:
     Parameters
     ----------
     registry
-        A :class:`.DictRegistry` or :class:`.PandasRegistry` providing named source
+        A :class:`DictRegistry <liesel_gam.DictRegistry>` or :class:`PandasRegistry
+        <liesel_gam.PandasRegistry>` providing named source
         values used to set up the model terms.
     prefix_names_by
         Names created by this TermBuilder will be prefixed by the string supplied here.
     default_inference
         Defines the default inference specification for terms created by this builder.
         Note that this inference is only used for the coefficient variables
-        of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for the
-        scale variables (:attr:`.StrctTerm.scale`). The default
+        of the terms created by this builder (:attr:`StrctTerm.coef
+        <liesel_gam.StrctTerm.coef>`), *not* for the
+        scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`). The
+        default
         ``gs.MCMCSpec(gs.IWLSKernel.untuned)`` is an iteratively-reweighted least
         squares kernel without step size tuning, see
         :meth:`liesel.goose.IWLSKernel.untuned`.
     default_scale_fn
-        A function or :class:`.VarIGPrior` object that defines the default scale
+        A function or :class:`VarIGPrior <liesel_gam.VarIGPrior>` object that defines
+        the default scale
         for structured additive terms initialized by this builder. If this is a
         function, it must take no arguments and return a :class:`liesel.model.Var`
-        that acts as the scale. If it is a :class:`.VarIGPrior`, the default scale
+        that acts as the scale. If it is a :class:`VarIGPrior <liesel_gam.VarIGPrior>`,
+        the default scale
         will be ``scale = sqrt(var)``, where
         ``var ~ InverseGamma(concentration, scale)``, with concentration and scale
-        given by the :class:`.VarIGPrior` object. For most terms, this
+        given by the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. For most terms,
+        this
         will mean that a fitting Gibbs sampler can be automatically set up for
-        ``var``. The exceptions to this rule are :meth:`.tf` and
-        :meth:`.tx`. Note that, if you supply a custom default scale function, you
+        ``var``. The exceptions to this rule are :meth:`tf <liesel_gam.TermBuilder.tf>`
+        and
+        :meth:`tx <liesel_gam.TermBuilder.tx>`. Note that, if you supply a custom
+        default scale function, you
         should make sure that the ``inference`` attribute of your custom scale
         is defined, otherwise your custom scale may not be included in MCMC
         sampling. The default is ``VarIGPrior(1.0, 0.005)``, which leads to an
@@ -97,15 +105,18 @@ class TermBuilder:
         :math:`\tau^2 \sim \operatorname{InverseGamma}(1.0, 0.005)`.
     approximation
         Default approximation policy passed to the internal
-        :class:`.BasisBuilder`. ``False`` keeps exact evaluation, ``True`` uses
-        :class:`.ApproximationSpec` defaults, and an ``ApproximationSpec`` supplies
+        :class:`BasisBuilder <liesel_gam.BasisBuilder>`. ``False`` keeps exact
+        evaluation, ``True`` uses
+        :class:`ApproximationSpec <liesel_gam.ApproximationSpec>` defaults, and an
+        :class:`ApproximationSpec <liesel_gam.ApproximationSpec>` supplies
         shared tolerances and the grid-size guard. Explicit bounds are supplied on
         individual eligible smooth calls.
 
     See Also
     --------
 
-    .BasisBuilder : Initializes :class:`.Basis` objects with penalty matrices.
+    liesel_gam.BasisBuilder : Initializes :class:`Basis <liesel_gam.Basis>` objects with
+      penalty matrices.
 
     Notes
     ------
@@ -113,7 +124,7 @@ class TermBuilder:
     Eligible univariate continuous smooth methods accept an ``approximation``
     argument. ``None`` inherits the builder policy, ``False`` keeps exact
     evaluation, ``True`` uses default settings, and an
-    :class:`.ApproximationSpec` supplies custom settings.
+    :class:`ApproximationSpec <liesel_gam.ApproximationSpec>` supplies custom settings.
 
     The terms created by this builder generally have the form
 
@@ -133,8 +144,10 @@ class TermBuilder:
       are the corresponding coefficients.
 
     In many cases, :math:`\mathbf{x}_i` will consist
-    of only one covariate, except for linear effects (:meth:`.lin`, :meth:`.slin`) or
-    tensor product smooths (:meth:`.tf`, :meth:`.tx`).
+    of only one covariate, except for linear effects (:meth:`lin
+    <liesel_gam.TermBuilder.lin>`, :meth:`slin <liesel_gam.TermBuilder.slin>`) or
+    tensor product smooths (:meth:`tf <liesel_gam.TermBuilder.tf>`, :meth:`tx
+    <liesel_gam.TermBuilder.tx>`).
 
     The basis matrix for such a term is
 
@@ -177,36 +190,44 @@ class TermBuilder:
     .. note::
         **Basic terms**
 
-        - :meth:`.lin` : Linear term.
-        - :meth:`.slin` : Linear term with iid penalty (ridge prior).
-        - :meth:`.ps` : P-spline.
-        - :meth:`.tp` : Thin plate spline.
-        - :meth:`.ri` : Random intercept.
-        - :meth:`.mrf` : Markov random field (discrete spatial effect).
-        - :meth:`.kriging` : Low-rank gaussian process with fixed range.
+        - :meth:`lin <liesel_gam.TermBuilder.lin>` : Linear term.
+        - :meth:`slin <liesel_gam.TermBuilder.slin>` : Linear term with iid penalty
+          (ridge prior).
+        - :meth:`ps <liesel_gam.TermBuilder.ps>` : P-spline.
+        - :meth:`tp <liesel_gam.TermBuilder.tp>` : Thin plate spline.
+        - :meth:`ri <liesel_gam.TermBuilder.ri>` : Random intercept.
+        - :meth:`mrf <liesel_gam.TermBuilder.mrf>` : Markov random field (discrete
+          spatial effect).
+        - :meth:`kriging <liesel_gam.TermBuilder.kriging>` : Low-rank gaussian process
+          with fixed range.
 
         **Combined terms and tensor products**
 
-        - :meth:`.rs` : Random slope.
-        - :meth:`.vc` : Varying coefficient.
-        - :meth:`.tx` : Tensor product interaction without main effects.
-        - :meth:`.tf` : Full tensor product with main effects.
+        - :meth:`rs <liesel_gam.TermBuilder.rs>` : Random slope.
+        - :meth:`vc <liesel_gam.TermBuilder.vc>` : Varying coefficient.
+        - :meth:`tx <liesel_gam.TermBuilder.tx>` : Tensor product interaction without
+          main effects.
+        - :meth:`tf <liesel_gam.TermBuilder.tf>` : Full tensor product with main
+          effects.
 
         **Specialized smooths**
 
-        - :meth:`.np` : P-splines without linear trend.
-        - :meth:`.cp` : Cyclic P-splines
+        - :meth:`np <liesel_gam.TermBuilder.np>` : P-splines without linear trend.
+        - :meth:`cp <liesel_gam.TermBuilder.cp>` : Cyclic P-splines
 
         **Custom smooths**
 
-        - :meth:`.f` : Supply your own basis function and penalty matrix.
-        - :class:`.StrctTerm` : Initialize a term independetly, potentially supplying
+        - :meth:`f <liesel_gam.TermBuilder.f>` : Supply your own basis function and
+          penalty matrix.
+        - :class:`StrctTerm <liesel_gam.StrctTerm>` : Initialize a term independetly,
+          potentially supplying
           a constant basis matrix and your own penalty matrix.
 
     .. tip::
 
         If your model somewhere contains a categorical variable, pay attention
-        to the method :meth:`labels_to_integers`; this helps you bring a ``newdata``
+        to the method :meth:`labels_to_integers
+        <liesel_gam.TermBuilder.labels_to_integers>`; this helps you bring a ``newdata``
         dictionary into a form understood by :meth:`liesel.model.Model.predict`
         easily by turning string labels into their integer representations.
 
@@ -286,7 +307,8 @@ class TermBuilder:
     StrctTerm(name="loc.ps(loc.x_nonlin)")
 
     If you don't want the name prefix to appear on the covariate names, too, initialize
-    the :class:`.PandasRegistry` individually. This way, you can for example use the
+    the :class:`PandasRegistry <liesel_gam.PandasRegistry>` individually. This way, you
+    can for example use the
     same registry for two TermBuilder instances.
 
     >>> import liesel_gam as gam
@@ -302,6 +324,19 @@ class TermBuilder:
     StrctTerm(name="scale.ps(x_nonlin)")
 
     """
+
+    if TYPE_CHECKING:
+        registry: DictRegistry
+        """Registry supplying observed inputs."""
+
+        names: NameManager
+        """Manager that creates unique term and parameter names."""
+
+        bases: BasisBuilder
+        """Builder used to construct the term bases."""
+
+        default_inference: InferenceTypes
+        """Default inference specification for coefficients."""
 
     def __init__(
         self,
@@ -376,12 +411,14 @@ class TermBuilder:
         - If it is ``"default"``, the return will be created based on the
             ``default_scale_fn`` argument supplied to the TermBuilder upon
             initialization.
-        - If it is a :class:`.VarIGPrior`, the return
+        - If it is a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, the return
             will be ``scale = sqrt(var)``, where ``var ~ InverseGamma(concentration,
-            scale)``, with concentration and scale given by the :class:`.VarIGPrior`
+            scale)``, with concentration and scale given by the :class:`VarIGPrior
+            <liesel_gam.VarIGPrior>`
             object. For most terms, this will mean that a fitting Gibbs sampler can be
             automatically set up for ``var``. The exceptions to this rule are
-            :meth:`.ta`, :meth:`.tf`, and :meth:`.tx`.
+            :meth:`tf <liesel_gam.TermBuilder.tf>`, and :meth:`tx
+            <liesel_gam.TermBuilder.tx>`.
         - If it is a ``float``, the return will be ``lsl.Var.new_value`` holding this
             float.
         - If it is a :class:`liesel.model.Var` object, the return will be this
@@ -432,10 +469,14 @@ class TermBuilder:
         """
         Initializes a TermBuilder from a dictionary that holds the data.
 
-        Internally, this creates a :class:`.DictRegistry`. Values may have unrelated
-        shapes and no missing-data policy is applied. Construct a :class:`.DictRegistry`
-        or :class:`.PandasRegistry` directly for custom conversion or pandas missing-
-        data handling. Nested mappings are not aligned; use :meth:`from_df` for a
+        Internally, this creates a :class:`DictRegistry <liesel_gam.DictRegistry>`.
+        Values may have unrelated
+        shapes and no missing-data policy is applied. Construct a :class:`DictRegistry
+        <liesel_gam.DictRegistry>`
+        or :class:`PandasRegistry <liesel_gam.PandasRegistry>` directly for custom
+        conversion or pandas missing-
+        data handling. Nested mappings are not aligned; use :meth:`from_df
+        <liesel_gam.TermBuilder.from_df>` for a
         DataFrame or ``dataframe.to_dict("list")`` when converting one manually.
 
         The other arguments are passed on to the init.
@@ -461,7 +502,8 @@ class TermBuilder:
         """
         Initializes a TermBuilder from a pandas dataframe.
 
-        Internally, this will create a :class:`.PandasRegistry` with
+        Internally, this will create a :class:`PandasRegistry
+        <liesel_gam.PandasRegistry>` with
         ``na_action="drop"``.
 
         The other arguments are passed on to the init.
@@ -480,7 +522,8 @@ class TermBuilder:
     def labels_to_integers(self, newdata: dict[str, Any]) -> dict[str, Any]:
         """Encode categorical labels for prediction paths that require codes.
 
-        Models containing :class:`.CatVar` accept labels directly in ``newdata``;
+        Models containing :class:`CatVar <liesel_gam.CatVar>` accept labels directly in
+        ``newdata``;
         this compatibility helper is not normally needed for those models.
 
         Parameters
@@ -508,7 +551,8 @@ class TermBuilder:
         ----------
         formula
             Right-hand side of a model formula, as understood by formulaic_, or a
-            named, unpenalized :class:`.LinBasis`. Most of formulaic's grammar_ is
+            named, unpenalized :class:`LinBasis <liesel_gam.LinBasis>`. Most of
+            formulaic's grammar_ is
             supported. See notes for details.
         prior
             An optional prior for this term's coefficient. The default is a constant
@@ -516,7 +560,8 @@ class TermBuilder:
         inference
             An optional :class:`liesel.goose.MCMCSpec` instance (or other valid
             inference object).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         context
@@ -535,7 +580,8 @@ class TermBuilder:
 
         See Also
         --------
-        .slin : Linear term with identity penalty matrix, leading to a ridge prior.
+        liesel_gam.TermBuilder.slin : Linear term with identity penalty matrix, leading
+          to a ridge prior.
 
         Notes
         -----
@@ -686,15 +732,18 @@ class TermBuilder:
         ----------
         formula
             Right-hand side of a model formula, as understood by formulaic_, or a
-            named, penalized :class:`.LinBasis`. A formula-generated basis receives an
+            named, penalized :class:`LinBasis <liesel_gam.LinBasis>`. A
+            formula-generated basis receives an
             identity penalty by default, leading to a ridge prior. A supplied basis
             keeps its existing penalty. Most of formulaic's grammar_ is supported.
             See notes for details.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -702,17 +751,21 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \\sim \\operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             An optional :class:`liesel.goose.MCMCSpec` instance (or other valid
             inference object).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         context
@@ -739,7 +792,7 @@ class TermBuilder:
 
         See Also
         --------
-        .lin : Linear term with constant prior.
+        liesel_gam.TermBuilder.lin : Linear term with constant prior.
 
         Notes
         -----
@@ -888,10 +941,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -899,19 +954,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty_order
@@ -925,19 +985,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -947,8 +1009,9 @@ class TermBuilder:
         See Also
         --------
 
-        .cs : Cubic regression splines with additinal shrinkage on the null space.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.cs : Cubic regression splines with additinal shrinkage on
+          the null space.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -1028,10 +1091,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1039,19 +1104,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty_order
@@ -1065,19 +1135,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1087,8 +1159,8 @@ class TermBuilder:
         See Also
         --------
 
-        .cr : Cubic regression splines.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.cr : Cubic regression splines.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -1168,10 +1240,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1179,19 +1253,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty_order
@@ -1205,19 +1284,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1227,9 +1308,10 @@ class TermBuilder:
         See Also
         --------
 
-        .cr : Cubic regression splines.
-        .cs : Cubic regression splines with additinal shrinkage on the null space.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.cr : Cubic regression splines.
+        liesel_gam.TermBuilder.cs : Cubic regression splines with additinal shrinkage on
+          the null space.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -1310,10 +1392,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1321,19 +1405,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         basis_degree
@@ -1351,19 +1440,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1373,8 +1464,8 @@ class TermBuilder:
         See Also
         --------
 
-        .ps : P-splines.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.ps : P-splines.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -1455,10 +1546,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1466,19 +1559,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         basis_degree
@@ -1495,19 +1593,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1517,15 +1617,15 @@ class TermBuilder:
         See Also
         --------
 
-        .np : P-spline without linear trend.
-        .cp : Cyclic P-spline.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.np : P-spline without linear trend.
+        liesel_gam.TermBuilder.cp : Cyclic P-spline.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
 
         The native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX.
 
@@ -1613,10 +1713,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1624,19 +1726,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         basis_degree
@@ -1653,19 +1760,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1675,15 +1784,15 @@ class TermBuilder:
         See Also
         --------
 
-        .ps : P-spline.
-        .cp : Cyclic P-spline.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.ps : P-spline.
+        liesel_gam.TermBuilder.cp : Cyclic P-spline.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
 
         The native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX.
 
@@ -1770,10 +1879,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1781,19 +1892,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         basis_degree
@@ -1810,19 +1926,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1832,15 +1950,15 @@ class TermBuilder:
         See Also
         --------
 
-        .ps : P-spline.
-        .np : P-spline without linear trend.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.ps : P-spline.
+        liesel_gam.TermBuilder.np : P-spline without linear trend.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
 
         The native JAX basis uses ``use_callback=False`` and ``cache_basis=True``.
-        See :class:`.Basis` for details.
+        See :class:`Basis <liesel_gam.Basis>` for details.
 
         The basis and penalty are constructed natively in JAX.
 
@@ -1908,12 +2026,15 @@ class TermBuilder:
         Parameters
         ----------
         cluster
-            Registry name of the cluster variable or a named :class:`.CatVar`.
+            Registry name of the cluster variable or a named :class:`CatVar
+            <liesel_gam.CatVar>`.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -1921,19 +2042,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty
@@ -1943,7 +2069,8 @@ class TermBuilder:
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -1953,12 +2080,13 @@ class TermBuilder:
         See Also
         --------
 
-        .rs : Random slope.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.rs : Random slope.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         ------
-        See the integer-code warning on :class:`.CatVar` when supplying direct
+        See the integer-code warning on :class:`CatVar <liesel_gam.CatVar>` when
+        supplying direct
         variables or label-valued prediction data.
 
         If the penalty is iid, then each column of the basis consists only of binary
@@ -2034,25 +2162,31 @@ class TermBuilder:
 
         Create a Liesel variable that evaluates to ``x * ri(cluster)``, where
         ``ri(cluster)`` is a
-        random intercept initialized via :meth:`.ri` and ``x`` is either a covariate
+        random intercept initialized via :meth:`ri <liesel_gam.TermBuilder.ri>` and
+        ``x`` is either a covariate
         directly, or a smooth term.
 
         The ``scale`` argument of this method is the random intercept's
-        scale, it is passed to :meth:`.ri`. The same goes for ``penalty`` and
+        scale, it is passed to :meth:`ri <liesel_gam.TermBuilder.ri>`. The same goes for
+        ``penalty`` and
         ``factor_scale``.
 
         Parameters
         ----------
         x
             Registry name or named numeric Liesel variable, including a
-            :class:`.StrctTerm` or :class:`.LinTerm`.
+            :class:`StrctTerm <liesel_gam.StrctTerm>` or :class:`LinTerm
+            <liesel_gam.LinTerm>`.
         cluster
-            Registry name of the cluster variable or a named :class:`.CatVar`.
+            Registry name of the cluster variable or a named :class:`CatVar
+            <liesel_gam.CatVar>`.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -2060,19 +2194,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty
@@ -2080,18 +2219,21 @@ class TermBuilder:
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
 
         See Also
         --------
 
-        .ri : Random intercept.
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.TermBuilder.ri : Random intercept.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
-        A :class:`.CatVar` is accepted for ``cluster`` but rejected for the numeric
-        ``x`` input. See the integer-code warning on :class:`.CatVar` when supplying
+        A :class:`CatVar <liesel_gam.CatVar>` is accepted for ``cluster`` but rejected
+        for the numeric
+        ``x`` input. See the integer-code warning on :class:`CatVar <liesel_gam.CatVar>`
+        when supplying
         label-valued prediction data.
 
 
@@ -2302,22 +2444,25 @@ class TermBuilder:
         Gaussian Markov random field.
 
         The preferred way to initialize these is by supplying ``polys``, because this
-        enables plotting via :func:`.plot_regions`.
+        enables plotting via :func:`plot_regions <liesel_gam.plot_regions>`.
 
         Parameters
         ----------
         x
-            Registry name of the region variable or a named :class:`.CatVar`.
+            Registry name of the region variable or a named :class:`CatVar
+            <liesel_gam.CatVar>`.
         k
             If ``-1``, this is a "full-rank" (up to identifiability constraint) Markov
             random field. If ``k`` is an integer smaller than the number of unique
             regions, a low-rank field will be returned, see Wood (2017), Sections 5.8.1
             and 5.4.2.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -2325,19 +2470,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         polys
@@ -2364,19 +2514,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -2385,14 +2537,15 @@ class TermBuilder:
 
         See Also
         --------
-        .plot_regions : Plots MCMC results on a map of the regions.
-        .plot_polys : Plots a map based on polygons.
-        .plot_forest : Plots regions with uncertainty in a forest plot.
+        liesel_gam.plot_regions : Plots MCMC results on a map of the regions.
+        liesel_gam.plot_polys : Plots a map based on polygons.
+        liesel_gam.plot_forest : Plots regions with uncertainty in a forest plot.
 
         Notes
         -----
 
-        See the integer-code warning on :class:`.CatVar` when supplying direct
+        See the integer-code warning on :class:`CatVar <liesel_gam.CatVar>` when
+        supplying direct
         variables or label-valued prediction data.
 
         .. warning::
@@ -2408,21 +2561,25 @@ class TermBuilder:
         -------
 
             Comments on the additional attributes available on the returned
-            :class:`.MRFTerm` variable:
+            :class:`MRFTerm <liesel_gam.MRFTerm>` variable:
 
             - If either polys or nb are supplied, the returned term will contain
-              information in :attr:`.MRFTerm.neighbors`.
+              information in :attr:`MRFTerm.neighbors <liesel_gam.MRFTerm.neighbors>`.
             - If only a penalty matrix is supplied, the returned MRFSpec will *not*
-              contain information in :attr:`.MRFTerm.neighbors`.
-            - :attr:`.MRFTerm.mapping` contains the map of region labels to integer
+              contain information in :attr:`MRFTerm.neighbors
+              <liesel_gam.MRFTerm.neighbors>`.
+            - :attr:`MRFTerm.mapping <liesel_gam.MRFTerm.mapping>` contains the map of
+              region labels to integer
               codes.
-            - :attr:`.MRFTerm.labels` contains the region labels.
+            - :attr:`MRFTerm.labels <liesel_gam.MRFTerm.labels>` contains the region
+              labels.
             - Returning the label order only makes sense if the basis is *not*
               reparameterized, because only then we have a clear correspondence of
               parameters to labels. If the basis is reparameterized, with
               ``absorb_cons=True`` or of low rank with ``k ≠ -1``, there is no such
               correspondence in a clear way, so the label order
-              in :attr:`.MRFTerm.ordered_labels` is None.
+              in :attr:`MRFTerm.ordered_labels <liesel_gam.MRFTerm.ordered_labels>` is
+              None.
 
 
         Examples
@@ -2501,10 +2658,12 @@ class TermBuilder:
         name: str | None = None,
     ) -> StrctTerm:
         r"""
-        General :class:`.StrctTerm`, initialized by passing a custom basis function.
+        General :class:`StrctTerm <liesel_gam.StrctTerm>`, initialized by passing a
+        custom basis function.
 
         .. note::
-            You can use :meth:`.StrctTerm.constrain` to apply linear constraints to your
+            You can use :meth:`StrctTerm.constrain <liesel_gam.StrctTerm.constrain>` to
+            apply linear constraints to your
             custom term.
 
         Parameters
@@ -2515,10 +2674,12 @@ class TermBuilder:
             Basis function. Must take a 2d-array as input and return a 2d array.
 
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -2526,37 +2687,44 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         use_callback
             If *True*, the basis function is evaluated using a Python callback,
             which means that it does not have to be jit-compatible via JAX. This also
             means that the basis must remain constant throughout estimation.
-            Passed on to :class:`.Basis`.
+            Passed on to :class:`Basis <liesel_gam.Basis>`.
         cache_basis
             If ``True`` the computed basis is cached in a persistent
-            calculation node (``lsl.Calc``), which avoids re-computation
-            when not required. Passed on to :class:`.Basis`.
+            calculation node (:class:`lsl.Calc <liesel.model.Calc>`), which avoids
+            re-computation
+            when not required. Passed on to :class:`Basis <liesel_gam.Basis>`.
         row_wise
             Whether each output row depends only on the corresponding input row.
-            Passed on to :class:`.Basis`.
+            Passed on to :class:`Basis <liesel_gam.Basis>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -2566,12 +2734,14 @@ class TermBuilder:
         See Also
         --------
 
-        .StrctTerm.constrain : Apply constraints to a term after initialization.
-        .StrctTerm.diagonalize_penalty : Diagonalize the penalty of a term after
+        liesel_gam.StrctTerm.constrain : Apply constraints to a term after
           initialization.
-        .StrctTerm.scale_penalty : Scale the penalty of a term after
+        liesel_gam.StrctTerm.diagonalize_penalty : Diagonalize the penalty of a term
+          after
           initialization.
-        .BasisBuilder.basis : Used by this method to set up the basis.
+        liesel_gam.StrctTerm.scale_penalty : Scale the penalty of a term after
+          initialization.
+        liesel_gam.BasisBuilder.basis : Used by this method to set up the basis.
 
         Examples
         --------
@@ -2606,7 +2776,8 @@ class TermBuilder:
         >>> fx.basis.value.shape
         (100, 20)
 
-        You can use :meth:`.StrctTerm.constrain` to apply a constraint:
+        You can use :meth:`StrctTerm.constrain <liesel_gam.StrctTerm.constrain>` to
+        apply a constraint:
 
         >>> fx.constrain("sumzero_term")
         StrctTerm(name="f(x_nonlin)")
@@ -2680,10 +2851,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -2691,19 +2864,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         kernel_name
@@ -2719,19 +2897,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         prefix
             A string prefix to be added to the returned term's name.
         name
@@ -2741,7 +2921,7 @@ class TermBuilder:
         See Also
         --------
 
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -2824,10 +3004,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -2835,19 +3017,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty_order
@@ -2862,19 +3049,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         remove_null_space_completely
             If ``True``, the unpenalized part of the smooth, corresponding to the null
             space of the penalty matrix, is removed completely.
@@ -2887,7 +3076,7 @@ class TermBuilder:
         See Also
         --------
 
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -2967,10 +3156,12 @@ class TermBuilder:
         k
             Number of (unconstrained) bases.
         scale
-            Scale parameter passed to the coefficient prior, :attr:`.StrctTerm.scale`.
+            Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
+            <liesel_gam.StrctTerm.scale>`.
 
             - If ``"default"``, the scale will be initialized according to the default
-              scale function defined for this :class:`.TermBuilder` instance.
+              scale function defined for this :class:`TermBuilder
+              <liesel_gam.TermBuilder>` instance.
               Please refer to the TermBuilder documentation for more information.
             - If you pass a ``float``, this will be taken as the constant value of
               the scale, and the scale will not be estimated as part of the model
@@ -2978,19 +3169,24 @@ class TermBuilder:
             - If you pass a :class:`liesel.model.Var`, this will be used as the scale.
               Make sure to define the ``inference`` attribute of your custom
               scale variable (or a latent, transformed version of it).
-            - If you pass a :class:`.VarIGPrior`, a scale variable will be set up for
-              you using :class:`.ScaleIG`. This means, the scale will be
+            - If you pass a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, a scale
+              variable will be set up for
+              you using :class:`ScaleIG <liesel_gam.ScaleIG>`. This means, the scale
+              will be
               :math:`\tau`, with an iverse Gamma prior on its square, i.e.
               :math:`\tau^2 \sim \operatorname{InverseGamma}(a, b)`, where a and b
-              are taken from the :class:`.VarIGPrior` object. A fitting Gibbs kernel
+              are taken from the :class:`VarIGPrior <liesel_gam.VarIGPrior>` object. A
+              fitting Gibbs kernel
               will be set up automatically to sample :math:`\tau^2` in this case,
-              see :class:`.ScaleIG` for details.
+              see :class:`ScaleIG <liesel_gam.ScaleIG>` for details.
         inference
             Inference specification for this term's coefficient.
             Note that this inference is only used for the coefficient variables
-            of the terms created by this builder (:attr:`.StrctTerm.coef`), *not* for
-            the scale variables (:attr:`.StrctTerm.scale`).
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            of the terms created by this builder (:attr:`StrctTerm.coef
+            <liesel_gam.StrctTerm.coef>`), *not* for
+            the scale variables (:attr:`StrctTerm.scale <liesel_gam.StrctTerm.scale>`).
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         penalty_order
@@ -3005,19 +3201,21 @@ class TermBuilder:
             reparameterization and absorbing the reparameterization matrix into the
             basis and penalty matrices for computational efficiency. If ``False``, the
             basis is unconstrained, if ``True`` it receives a sum to zero constrained.
-            Also see :meth:`.Basis.constrain`.
+            Also see :meth:`Basis.constrain <liesel_gam.Basis.constrain>`.
         diagonal_penalty
             Whether the penalty matrix associated with this term should be
             reparameterized into a diagonal matrix. In this case, the basis matrix is
             reparameterized accordingly. This can be beneficial for posterior geometry,
-            which is why it is the default. Also see :meth:`.Basis.diagonalize_penalty`.
+            which is why it is the default. Also see :meth:`Basis.diagonalize_penalty
+            <liesel_gam.Basis.diagonalize_penalty>`.
         scale_penalty
             Whether to use design-aware penalty scaling. Also see
-            :meth:`.Basis.scale_penalty`.
+            :meth:`Basis.scale_penalty <liesel_gam.Basis.scale_penalty>`.
         factor_scale
             Whether to factor out the scale in the prior for this term, turning it
             into a partially (or fully) standardized form. See
-            :meth:`.StrctTerm.factor_scale` for details.
+            :meth:`StrctTerm.factor_scale <liesel_gam.StrctTerm.factor_scale>` for
+            details.
         remove_null_space_completely
             If ``True``, the unpenalized part of the smooth, corresponding to the null
             space of the penalty matrix, is removed completely.
@@ -3030,7 +3228,7 @@ class TermBuilder:
         See Also
         --------
 
-        .BasisBuilder : Initializes the basis and penalty.
+        liesel_gam.BasisBuilder : Initializes the basis and penalty.
 
         Notes
         -----
@@ -3113,7 +3311,8 @@ class TermBuilder:
         Parameters
         ----------
         *marginals
-            Marginal terms, subclasses of :class:`.StrctTerm` or :class:`.LinTerm`.
+            Marginal terms, subclasses of :class:`StrctTerm <liesel_gam.StrctTerm>` or
+            :class:`LinTerm <liesel_gam.LinTerm>`.
             Linear terms contribute a zero penalty in their direction. Their
             basis, contrast coding, and main-effect priors remain unchanged;
             custom main-effect priors are not transferred to interaction coefficients.
@@ -3121,7 +3320,8 @@ class TermBuilder:
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
             :math:`\tau^2_1 = \\dots = \tau^2_M = \tau^2` for all marginal smooths
-            in the notation used in :class:`.StrctTensorProdTerm`.
+            in the notation used in :class:`StrctTensorProdTerm
+            <liesel_gam.StrctTensorProdTerm>`.
         inference
             Inference specification for this term's coefficient.
         scales_inference
@@ -3206,7 +3406,8 @@ class TermBuilder:
         Parameters
         ----------
         *marginals
-            Marginal terms, subclasses of :class:`.StrctTerm` or :class:`.LinTerm`.
+            Marginal terms, subclasses of :class:`StrctTerm <liesel_gam.StrctTerm>` or
+            :class:`LinTerm <liesel_gam.LinTerm>`.
             Linear terms contribute a zero penalty in their direction. Their
             basis, contrast coding, and main-effect priors remain unchanged;
             custom main-effect priors are not transferred to interaction coefficients.
@@ -3215,11 +3416,13 @@ class TermBuilder:
             isotropic tensor product. This mean setting
             :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal dimensions
             of this interaction
-            in the notation used in :class:`.StrctInteractionTerm`.
+            in the notation used in :class:`StrctInteractionTerm
+            <liesel_gam.StrctInteractionTerm>`.
             This does not affect the scales of the supplied marginals (main effects).
         inference
             Inference specification for this term's coefficient.
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         scales_inference
@@ -3235,19 +3438,23 @@ class TermBuilder:
         -----
 
         .. note::
-            The methods :meth:`.tf` and :meth:`.tx`
-            are closely related. The former loosely corresponds to ``mgcv::ti``, and the
-            latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
-            centered marginals, :class:`.tx` will *only* include the
+            The methods :meth:`tf <liesel_gam.TermBuilder.tf>` and :meth:`tx
+            <liesel_gam.TermBuilder.tx>`
+            are closely related. The former loosely corresponds to ``mgcv::te``, and the
+            latter loosely corresponds to ``mgcv::ti``, meaning that, when you supply
+            centered marginals, :meth:`tx <liesel_gam.TermBuilder.tx>` will *only*
+            include the
             highest-order interaction of the supplied marginals, while
-            :class:`.tf` will include the highest-order interaction *and*
+            :meth:`tf <liesel_gam.TermBuilder.tf>` will include the highest-order
+            interaction *and*
             all lower-order interactions, including the main effects.
 
         See Also
         --------
-        .StrctInteractionTerm : The term class returned by this method; includes further
+        liesel_gam.StrctInteractionTerm : The term class returned by this method;
+          includes further
           details.
-        .tf : Full tensor product, including main effects.
+        liesel_gam.TermBuilder.tf : Full tensor product, including main effects.
 
         Examples
         --------
@@ -3281,7 +3488,8 @@ class TermBuilder:
 
         .. rubric:: Anova decomposition
 
-        Including the main effects (this corresponds to :meth:`.tf`):
+        Including the main effects (this corresponds to :meth:`tf
+        <liesel_gam.TermBuilder.tf>`):
 
         >>> import liesel_gam as gam
         >>> df = gam.demo_data(100)
@@ -3328,7 +3536,8 @@ class TermBuilder:
 
         >>> tx1 = tb.tx(ps1, ps2, common_scale=scale)
 
-        The :attr:`.StrctTensorProdTerm.scales` list now contains the same scale twice,
+        The :attr:`StrctTensorProdTerm.scales <liesel_gam.StrctTensorProdTerm.scales>`
+        list now contains the same scale twice,
         leading to an isotropic tensor product.
 
         >>> tx1.scales[0]
@@ -3370,8 +3579,9 @@ class TermBuilder:
         because we initialize new marginals with new variance parameters for the
         interaction term.
 
-        This added flexibility when using :meth:`.tx` is a further difference to
-        :meth:`.tf`.
+        This added flexibility when using :meth:`tx <liesel_gam.TermBuilder.tx>` is a
+        further difference to
+        :meth:`tf <liesel_gam.TermBuilder.tf>`.
 
         .. rubric:: Three-dimensional interaction
 
@@ -3380,8 +3590,9 @@ class TermBuilder:
         because we initialize new marginals with new variance parameters for the
         interaction terms.
 
-        This added flexibility when using :meth:`.tx` is a further difference to
-        :meth:`.tf`.
+        This added flexibility when using :meth:`tx <liesel_gam.TermBuilder.tx>` is a
+        further difference to
+        :meth:`tf <liesel_gam.TermBuilder.tf>`.
 
         >>> import liesel_gam as gam
         >>> df = gam.demo_data(100)
@@ -3465,7 +3676,8 @@ class TermBuilder:
         Parameters
         ----------
         *marginals
-            Marginal terms, subclasses of :class:`.StrctTerm` or :class:`.LinTerm`.
+            Marginal terms, subclasses of :class:`StrctTerm <liesel_gam.StrctTerm>` or
+            :class:`LinTerm <liesel_gam.LinTerm>`.
             Linear terms contribute a zero penalty in their direction. Their
             basis, contrast coding, and main-effect priors remain unchanged;
             custom main-effect priors are not transferred to interaction coefficients.
@@ -3473,7 +3685,8 @@ class TermBuilder:
             A single, common scale to cover all marginal dimensions, resulting in an
             isotropic tensor product. This mean setting
             :math:`\tau^2_1 = \dots = \tau^2_M = \tau^2` for all marginal smooths
-            in the notation used in :class:`.StrctInteractionTerm`. Note that this
+            in the notation used in :class:`StrctInteractionTerm
+            <liesel_gam.StrctInteractionTerm>`. Note that this
             *will* also change the scales of the supplied structured marginals
             (main effects). Linear main-effect priors remain unchanged.
         order
@@ -3484,7 +3697,8 @@ class TermBuilder:
             included; also the main effects.
         inference
             Inference specification for this term's coefficient.
-            The default (``"default"``) uses the :class:`.TermBuilder`'s default
+            The default (``"default"``) uses the :class:`TermBuilder
+            <liesel_gam.TermBuilder>`'s default
             inference specification defined during initialization. Please refer to
             the TermBuilder documentation for more information.
         scales_inference
@@ -3505,19 +3719,24 @@ class TermBuilder:
         -----
 
         .. note::
-            The methods :meth:`.tf` and :meth:`.tx`
-            are closely related. The former loosely corresponds to ``mgcv::ti``, and the
-            latter loosely corresponds to ``mgcv::te``, meaning that, when you supply
-            centered marginals, :class:`.tx` will *only* include the
+            The methods :meth:`tf <liesel_gam.TermBuilder.tf>` and :meth:`tx
+            <liesel_gam.TermBuilder.tx>`
+            are closely related. The former loosely corresponds to ``mgcv::te``, and the
+            latter loosely corresponds to ``mgcv::ti``, meaning that, when you supply
+            centered marginals, :meth:`tx <liesel_gam.TermBuilder.tx>` will *only*
+            include the
             highest-order interaction of the supplied marginals, while
-            :class:`.tf` will include the highest-order interaction *and*
+            :meth:`tf <liesel_gam.TermBuilder.tf>` will include the highest-order
+            interaction *and*
             all lower-order interactions, including the main effects.
 
         See Also
         --------
-        .StrctTensorProdTerm : The term class returned by this method; includes further
+        liesel_gam.StrctTensorProdTerm : The term class returned by this method;
+          includes further
           details.
-        .tx : Tensor product interaction term, without main effects.
+        liesel_gam.TermBuilder.tx : Tensor product interaction term, without main
+          effects.
 
         Examples
         --------
@@ -3537,7 +3756,8 @@ class TermBuilder:
         >>> pred.terms
         {'tf(x_nonlin,x_lin)': StrctTensorProdTerm(name="tf(x_nonlin,x_lin)")}
 
-        To illustrate the difference to :meth:`.tx`, consider this example, which
+        To illustrate the difference to :meth:`tx <liesel_gam.TermBuilder.tx>`, consider
+        this example, which
         is practically equivalent:
 
         >>> import liesel_gam as gam

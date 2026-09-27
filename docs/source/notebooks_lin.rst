@@ -7,4 +7,5 @@ Linear Terms
    :maxdepth: 1
    :glob:
 
+   Overview <self>
    notebooks/lin/*

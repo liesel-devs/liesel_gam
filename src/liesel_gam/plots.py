@@ -439,7 +439,8 @@ def plot_regions(
     """
     Plot a summary map of a discrete spatial effect.
 
-    Supports effects represented by :class:`.RITerm` or :class:`.MRFTerm`.
+    Supports effects represented by :class:`RITerm <liesel_gam.RITerm>` or
+    :class:`MRFTerm <liesel_gam.MRFTerm>`.
 
     Parameters
     ----------
@@ -455,7 +456,8 @@ def plot_regions(
     which
         Which quantities to plot. Can be a list of multiple values.
     polys
-        If ``None``, tries to use :attr:`.MRFTerm.polygons`. Dictionary of arrays. The
+        If ``None``, tries to use :attr:`MRFTerm.polygons
+        <liesel_gam.MRFTerm.polygons>`. Dictionary of arrays. The
         keys of the dict are the region labels. The corresponding values define the
         region by defining polygons. The neighborhood structure can be inferred from
         this polygon information.
@@ -802,7 +804,7 @@ def plot_1d_smooth_clustered(
     """
     Plots a clustered smooth or linear function.
 
-    For effects as those returned by :meth:`.TermBuilder.rs`.
+    For effects as those returned by :meth:`TermBuilder.rs <liesel_gam.TermBuilder.rs>`.
 
     Parameters
     ----------
