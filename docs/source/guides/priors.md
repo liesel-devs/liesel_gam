@@ -99,6 +99,57 @@ numeric `scale=1.0` instead fixes the scale; it does not estimate it.
 For a builder-wide custom prior, `default_scale_fn` must construct a fresh
 variable for each term unless sharing a scale is intentional.
 
+## Calibrate a smooth to an effect bound
+
+Use {class}`SDPrior <liesel_gam.SDPrior>` to choose a prior through a maximum
+absolute effect. This example targets 95% prior probability that the stochastic
+part stays within ±3 over the evaluation grid. The bound uses additive predictor
+units: with a log link, these are log units. Unpenalized directions remain in the
+model and are outside this bound.
+
+```{code-cell} ipython3
+sd_prior = gam.SDPrior.from_max_abs_effect(
+    3.0,
+    probability=0.95,
+    inference=gs.MCMCSpec(gs.NUTSKernel),
+)
+sd_smooth = tb.ps("x_nonlin", k=15, scale=sd_prior, name="sd_smooth")
+```
+
+The calibrated prior is Weibull with concentration 0.5 on $\tau^2$; the term
+exposes $\tau$. Its automatic starting value is the prior median of $\tau$.
+Supply `value=...` to choose a positive starting $\tau$ explicitly. The example
+sets a variance sampler because the recipe's `inference` default is `None`.
+
+Inspect a pure calculation through
+{meth}`sd_prior.calibrate <liesel_gam.SDPrior.calibrate>`:
+
+```{code-cell} ipython3
+calibration = sd_prior.calibrate(sd_smooth.basis)
+{
+    "variance_prior_scale": round(calibration.prior_scale, 4),
+    "suggested_tau_start": round(calibration.initial_scales[0], 4),
+    "validation_probability": round(
+        float(calibration.diagnostics["validation_probability"]), 3
+    ),
+}
+```
+
+The {class}`CalibrationResult <liesel_gam.CalibrationResult>` is immutable and
+does not change a model's variables. Its suggestions and diagnostics describe
+this calculation. The automatic scalar grid has 129 points, including the input
+range endpoints; `grid_size=` overrides that count. Both the finite grid and
+Monte Carlo validation are approximations, not certified continuous-domain bounds.
+
+Reuse the recipe as an opt-in builder default. This creates independently
+calibrated scales for the supported `ps` and `np` terms; it does not change the
+library's inverse-gamma default or share random variables:
+
+```{code-cell} ipython3
+sd_tb = gam.TermBuilder.from_df(df, default_scale_fn=sd_prior)
+another_smooth = sd_tb.np("x_nonlin", k=10)
+```
+
 ## Choose coefficient updates
 
 {class}`TermBuilder <liesel_gam.TermBuilder>` and the default predictor intercept use

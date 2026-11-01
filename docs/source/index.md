@@ -200,6 +200,9 @@ regression.
    ~liesel_gam.VarIGPrior
    ~liesel_gam.scale_ig
    ~liesel_gam.scale_wb
+   ~liesel_gam.SDPrior
+   ~liesel_gam.MaxAbsEffect
+   ~liesel_gam.CalibrationResult
    ~liesel_gam.MultivariateNormalSingular
    ~liesel_gam.MultivariateNormalStructured
    ~liesel_gam.StructuredPenaltyOperator
