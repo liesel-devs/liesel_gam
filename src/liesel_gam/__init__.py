@@ -37,6 +37,8 @@ from .registry import PandasRegistry as PandasRegistry
 from .scale import scale_ig as scale_ig
 from .scale import scale_wb as scale_wb
 from .sd_prior import CalibrationResult as CalibrationResult
+from .sd_prior import CalibrationTarget as CalibrationTarget
+from .sd_prior import GaussianGeometry as GaussianGeometry
 from .sd_prior import MaxAbsEffect as MaxAbsEffect
 from .sd_prior import SDPrior as SDPrior
 from .summary import polys_to_df as polys_to_df

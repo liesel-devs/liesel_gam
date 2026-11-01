@@ -468,7 +468,7 @@ class TermBuilder:
                     "basis; pass an explicit, non-SDPrior scale for this term."
                 )
             result = scale.calibrate(basis)
-            factory = scale._variance_factories[0]
+            factory = scale._variance_factories(1)[0]
             prior = lsl.Dist(
                 lambda s: _independent_scalar(factory(s)), s=result.prior_scale
             )
