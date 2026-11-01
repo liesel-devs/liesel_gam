@@ -338,7 +338,8 @@ class SDPrior:
             x = np.asarray(basis.x.value)
             scalar_input = x.ndim == 1 or (x.ndim == 2 and x.shape[1] == 1)
             if (
-                basis.row_wise is not True
+                not basis._numeric_input
+                or basis.row_wise is not True
                 or not scalar_input
                 or not x.size
                 or not np.issubdtype(x.dtype, np.number)

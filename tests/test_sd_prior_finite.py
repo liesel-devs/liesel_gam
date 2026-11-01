@@ -244,3 +244,33 @@ def test_rs_and_vc_preserve_coefficient_priors_and_starts(
         assert smooth.scale.value == pytest.approx(explicit_start)
         assert group_term.scale.value == pytest.approx(explicit_start)
     assert np.isfinite(lsl.Model([varying, slope]).log_prob)
+
+
+@pytest.mark.parametrize("use_default", [False, True])
+@pytest.mark.parametrize("use_callback", [False, True])
+def test_custom_f_categorical_domain_requires_an_explicit_scale(
+    use_default, use_callback
+) -> None:
+    group = gam.CatVar(["b", "a"], categories=["b", "a", "unused"], name="group")
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=64)
+    tb = gam.TermBuilder.from_dict(
+        {}, default_scale_fn=prior if use_default else gam.VarIGPrior(1.0, 0.005)
+    )
+
+    def quadratic(x):
+        return jnp.column_stack((x[:, 0], x[:, 0] ** 2))
+
+    with pytest.raises(ValueError, match="numeric scalar row-wise"):
+        tb.f(
+            group,
+            basis_fn=quadratic,
+            row_wise=True,
+            use_callback=use_callback,
+            scale="default" if use_default else prior,
+        )
+    term = tb.f(
+        group, basis_fn=quadratic, row_wise=True, use_callback=use_callback, scale=1.0
+    )
+    assert np.isfinite(lsl.Model(term).log_prob)
+    with pytest.raises(ValueError, match="numeric scalar row-wise"):
+        prior.calibrate(term.basis)

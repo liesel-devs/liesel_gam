@@ -283,6 +283,8 @@ class BasisBuilder:
             row_wise=row_wise,
         )
         basis._input_name = Xname
+        # Stacking encoded categories must not turn them into a numeric domain.
+        basis._numeric_input = all(not isinstance(var, CatVar) for var in x_vars)
 
         return self._maybe_approximate(
             basis,

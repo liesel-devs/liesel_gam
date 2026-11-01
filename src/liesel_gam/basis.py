@@ -12,7 +12,7 @@ from formulaic import ModelSpec
 from liesel_gam.category_mapping import CategoryMapping
 
 from .constraint import LinearConstraintEVD, penalty_to_unit_design
-from .var import UserVar, _append_name, _ensure_var_or_node
+from .var import CatVar, UserVar, _append_name, _ensure_var_or_node
 
 InferenceTypes = Any
 Array = jax.Array
@@ -282,6 +282,7 @@ class Basis(UserVar):
         self._exact_basis_fn = fn
         self._basis_kwargs = basis_kwargs
         self._row_wise = row_wise
+        self._numeric_input = not isinstance(value_var, CatVar)
         self._approximation_spec: ApproximationSpec | None = None
         self._approximation_grid_size: int | None = None
 

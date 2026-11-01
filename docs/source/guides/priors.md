@@ -238,10 +238,10 @@ custom_effect = sd_tb.f(
 
 Omitting the penalty gives iid coefficients; a fixed PSD penalty is also
 supported. Python callback evaluation works with `use_callback=True`. Automatic
-calibration rejects unknown or non-row-wise behavior, multiple input columns,
-and vector or higher-dimensional outputs. Use an ordinary explicit scale for
-custom bases outside this contract. Later arbitrary basis or constraint edits do
-not automatically update calibration.
+calibration rejects categorical inputs, unknown or non-row-wise behavior,
+multiple input columns, and vector or higher-dimensional outputs. Use an ordinary
+explicit scale for custom bases outside this contract. Later arbitrary basis or
+constraint edits do not automatically update calibration.
 
 ## Choose coefficient updates
 

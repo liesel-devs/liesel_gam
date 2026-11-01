@@ -112,10 +112,18 @@ class TermBuilder:
         :meth:`cr <liesel_gam.TermBuilder.cr>`,
         :meth:`cs <liesel_gam.TermBuilder.cs>`,
         :meth:`cc <liesel_gam.TermBuilder.cc>`,
-        :meth:`bs <liesel_gam.TermBuilder.bs>`, and
-        :meth:`cp <liesel_gam.TermBuilder.cp>`, creating fresh scale variables
-        for each term. Other constructors require an explicit ``scale=`` under
-        this default. SD calibration is not supported for multivariate terms.
+        :meth:`bs <liesel_gam.TermBuilder.bs>`,
+        :meth:`cp <liesel_gam.TermBuilder.cp>`,
+        :meth:`ri <liesel_gam.TermBuilder.ri>`,
+        :meth:`mrf <liesel_gam.TermBuilder.mrf>`, and compatible
+        :meth:`f <liesel_gam.TermBuilder.f>` bases, creating fresh scale variables
+        for each term. Custom bases require a known row-wise scalar numeric input
+        and matrix output. :meth:`rs <liesel_gam.TermBuilder.rs>` inherits its
+        group-coefficient calibration through ``ri``; :meth:`vc
+        <liesel_gam.TermBuilder.vc>` preserves the supplied coefficient term's
+        prior and start. Other constructors that resolve a scale require an
+        explicit ``scale=`` under this default. SD calibration is not supported for
+        multivariate terms.
     approximation
         Default approximation policy passed to the internal
         :class:`BasisBuilder <liesel_gam.BasisBuilder>`. ``False`` keeps exact
