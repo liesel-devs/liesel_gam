@@ -9,10 +9,11 @@ import pytest
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.types import Position
-from scipy.integrate import quad
 from scipy.stats import t
 
 import liesel_gam as gam
+
+from .test_sd_prior import _scalar_coverage
 
 
 class _SampleMedianWeibull(tfd.Weibull):
@@ -74,16 +75,7 @@ def test_target_without_variance_limits_reuses_the_sampled_gaussian_workflow():
 
     # For this linear effect the event is |beta| <= threshold / RMS(weight * x).
     factor = target.weight * np.sqrt(np.mean(np.linspace(-1.0, 1.0, 65) ** 2))
-    tail, _ = quad(
-        lambda z: (
-            np.exp(-2.0 / (np.sqrt(result.prior_scale) * factor * z))
-            * np.sqrt(2.0 / np.pi)
-            * np.exp(-z * z / 2.0)
-        ),
-        0.0,
-        np.inf,
-    )
-    assert 1.0 - tail == pytest.approx(0.9, abs=0.02)
+    assert _scalar_coverage(result.prior_scale, factor) == pytest.approx(0.9, abs=0.02)
     assert result.diagnostics["validation_probability"] == pytest.approx(0.9, abs=0.02)
     assert result.diagnostics["method"] == "sampled_variance_quantile"
 
@@ -150,17 +142,10 @@ def test_explicit_geometry_calibrates_different_independent_variance_families():
     result = prior.calibrate(geometry)
 
     # Independent coefficient 1 has a Weibull mixture; coefficient 2 is Student-t.
-    tail, _ = quad(
-        lambda z: (
-            np.exp(-2.0 / (np.sqrt(0.4 * result.prior_scale) * z))
-            * np.sqrt(2.0 / np.pi)
-            * np.exp(-z * z / 2.0)
-        ),
-        0.0,
-        np.inf,
-    )
     second = t(df=6, scale=np.sqrt(result.prior_scale / 3.0))
-    coverage = (1.0 - tail) * (second.cdf(2.0) - second.cdf(-2.0))
+    coverage = _scalar_coverage(0.4 * result.prior_scale) * (
+        second.cdf(2.0) - second.cdf(-2.0)
+    )
     assert coverage == pytest.approx(0.9, abs=0.02)
     weibull, inverse_gamma = result.variance_priors
     assert isinstance(weibull, tfd.Weibull)
@@ -223,7 +208,7 @@ def test_explicit_geometry_rejects_a_mismatched_factory_tuple(count):
         probability=0.9,
         variance_prior=(lambda s: tfd.Weibull(0.5, s),) * count,
     )
-    with pytest.raises(ValueError, match="exactly 2 variance-prior factories"):
+    with pytest.raises(ValueError, match="Expected 2 variance-prior factories"):
         prior.calibrate(geometry)
 
 
@@ -323,13 +308,13 @@ def test_sample_median_initialization_is_independent_of_seed_and_variance_order(
     [
         ({"design": np.ones(2)}, "matrix-valued"),
         ({"design": np.array([[np.nan]])}, "finite"),
+        ({"design": np.eye(2, dtype=complex)}, "real"),
+        ({"penalties": (np.eye(2, dtype=complex),)}, "real"),
         ({"penalties": ()}, "at least one penalty"),
         ({"penalties": (np.eye(3),)}, "design columns"),
         ({"penalties": (np.array([[1.0, 1.0], [0.0, 1.0]]),)}, "symmetric"),
         ({"penalties": (np.diag([1.0, -1.0]), np.eye(2))}, "positive semidefinite"),
         ({"penalties": (np.zeros((2, 2)),)}, "nonzero stochastic"),
-        ({"grid_shape": (3,)}, "grid_shape"),
-        ({"grid_shape": (True, 2)}, "grid_shape"),
     ],
 )
 def test_explicit_geometry_rejects_invalid_evaluation_and_penalties(settings, message):
@@ -342,12 +327,13 @@ def test_explicit_geometry_rejects_invalid_evaluation_and_penalties(settings, me
 def test_explicit_geometry_preserves_its_evaluated_layout():
     design = np.ones((6, 1))
     original = design.copy()
-    geometry = gam.GaussianGeometry(design, grid_shape=(2, 3))
+    geometry = gam.GaussianGeometry(design)
     result = gam.SDPrior.from_max_abs_effect(
         2.0, probability=0.9, draws=64, grid_size=17
     ).calibrate(geometry)
     assert result.diagnostics["evaluation_points"] == 6
-    assert result.diagnostics["grid_shape"] == (2, 3)
+    assert result.diagnostics["grid_shape"] == (6,)
+    assert result.diagnostics["grid_size"] == 6
     np.testing.assert_array_equal(design, original)
 
 
@@ -369,8 +355,15 @@ def test_inverse_gamma_factory_constructs_a_calibrated_scale_prior():
     assert np.isfinite(lsl.Model(term).log_prob)
 
 
-@pytest.mark.parametrize("invalid", [0.0, -1.0, np.nan, np.inf, 1.0 + 1.0j])
-@pytest.mark.parametrize("integrated", [False, True])
+@pytest.mark.parametrize(
+    "integrated, invalid",
+    [
+        (integrated, invalid)
+        for integrated in [False, True]
+        for invalid in [-1.0, np.nan, 1.0 + 1.0j]
+    ]
+    + [(False, np.inf)],
+)
 def test_nonpositive_or_nonfinite_variance_samples_fail_in_both_methods(
     invalid, integrated
 ):
@@ -397,13 +390,117 @@ def test_generic_calibration_rejects_a_factory_that_cannot_reach_the_target():
         prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
 
 
-@pytest.mark.parametrize("complex_penalty", [False, True])
-def test_evaluated_gaussian_geometry_requires_real_matrices(complex_penalty):
-    geometry = (
-        gam.GaussianGeometry(np.eye(2), penalties=(np.eye(2, dtype=complex),))
-        if complex_penalty
-        else gam.GaussianGeometry(np.eye(2, dtype=complex))
+def test_heavy_tailed_cdf_prior_uses_its_finite_quantile_despite_overflowing_draws():
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        variance_prior=lambda s: tfd.InverseGamma(0.05, s),
     )
-    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=64)
-    with pytest.raises(ValueError, match="real"):
-        prior.calibrate(geometry)
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 30)})
+
+    term = builder.ps("x", k=6, scale=prior)
+
+    result = prior.calibrate(term.basis)
+    assert result.diagnostics["method"] == "integrated_variance_cdf"
+    assert np.isfinite(term.scale.value) and term.scale.value > 0
+    median = result.variance_priors[0].quantile(0.5)
+    assert result.initial_scales == pytest.approx((np.sqrt(median),))
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+@pytest.mark.parametrize("multiple", [False, True])
+def test_rounded_zero_weibull_draw_does_not_fail_an_otherwise_valid_calibration(
+    multiple,
+):
+    geometry = gam.GaussianGeometry(
+        np.random.default_rng(0).normal(size=(20, 4)),
+        penalties=(np.eye(4), np.eye(4)) if multiple else None,
+    )
+    prior = gam.SDPrior(
+        calibration=_WeightedRMS(
+            threshold=2.0, probability=0.9, draws=4096, seed=79, weight=1.0
+        )
+    )
+
+    result = prior.calibrate(geometry)
+
+    assert result.diagnostics["method"] == "sampled_variance_quantile"
+    assert result.diagnostics["validation_probability"] == pytest.approx(0.9, abs=0.02)
+    assert all(np.isfinite(value) and value > 0 for value in result.initial_scales)
+
+
+@pytest.mark.parametrize("floor, factor", [(True, 1.0), (False, 1.0), (True, 3.0)])
+def test_unreachable_sampled_targets_report_calibration_failure(floor, factor):
+    class FlooredRMS(_WeightedRMS):
+        def statistic(self, effects):
+            return np.maximum(5.0, super().statistic(effects))
+
+    target = (
+        FlooredRMS(draws=256) if floor else _WeightedRMS(threshold=1e-30, draws=256)
+    )
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 30)}).bases.ps(
+        "x", k=6
+    )
+    prior = gam.SDPrior(
+        calibration=target, variance_prior=lambda s: tfd.Weibull(0.5, factor * s)
+    )
+    with pytest.raises(ValueError, match="Cannot calibrate.*finite positive"):
+        prior.calibrate(basis)
+
+
+def test_an_invalid_trial_does_not_hide_a_reachable_root_on_the_other_side():
+    geometry = gam.GaussianGeometry(np.random.default_rng(0).normal(size=(20, 4)))
+    prior = gam.SDPrior(
+        calibration=_WeightedRMS(threshold=1.0, weight=1.0, draws=512),
+        variance_prior=lambda s: tfd.Weibull(0.5, 1e-20 * s),
+    )
+    result = prior.calibrate(geometry)
+    assert result.prior_scale > 1e15
+    assert result.diagnostics["validation_probability"] == pytest.approx(0.9, abs=0.04)
+
+
+def test_penalty_rescaling_preserves_the_common_stochastic_subspace():
+    first = np.diag(np.r_[np.ones(25), np.zeros(25)]).astype(np.float32)
+    second = np.diag(np.r_[np.zeros(25), np.ones(25)]).astype(np.float32)
+
+    def calibrate(factor):
+        geometry = gam.GaussianGeometry(np.eye(50), penalties=(first, factor * second))
+        return gam.SDPrior.from_max_abs_effect(
+            2.0,
+            probability=0.9,
+            draws=128,
+            variance_prior=(
+                lambda s: tfd.Weibull(0.5, s),
+                lambda s: tfd.Weibull(0.5, factor * s),
+            ),
+        ).calibrate(geometry)
+
+    scaled, unscaled = calibrate(1e-6), calibrate(1.0)
+
+    assert scaled.diagnostics["rank"] == unscaled.diagnostics["rank"] == 50
+    assert scaled.diagnostics["nullity"] == unscaled.diagnostics["nullity"] == 0
+    assert scaled.prior_scale == pytest.approx(unscaled.prior_scale, rel=1e-5)
+
+
+def test_a_bare_penalty_matrix_has_a_clear_collection_error():
+    geometry = gam.GaussianGeometry(np.eye(2), penalties=cast(Any, np.eye(2)))
+    with pytest.raises(TypeError, match="penalties.*tuple"):
+        gam.SDPrior.from_max_abs_effect(2.0, probability=0.9).calibrate(geometry)
+
+
+def test_string_designs_raise_a_clear_geometry_error():
+    with pytest.raises(ValueError, match="real matrix"):
+        gam.SDPrior.from_max_abs_effect(2.0, probability=0.9).calibrate(
+            gam.GaussianGeometry(np.array([["a"]]))
+        )
+
+
+def test_complex_variance_limits_raise_a_clear_target_error():
+    class ComplexLimits(gam.MaxAbsEffect):
+        def variance_limits(self, values):
+            return np.ones_like(values, dtype=complex)
+
+    with pytest.raises(ValueError, match="variance limits.*real"):
+        gam.SDPrior(calibration=ComplexLimits(2.0, 0.9)).calibrate(
+            gam.GaussianGeometry(np.ones((1, 1)))
+        )

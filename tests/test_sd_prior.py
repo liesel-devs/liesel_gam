@@ -508,7 +508,7 @@ def test_single_variance_calibration_rejects_wrong_factory_counts(count) -> None
         3.0, probability=0.95, draws=64, variance_prior=cast(Any, factories)
     )
     basis = _ps_basis()
-    with pytest.raises(ValueError, match="exactly one variance-prior factory"):
+    with pytest.raises(ValueError, match="Expected 1 variance-prior factories"):
         prior.calibrate(basis)
 
 

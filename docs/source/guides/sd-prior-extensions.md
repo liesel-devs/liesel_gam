@@ -99,15 +99,15 @@ sampled_result = sample_only.calibrate(sampled_smooth.basis)
 The method is now `sampled_variance_quantile`: the workflow samples variances
 and Gaussian effects, and adjusts `s` until the requested statistic quantile
 reaches the bound. Fitting uses fixed draws during search; validation uses an
-independent stream. Missing median quantiles use 4,096 variance samples with
-seed zero. This initialization is independent of the calibration seed and
-the position of a variance in a factory tuple.
+independent stream. See {meth}`SDPrior.calibrate <liesel_gam.SDPrior.calibrate>`
+for the deterministic median fallback used for initialization.
 
 ## Define an effect statistic
 
 An ordinary object satisfying {class}`CalibrationTarget
-<liesel_gam.CalibrationTarget>` supplies settings and a `statistic(effects)`
-method. Subclassing or registration is unnecessary. Here a weighted root mean
+<liesel_gam.CalibrationTarget>` supplies settings and a
+{meth}`statistic(effects) <liesel_gam.CalibrationTarget.statistic>` method.
+Subclassing or registration is unnecessary. Here a weighted root mean
 square replaces the maximum absolute effect. The weights are external context
 held by the target.
 
@@ -141,12 +141,12 @@ custom_result = gam.SDPrior(calibration=target).calibrate(basis)
 ```
 
 This targets a 90% probability that weighted RMS is at most 2; it does not
-bound the maximum absolute effect. The target supplies no Gaussian sampler,
-variance-family handling, search algorithm, or result constructor.
+bound the maximum absolute effect.
 
 The `effects` array has shape `(batch, evaluation_points)`. Return one finite
 real statistic per row. Process each row independently: a batch may be smaller
-than `draws`. Use the target's context to interpret evaluation locations. Here
+than {attr}`draws <liesel_gam.CalibrationTarget.draws>`. Use the target's context
+to interpret evaluation locations. Here
 the 65 weights match the 65-point scalar evaluation grid.
 
 ### Add an optional CDF shortcut
@@ -160,16 +160,22 @@ the conditional probability of success for that fixed draw.
 ```{code-cell} ipython3
 class FastWeightedRMS(WeightedRMS):
     def variance_limits(self, values: np.ndarray) -> np.ndarray:
-        return np.divide(
-            self.threshold,
-            values,
-            out=np.full_like(values, np.inf, dtype=float),
-            where=values > 0,
-        ) ** 2
+        return (
+            np.divide(
+                self.threshold,
+                values,
+                out=np.full_like(values, np.inf, dtype=float),
+                where=values > 0,
+            )
+            ** 2
+        )
 
 
 fast_target = FastWeightedRMS(threshold=2.0, probability=0.9, weights=weights)
 fast_result = gam.SDPrior(calibration=fast_target).calibrate(basis)
+```
+
+```{code-cell} ipython3
 fast_result.diagnostics["method"]
 ```
 
@@ -214,25 +220,24 @@ joint_result = joint_prior.calibrate(geometry)
 
 Each tuple entry corresponds to one penalty and receives the same `s`. The
 factors 0.4 and 2.0 preserve relative family preferences; the random variances
-are independent. A single callable instead repeats independently for every
-variance. A tuple must match their number exactly.
+are independent. See {attr}`variance_prior <liesel_gam.SDPrior.variance_prior>`
+for callable and tuple handling.
 
 Conditional coefficient precision is $K_1/\tau_1^2 + K_2/\tau_2^2$. The common
-null space is excluded from calibration. The design already fixes evaluation
-locations; optional `grid_shape` records their layout without resampling.
-This explicit matrix route does not change tensor-builder arguments or add
-tensor construction behavior.
+null space is excluded from calibration. The design rows fix evaluation locations.
 
 ## Check the numerical result
 
 Read the method, validation probability and Monte Carlo error, stochastic rank,
-nullity, and actual evaluation dimensions in `diagnostics`. Variance samples
-must be finite and positive; malformed statistics and unattainable targets
+nullity, and actual evaluation dimensions in
+{attr}`diagnostics <liesel_gam.CalibrationResult.diagnostics>`. Predictive variance
+samples must be finite and nonnegative; exact zeros are replaced by the smallest
+positive normal value of their dtype. Support checks allow positive infinity
+when the median remains finite. Malformed statistics and unattainable targets
 raise errors. Finite grids and Monte Carlo calculations approximate the target.
 
 The shared search needs a meaningful relationship between factory argument `s`
 and the statistic. Arbitrary factories or targets need their own monotonicity
 argument; the workflow does not prove one. See
 {meth}`SDPrior.calibrate <liesel_gam.SDPrior.calibrate>` for bracket, quantile,
-and tolerance details. Transformation, density-comparison, and aggregation
-choices for external criteria remain with the target author.
+and tolerance details.

@@ -23,27 +23,54 @@ def _weibull_variance(scale: float) -> tfd.Distribution:
     return tfd.Weibull(concentration=0.5, scale=scale)
 
 
+class _VarianceSampleError(ValueError):
+    """Variance draws are unavailable at a requested factory argument."""
+
+
+def _is_real(values: np.ndarray, *, allow_infinite: bool = False) -> bool:
+    try:
+        if np.iscomplexobj(values) or not np.issubdtype(
+            np.result_type(values.dtype, np.float32), np.number
+        ):
+            return False
+        return bool(
+            not np.isnan(values).any() if allow_infinite else np.isfinite(values).all()
+        )
+    except TypeError:
+        return False
+
+
 def _variance_samples(
-    distribution: tfd.Distribution, draws: int, seed: jax.Array
+    distribution: tfd.Distribution,
+    draws: int,
+    seed: jax.Array,
+    *,
+    allow_infinite: bool = False,
 ) -> np.ndarray:
     values = np.asarray(distribution.sample(draws, seed=seed))
     if (
         values.shape != (draws,)
-        or np.iscomplexobj(values)
-        or not np.isfinite(values).all()
-        or np.any(values <= 0)
+        or not _is_real(values, allow_infinite=allow_infinite)
+        or np.any(values < 0)
     ):
-        raise ValueError("Variance samples must be finite and positive scalar draws.")
+        raise _VarianceSampleError(
+            "Variance samples must be finite and positive scalar draws."
+        )
+    if np.any(values == 0):
+        dtype = values.dtype if np.issubdtype(values.dtype, np.floating) else np.float32
+        values = np.where(values == 0, np.finfo(dtype).tiny, values)
     return values
 
 
 def _variance_median(distribution: tfd.Distribution) -> float:
-    samples = _variance_samples(distribution, 4096, jax.random.PRNGKey(0))
+    samples = _variance_samples(
+        distribution, 4096, jax.random.PRNGKey(0), allow_infinite=True
+    )
     try:
         median = np.asarray(distribution.quantile(0.5))
     except NotImplementedError:
         median = np.median(samples)
-    if np.ndim(median) or not np.isfinite(median) or median <= 0:
+    if np.ndim(median) or not _is_real(np.asarray(median)) or median <= 0:
         raise ValueError("The variance-prior median must be finite and positive.")
     return float(median)
 
@@ -79,6 +106,11 @@ class CalibrationTarget(Protocol):
     or registration is unnecessary. :meth:`SDPrior.calibrate
     <liesel_gam.SDPrior.calibrate>` owns sampling, prior construction, solving,
     independent validation, and results.
+
+    A scalar fitted basis is evaluated at equally spaced locations from its
+    setup-input minimum to its maximum, including endpoints. ``grid_size=None``
+    selects 129 locations. Explicit geometry uses design-row order. Targets that
+    need locations store matching domain context themselves.
 
     A target may additionally supply ``variance_limits(values)`` for the
     single-variance CDF shortcut. Each limit must be nonnegative and describe
@@ -127,7 +159,7 @@ class CalibrationTarget(Protocol):
         ...
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class GaussianGeometry:
     """Evaluated Gaussian effect with one or more coefficient penalties.
 
@@ -141,48 +173,34 @@ class GaussianGeometry:
         the design columns. Conditional precision is their sum after division
         by those variances. None supplies one iid identity penalty; an explicit
         zero penalty remains zero. Empty tuples are invalid.
-    grid_shape
-        Optional positive integer dimensions whose product equals the number of
-        design rows. None records a one-dimensional layout. Locations are
-        already evaluated: the target's grid_size does not resample this design.
-
-    Notes
-    -----
-    This explicit matrix representation is for evaluated geometry. Custom
-    calibration targets consume predictive effects and do not depend on this
-    representation or construct tensor matrices themselves.
     """
 
     design: np.ndarray | jax.Array
     """Evaluated mapping from coefficients to effect values."""
     penalties: tuple[np.ndarray | jax.Array, ...] | None = None
     """Penalty matrices in variance-factory order, or None for iid precision."""
-    grid_shape: tuple[int, ...] | None = None
-    """Evaluation dimensions reported in calibration diagnostics."""
 
 
 @dataclass(frozen=True)
 class _PreparedGaussian:
     design: np.ndarray
     penalties: tuple[np.ndarray, ...]
-    eigenvalues: np.ndarray
+    unit_design: np.ndarray | None
     nullity: int
     grid_shape: tuple[int, ...]
 
     @property
     def rank(self) -> int:
-        return len(self.eigenvalues)
+        return self.design.shape[1]
 
-    @property
-    def unit_design(self) -> np.ndarray:
-        return self.design / np.sqrt(self.eigenvalues)
-
-    def statistics(self, target, normals, variances):
+    def statistics(
+        self, target: CalibrationTarget, normals: np.ndarray, variances: np.ndarray
+    ) -> np.ndarray:
         values = []
         for start in range(0, len(normals), 128):
             stop = start + 128
             z, v = normals[start:stop], variances[start:stop]
-            if len(self.penalties) == 1:
+            if self.unit_design is not None:
                 effects = (z @ self.unit_design.T) * np.sqrt(v[:, :1])
             else:
                 precision = sum(
@@ -228,36 +246,25 @@ def _prepare_gaussian(
     elif isinstance(basis, GaussianGeometry):
         design = np.asarray(basis.design)
         raw_penalties = basis.penalties
-        grid_shape = basis.grid_shape
+        grid_shape = None
     else:
         raise TypeError("Expected a fitted Basis or evaluated GaussianGeometry.")
-    if (
-        design.ndim != 2
-        or not design.size
-        or np.iscomplexobj(design)
-        or not np.isfinite(design).all()
-    ):
+    if design.ndim != 2 or not design.size or not _is_real(design):
         raise ValueError(
             "Calibration requires a finite nonempty real matrix-valued basis."
         )
     design = np.asarray(design, dtype=float)
     if grid_shape is None:
         grid_shape = (len(design),)
-    if (
-        not grid_shape
-        or any(
-            isinstance(n, bool) or not isinstance(n, Integral) or n < 1
-            for n in grid_shape
-        )
-        or np.prod(grid_shape) != len(design)
-    ):
-        raise ValueError("grid_shape must describe every design row exactly once.")
     if raw_penalties is None:
         raw_penalties = (np.eye(design.shape[1]),)
+    if not isinstance(raw_penalties, tuple):
+        raise TypeError("penalties must be a tuple of matrices or None.")
     if not raw_penalties:
         raise ValueError("Gaussian geometry requires at least one penalty.")
     penalties = []
-    relative_tolerance = 0.0
+    normalized_penalties = []
+    rank_relative_tolerance = 0.0
     for raw in raw_penalties:
         raw = np.asarray(raw)
         if np.iscomplexobj(raw):
@@ -267,19 +274,30 @@ def _prepare_gaussian(
             raise ValueError("The penalty must match the design columns.")
         if not np.isfinite(penalty).all():
             raise ValueError("The penalty must be finite.")
-        tolerance = np.finfo(np.result_type(raw.dtype, np.float32)).eps * len(penalty)
+        relative_tolerance = np.finfo(np.result_type(raw.dtype, np.float32)).eps * len(
+            penalty
+        )
         if not np.allclose(
-            penalty, penalty.T, rtol=0.0, atol=tolerance * np.abs(penalty).max()
+            penalty,
+            penalty.T,
+            rtol=0.0,
+            atol=relative_tolerance * np.abs(penalty).max(),
         ):
             raise ValueError("The penalty must be symmetric.")
         penalty = (penalty + penalty.T) / 2.0
-        eigenvalues = np.linalg.eigvalsh(penalty)
-        if eigenvalues.min() < -tolerance * np.max(np.abs(eigenvalues)):
+        eigenvalues, eigenvectors = np.linalg.eigh(penalty)
+        scale = np.max(np.abs(eigenvalues))
+        if eigenvalues.min() < -relative_tolerance * scale:
             raise ValueError("The penalty must be positive semidefinite.")
-        relative_tolerance = max(relative_tolerance, tolerance)
+        if scale > 0:
+            normalized_penalties.append(penalty / scale)
+            rank_relative_tolerance = max(rank_relative_tolerance, relative_tolerance)
         penalties.append(penalty)
-    eigenvalues, eigenvectors = np.linalg.eigh(sum(penalties))
-    positive = eigenvalues > relative_tolerance * np.max(np.abs(eigenvalues))
+    if not normalized_penalties:
+        raise ValueError("Calibration requires a nonzero stochastic penalty.")
+    if len(penalties) > 1:
+        eigenvalues, eigenvectors = np.linalg.eigh(sum(normalized_penalties))
+    positive = eigenvalues > rank_relative_tolerance * np.max(np.abs(eigenvalues))
     if not positive.any():
         raise ValueError("Calibration requires a nonzero stochastic penalty.")
     rotation = eigenvectors[:, positive]
@@ -289,7 +307,9 @@ def _prepare_gaussian(
     return _PreparedGaussian(
         design=design,
         penalties=tuple(rotation.T @ penalty @ rotation for penalty in penalties),
-        eigenvalues=eigenvalues[positive],
+        unit_design=design / np.sqrt(eigenvalues[positive])
+        if len(penalties) == 1
+        else None,
         nullity=len(eigenvalues) - int(positive.sum()),
         grid_shape=tuple(grid_shape),
     )
@@ -297,15 +317,7 @@ def _prepare_gaussian(
 
 def _target_statistics(target: CalibrationTarget, effects: np.ndarray) -> np.ndarray:
     values = np.asarray(target.statistic(effects))
-    try:
-        valid = (
-            values.shape == (len(effects),)
-            and not np.iscomplexobj(values)
-            and np.isfinite(values).all()
-        )
-    except TypeError:
-        valid = False
-    if not valid:
+    if values.shape != (len(effects),) or not _is_real(values):
         raise ValueError("The target statistic must return one finite value per draw.")
     return values
 
@@ -317,10 +329,20 @@ def _calibration_root(objective: Callable[[float], float]) -> float:
     if center == 0.0:
         return 0.0
     radius = 1.0
-    while radius < 2 * max(-lower, upper):
-        for trial in (max(lower, -radius), min(upper, radius)):
-            if center * objective(trial) <= 0:
+    active = [True, True]
+    while any(active):
+        for side, trial in enumerate((max(lower, -radius), min(upper, radius))):
+            if not active[side]:
+                continue
+            try:
+                value = objective(trial)
+            except _VarianceSampleError:
+                active[side] = False
+                continue
+            if center * value <= 0:
                 return brentq(objective, min(0.0, trial), max(0.0, trial), xtol=1e-7)
+            if trial in (lower, upper):
+                active[side] = False
         radius *= 2
     raise ValueError(
         "Cannot calibrate the target within finite positive prior parameters."
@@ -404,8 +426,8 @@ class MaxAbsEffect:
     def statistic(self, effects: np.ndarray) -> np.ndarray:
         """Return the maximum absolute effect for each predictive draw.
 
-        ``effects`` has shape ``(draws, evaluation_points)``. The returned array
-        has shape ``(draws,)``.
+        ``effects`` has shape ``(batch, evaluation_points)``. The returned array
+        has shape ``(batch,)``.
         """
         return np.max(np.abs(effects), axis=-1)
 
@@ -451,9 +473,9 @@ class SDPrior:
         factory receives the same calibrated scalar; fixed relative factors
         belong inside the factories.
         The default is Weibull with concentration 0.5 and that scalar as its TFD
-        scale. Priors must be sampleable with finite positive variance draws;
-        CDF and quantile implementations are optional. This argument is not a
-        prior on tau itself.
+        scale. Priors must be sampleable; CDF and quantile implementations are
+        optional. See :meth:`calibrate <liesel_gam.SDPrior.calibrate>` for numeric
+        draw handling. This argument is a prior on tau squared.
     value
         Explicit finite positive initial tau. ``None`` initializes tau at
         ``sqrt(median(tau**2))`` under the calibrated variance prior. If quantile
@@ -490,7 +512,11 @@ class SDPrior:
     variance_prior: _VariancePriorFactory | tuple[_VariancePriorFactory, ...] = field(
         default_factory=lambda: _weibull_variance
     )
-    """Factory producing a scalar prior on tau squared."""
+    """Scalar tau-squared prior factory, repeated independently for each variance.
+
+    A tuple supplies one factory per penalty and must match their number exactly.
+    All factories receive the same calibrated argument.
+    """
     value: float | None = None
     """Explicit initial tau, or None for the calibrated prior median."""
     bijector: tfb.Bijector = field(default_factory=tfb.Exp)
@@ -508,15 +534,18 @@ class SDPrior:
                 f"bijector must be a TFP bijector instance, got {self.bijector!r}."
             )
 
-    @property
-    def _variance_factories(self) -> tuple[_VariancePriorFactory, ...]:
+    def _variance_factories(self, count: int) -> tuple[_VariancePriorFactory, ...]:
         factories = (
             self.variance_prior
             if isinstance(self.variance_prior, tuple)
-            else (self.variance_prior,)
+            else (self.variance_prior,) * count
         )
         if any(not callable(factory) for factory in factories):
             raise TypeError("variance_prior must be a callable or tuple of callables.")
+        if len(factories) != count:
+            raise ValueError(
+                f"Expected {count} variance-prior factories, got {len(factories)}."
+            )
         return factories
 
     @classmethod
@@ -590,6 +619,9 @@ class SDPrior:
         continuous-domain coverage. Penalty eigenvalues within
         ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
         where ``eps`` is the penalty's floating precision (at least float32).
+        For multiple penalties, their sum after individual spectral normalization
+        identifies the common null space; the original penalties determine
+        conditional precision.
         Both searches double a log-scale bracket around ``s=1``, bounded by
         normal positive prior parameters in the model's default floating
         precision, with log-scale tolerance ``1e-7``. When
@@ -599,50 +631,33 @@ class SDPrior:
         within two draw counts of the target;
         targets with incompatible atoms or unattainable probabilities fail.
 
-        Variance draws must remain finite and positive throughout search. Common
-        random numbers stabilize the objective but do not establish monotonicity
+        Predictive variance draws must be finite and nonnegative; exact zeros
+        are replaced by the smallest positive normal value of their draw dtype.
+        Support checks and median estimation also allow positive-infinite draws,
+        provided the resulting median is finite and positive. A quantile median
+        is preferred; otherwise 4,096 seed-zero draws supply a deterministic median.
+        Search expansion stops on a side whose variance draws become invalid,
+        while continuing on the other side. On the sampled path, draws at
+        ``s=1`` must be valid.
+        Common random numbers stabilize the objective but do not establish monotonicity
         for arbitrary factories or criteria. Use a factory argument whose effect
         on the target is meaningful over the searched range. Diagnostics report
         either ``integrated_variance_cdf`` or ``sampled_variance_quantile``.
         """
-        factories = self._variance_factories
         target = self.calibration
         _validate_target(target)
         geometry = _prepare_gaussian(basis, target.grid_size)
         n_variances = len(geometry.penalties)
-        if not isinstance(self.variance_prior, tuple):
-            factories *= n_variances
-        if n_variances == 1 and len(factories) != 1:
-            raise ValueError(
-                "A single-variance basis requires exactly one variance-prior factory."
-            )
-        if len(factories) != n_variances:
-            raise ValueError(
-                f"This geometry requires exactly {n_variances} "
-                "variance-prior factories."
-            )
+        factories = self._variance_factories(n_variances)
         rank = geometry.rank
         variance_limits = getattr(target, "variance_limits", None)
         fit_rng, validation_rng = np.random.default_rng(target.seed).spawn(2)
         fit_normals = fit_rng.standard_normal((target.draws, rank))
         validation_normals = validation_rng.standard_normal((target.draws, rank))
 
-        def predictive_limits(
-            effects: np.ndarray, capability: Callable[[np.ndarray], np.ndarray]
-        ) -> np.ndarray:
-            values = _target_statistics(target, effects)
-            limits = np.asarray(capability(values))
-            if (
-                limits.shape != values.shape
-                or np.isnan(limits).any()
-                or np.any(limits < 0)
-            ):
-                raise ValueError(
-                    "Target variance limits must be nonnegative values, one per draw."
-                )
-            return limits
-
-        def distribution_at(scale: float, factory=factories[0]) -> tfd.Distribution:
+        def distribution_at(
+            scale: float, factory: _VariancePriorFactory = factories[0]
+        ) -> tfd.Distribution:
             distribution = factory(scale)
             if not isinstance(distribution, tfd.Distribution):
                 raise TypeError(
@@ -680,11 +695,27 @@ class SDPrior:
             return np.where(unlimited, 1.0, np.clip(probabilities, 0.0, 1.0))
 
         if use_cdf and callable(variance_limits):
+
+            def predictive_limits(values: np.ndarray) -> np.ndarray:
+                limits = np.asarray(variance_limits(values))
+                if (
+                    limits.shape != values.shape
+                    or not _is_real(limits, allow_infinite=True)
+                    or np.any(limits < 0)
+                ):
+                    raise ValueError(
+                        "Target variance limits must be nonnegative real values, "
+                        "one per draw."
+                    )
+                return limits
+
             fit = predictive_limits(
-                fit_normals @ geometry.unit_design.T, variance_limits
+                geometry.statistics(target, fit_normals, np.ones((target.draws, 1))),
             )
             validation = predictive_limits(
-                validation_normals @ geometry.unit_design.T, variance_limits
+                geometry.statistics(
+                    target, validation_normals, np.ones((target.draws, 1))
+                ),
             )
 
             def residual(value: float) -> float:
@@ -697,17 +728,25 @@ class SDPrior:
             fit_key = jax.random.PRNGKey(int(fit_rng.integers(0, 2**32)))
             validation_key = jax.random.PRNGKey(int(validation_rng.integers(0, 2**32)))
 
-            def sampled_statistics(value, normals, key):
-                variances = np.column_stack(
-                    [
-                        _variance_samples(
-                            distribution_at(float(np.exp(value)), factory),
-                            target.draws,
-                            jax.random.fold_in(key, index),
+            def sampled_statistics(
+                value: float, normals: np.ndarray, key: jax.Array
+            ) -> np.ndarray:
+                try:
+                    with np.errstate(over="raise", invalid="raise", divide="raise"):
+                        variances = np.column_stack(
+                            [
+                                _variance_samples(
+                                    distribution_at(float(np.exp(value)), factory),
+                                    target.draws,
+                                    jax.random.fold_in(key, index),
+                                )
+                                for index, factory in enumerate(factories)
+                            ]
                         )
-                        for index, factory in enumerate(factories)
-                    ]
-                )
+                except FloatingPointError as error:
+                    raise _VarianceSampleError(
+                        "Variance samples must be finite and positive scalar draws."
+                    ) from error
                 return geometry.statistics(target, normals, variances)
 
             def quantile_residual(value: float) -> float:
