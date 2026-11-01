@@ -23,8 +23,8 @@ def _weibull_variance(scale: float) -> tfd.Distribution:
     return tfd.Weibull(concentration=0.5, scale=scale)
 
 
-class _VarianceSampleError(ValueError):
-    """Variance draws are unavailable at a requested factory argument."""
+class _InvalidPriorValues(ValueError):
+    """Variance-prior values are invalid at a requested factory argument."""
 
 
 def _is_real_numeric(values: np.ndarray, *, allow_infinite: bool = False) -> bool:
@@ -55,8 +55,9 @@ def _variance_samples(
         or not _is_real_numeric(values, allow_infinite=allow_infinite)
         or np.any(values < 0)
     ):
-        raise _VarianceSampleError(
-            "Variance samples must be finite and positive scalar draws."
+        raise _InvalidPriorValues(
+            "Variance samples must be nonnegative real scalar draws"
+            + ("." if allow_infinite else " with finite values.")
         )
     if np.any(values == 0):
         dtype = values.dtype if np.issubdtype(values.dtype, np.floating) else np.float32
@@ -170,7 +171,8 @@ class GaussianGeometry:
     design
         Finite nonempty matrix with one row per evaluation location and one
         column per coefficient. Include fitted constraints and transformations.
-        The target's grid_size does not resample these rows.
+        The target's :attr:`grid_size <liesel_gam.CalibrationTarget.grid_size>`
+        does not resample these rows.
     penalties
         One symmetric PSD matrix per independent variance parameter, matching
         the design columns. Conditional precision is their sum after division
@@ -264,7 +266,9 @@ def _prepare_gaussian(
         raise ValueError(
             "Calibration requires a finite nonempty real matrix-valued basis."
         )
+    design_precision = np.finfo(np.result_type(design.dtype, np.float32)).eps
     design = np.asarray(design, dtype=float)
+    effect_tolerance = max(design.shape) * design_precision * np.linalg.norm(design)
     if grid_shape is None:
         grid_shape = (len(design),)
     if raw_penalties is None:
@@ -295,23 +299,31 @@ def _prepare_gaussian(
         ):
             raise ValueError("The penalty must be symmetric.")
         penalty = (penalty + penalty.T) / 2.0
-        eigenvalues, eigenvectors = np.linalg.eigh(penalty)
-        scale = np.max(np.abs(eigenvalues))
+        penalty_eigenvalues, penalty_eigenvectors = np.linalg.eigh(penalty)
+        scale = np.max(np.abs(penalty_eigenvalues))
         penalty_sizes.append(scale)
-        if eigenvalues.min() < -relative_tolerance * scale:
+        if penalty_eigenvalues.min() < -relative_tolerance * scale:
             raise ValueError("The penalty must be positive semidefinite.")
+        stochastic_eigenvalues = np.where(
+            penalty_eigenvalues > relative_tolerance * scale, penalty_eigenvalues, 0.0
+        )
+        penalty = (
+            penalty_eigenvectors * stochastic_eigenvalues
+        ) @ penalty_eigenvectors.T
         if scale > 0:
             normalized_penalties.append(penalty / scale)
             rank_relative_tolerance = max(rank_relative_tolerance, relative_tolerance)
         penalties.append(penalty)
     if not normalized_penalties:
         raise ValueError("Calibration requires a nonzero stochastic penalty.")
-    if len(penalties) > 1:
+    if len(penalties) == 1:
+        eigenvalues, eigenvectors = penalty_eigenvalues, penalty_eigenvectors
+    else:
         eigenvalues, eigenvectors = np.linalg.eigh(sum(normalized_penalties))
     positive = eigenvalues > rank_relative_tolerance * np.max(np.abs(eigenvalues))
     rotation = eigenvectors[:, positive]
     design = design @ rotation
-    if not np.any(design):
+    if not np.any(np.abs(design) > effect_tolerance):
         raise ValueError("The evaluation grid has no stochastic effect to calibrate.")
     return _PreparedGaussian(
         design=design,
@@ -346,7 +358,7 @@ def _calibration_root(objective: Callable[[float], float]) -> float:
                 continue
             try:
                 value = objective(trial)
-            except _VarianceSampleError:
+            except _InvalidPriorValues:
                 active[side] = False
                 continue
             if center * value <= 0:
@@ -621,7 +633,8 @@ class SDPrior:
             If the fitted geometry is invalid, has no stochastic effect on the
             grid, or the target cannot be calibrated within finite prior parameters.
         TypeError
-            If basis is unsupported, penalties is not a tuple or None, or a
+            If basis is unsupported, :attr:`penalties
+            <liesel_gam.GaussianGeometry.penalties>` is not a tuple or None, or a
             variance-prior factory does not return a TFD distribution.
 
         Notes
@@ -639,6 +652,10 @@ class SDPrior:
         continuous-domain coverage. Penalty eigenvalues within
         ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
         where ``eps`` is the penalty's floating precision (at least float32).
+        Each penalty is reconstructed with those eigenvalues set to zero before
+        computing conditional precision. A design's stochastic projection counts
+        as zero below ``max(design.shape) * eps * norm(design)`` using its
+        Frobenius norm and floating precision (at least float32).
         For multiple penalties, their sum after individual spectral normalization
         identifies the common null space; the original penalties determine
         conditional precision. Before forming precision, each draw's variances
@@ -647,29 +664,28 @@ class SDPrior:
         this ratio bound. This numerical approximation prevents extreme variance
         ratios from erasing stochastic directions during factorization.
         Both searches double a log-scale bracket around the factory argument
-        ``s=1``, bounded by
-        normal positive prior parameters in the model's default floating
-        precision, with log-scale tolerance ``1e-7``. When
-        either shortcut capability is unavailable, fixed independent variance
-        and Gaussian draws supply a sampled statistic quantile. That search
+        ``s=1``, bounded by normal positive prior parameters in the model's
+        default floating precision, with log-scale tolerance ``1e-7``. For several
+        variances or when either shortcut capability is unavailable, fixed
+        independent variance and Gaussian draws supply a sampled statistic
+        quantile. That search
         uses linear sample-quantile interpolation. Fitting coverage must be
-        within two draw counts of the target;
-        targets with incompatible atoms or unattainable probabilities fail.
+        within two draw counts of the target; targets with incompatible atoms or
+        unattainable probabilities fail.
 
         Predictive variance draws must be finite and nonnegative; exact zeros
         are replaced by the smallest positive normal value of their draw dtype.
         Zeros are treated as numerical rounding; use priors with no point mass
-        at zero.
-        Support checks and median estimation also allow positive-infinite draws,
-        provided the resulting median is finite and positive. See ``value`` for
-        the deterministic median fallback.
-        Search expansion stops on a side whose variance draws become invalid,
-        while continuing on the other side. On the sampled path, draws at
-        ``s=1`` must be valid.
-        Common random numbers stabilize the objective but do not establish monotonicity
-        for arbitrary factories or criteria. Use a factory argument whose effect
-        on the target is meaningful over the searched range. Diagnostics report
-        either ``integrated_variance_cdf`` or ``sampled_variance_quantile``.
+        at zero. Support checks and median estimation also allow positive-infinite
+        draws, provided the resulting median is finite and positive. See
+        :attr:`value <liesel_gam.SDPrior.value>` for the deterministic median
+        fallback. Search expansion stops on a side whose variance draws or CDF
+        values become invalid, while continuing on the other side. Values at
+        ``s=1`` must be valid. Common random numbers stabilize the objective but
+        do not establish monotonicity for arbitrary factories or criteria. Use a
+        factory argument whose effect on the target is meaningful over the
+        searched range. Diagnostics report either ``integrated_variance_cdf`` or
+        ``sampled_variance_quantile``.
         """
         target = self.calibration
         _validate_target(target)
@@ -716,7 +732,7 @@ class SDPrior:
             if not np.isfinite(probabilities).all() or np.any(
                 (probabilities < -rounding) | (probabilities > 1 + rounding)
             ):
-                raise ValueError(
+                raise _InvalidPriorValues(
                     "The variance-prior CDF must return finite probabilities in [0, 1]."
                 )
             return np.where(unlimited, 1.0, np.clip(probabilities, 0.0, 1.0))

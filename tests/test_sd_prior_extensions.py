@@ -220,7 +220,7 @@ def test_variance_priors_with_negative_support_are_rejected(integrated):
     prior = gam.SDPrior(
         calibration=target, variance_prior=lambda s: tfd.Normal(loc=s, scale=s)
     )
-    with pytest.raises(ValueError, match="Variance samples.*positive"):
+    with pytest.raises(ValueError, match="Variance samples.*nonnegative.*real"):
         prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
 
 
@@ -385,7 +385,7 @@ def test_nonpositive_or_nonfinite_variance_samples_fail_in_both_methods(
     prior = gam.SDPrior(
         calibration=target, variance_prior=lambda s: InvalidSamples(loc=s, scale=s)
     )
-    with pytest.raises(ValueError, match="Variance samples.*finite.*positive"):
+    with pytest.raises(ValueError, match="Variance samples.*nonnegative.*real"):
         prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
 
 
@@ -569,3 +569,79 @@ def test_an_arithmetic_error_from_a_factory_propagates_to_the_caller():
     prior = gam.SDPrior(calibration=_WeightedRMS(draws=64), variance_prior=factory)
     with pytest.raises(FloatingPointError, match="factory arithmetic failed"):
         prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
+
+
+def test_joint_calibration_accepts_raw_penalties_from_library_spline_bases():
+    builder = gam.TermBuilder.from_dict(
+        {"x": np.linspace(0.0, 1.0, 30), "z": np.linspace(-2.0, 3.0, 30)}
+    )
+    first = builder.bases.ps("x", k=10, diagonal_penalty=False)
+    second = builder.bases.ps("z", k=10, diagonal_penalty=False)
+    assert first.penalty is not None and second.penalty is not None
+    k1, k2 = np.asarray(first.penalty.value), np.asarray(second.penalty.value)
+    geometry = gam.GaussianGeometry(
+        np.random.default_rng(0).normal(size=(30, len(k1) * len(k2))),
+        penalties=(
+            np.kron(k1, np.eye(len(k2), dtype=np.float32)),
+            np.kron(np.eye(len(k1), dtype=np.float32), k2),
+        ),
+    )
+    result = gam.SDPrior.from_max_abs_effect(
+        3.0, probability=0.95, draws=512, seed=0
+    ).calibrate(geometry)
+
+    assert result.diagnostics["rank"] == 80
+    assert result.diagnostics["nullity"] == 1
+    assert result.diagnostics["validation_probability"] == pytest.approx(0.95, abs=0.04)
+
+
+def test_an_invalid_cdf_trial_does_not_hide_a_root_on_the_other_side():
+    class PartlyInvalidWeibull(tfd.Weibull):
+        def _cdf(self, y, **kwargs):
+            return jnp.where(self.scale >= 1000.0, jnp.nan, super()._cdf(y, **kwargs))
+
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 30)}).bases.ps(
+        "x", k=6
+    )
+    prior = gam.SDPrior.from_max_abs_effect(
+        1e-3,
+        probability=0.95,
+        draws=512,
+        variance_prior=lambda s: PartlyInvalidWeibull(0.5, s),
+    )
+    result = prior.calibrate(basis)
+    reference = gam.SDPrior.from_max_abs_effect(
+        1e-3, probability=0.95, draws=512
+    ).calibrate(basis)
+
+    assert result.prior_scale == pytest.approx(reference.prior_scale, rel=1e-6)
+    assert result.diagnostics["method"] == "integrated_variance_cdf"
+
+
+def test_a_design_in_the_penalty_null_space_has_no_stochastic_effect():
+    differences = np.diff(np.eye(7), axis=0)
+    geometry = gam.GaussianGeometry(
+        np.outer([1.0, 2.0, 3.0], np.ones(7)),
+        penalties=(differences.T @ differences,),
+    )
+    with pytest.raises(ValueError, match="no stochastic effect"):
+        gam.SDPrior.from_max_abs_effect(2.0, probability=0.9).calibrate(geometry)
+
+
+@pytest.mark.parametrize("concentration, factor", [(3.0, 3.0), (0.5, 1.0)])
+def test_inverse_gamma_cdf_calibration_matches_exact_student_t_coverage(
+    concentration, factor
+):
+    result = gam.SDPrior.from_max_abs_effect(
+        2.0,
+        probability=0.9,
+        draws=8192,
+        variance_prior=lambda s: tfd.InverseGamma(concentration, factor * s),
+    ).calibrate(gam.GaussianGeometry(np.ones((1, 1))))
+    exact = t(
+        df=2.0 * concentration,
+        scale=np.sqrt(factor * result.prior_scale / concentration),
+    )
+
+    assert result.diagnostics["method"] == "integrated_variance_cdf"
+    assert exact.cdf(2.0) - exact.cdf(-2.0) == pytest.approx(0.9, abs=0.01)
