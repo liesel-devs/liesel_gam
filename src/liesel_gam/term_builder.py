@@ -13,11 +13,13 @@ import pandas as pd
 import tensorflow_probability.substrates.jax.bijectors as tfb
 from liesel.model.model import TemporaryModel
 
-from .basis import ApproximationSpec, LinBasis
+from .basis import ApproximationSpec, Basis, LinBasis
 from .basis_builder import BasisBuilder
 from .mv_utils import as_penalty_value
 from .names import NameManager
 from .registry import CategoryMapping, DictRegistry, PandasRegistry
+from .scale import _independent_scalar, _scale_from_variance
+from .sd_prior import SDPrior
 from .term import (
     LinTerm,
     MRFTerm,
@@ -83,7 +85,8 @@ class TermBuilder:
         squares kernel without step size tuning, see
         :meth:`liesel.goose.IWLSKernel.untuned`.
     default_scale_fn
-        A function or :class:`VarIGPrior <liesel_gam.VarIGPrior>` object that defines
+        A function, :class:`SDPrior <liesel_gam.SDPrior>`, or
+        :class:`VarIGPrior <liesel_gam.VarIGPrior>` object that defines
         the default scale
         for structured additive terms initialized by this builder. If this is a
         function, it must take no arguments and return a :class:`liesel.model.Var`
@@ -103,6 +106,16 @@ class TermBuilder:
         sampling. The default is ``VarIGPrior(1.0, 0.005)``, which leads to an
         inverse Gamma prior on the level of the variance parameter, i.e.
         :math:`\tau^2 \sim \operatorname{InverseGamma}(1.0, 0.005)`.
+        Passing an :class:`SDPrior <liesel_gam.SDPrior>` opts this builder instance
+        into automatic calibration for :meth:`ps <liesel_gam.TermBuilder.ps>`,
+        :meth:`np <liesel_gam.TermBuilder.np>`,
+        :meth:`cr <liesel_gam.TermBuilder.cr>`,
+        :meth:`cs <liesel_gam.TermBuilder.cs>`,
+        :meth:`cc <liesel_gam.TermBuilder.cc>`,
+        :meth:`bs <liesel_gam.TermBuilder.bs>`, and
+        :meth:`cp <liesel_gam.TermBuilder.cp>`, creating fresh scale variables
+        for each term. Other constructors require an explicit ``scale=`` under
+        this default. SD calibration is not supported for multivariate terms.
     approximation
         Default approximation policy passed to the internal
         :class:`BasisBuilder <liesel_gam.BasisBuilder>`. ``False`` keeps exact
@@ -343,7 +356,9 @@ class TermBuilder:
         registry: DictRegistry,
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
-        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior | SDPrior = VarIGPrior(
+            1.0, 0.005
+        ),
         approximation: bool | ApproximationSpec = False,
     ) -> None:
         self.registry = registry
@@ -389,8 +404,10 @@ class TermBuilder:
 
     def init_scale(
         self,
-        scale: lsl.Var | ScaleIG | float | Literal["default"] | VarIGPrior,
+        scale: lsl.Var | ScaleIG | float | Literal["default"] | VarIGPrior | SDPrior,
         term_name: str,
+        *,
+        basis: Basis | None = None,
     ) -> lsl.Var:
         """
         Initializes a scale variable with a term-related name.
@@ -403,6 +420,10 @@ class TermBuilder:
             Name of the term this scale corresponds to. If you supply a
             :class:`liesel.model.Var`, you can use the place- holder ``{x}`` in its name
             to allow this method to fill in the ``term_name``.
+        basis
+            Fitted :class:`Basis <liesel_gam.Basis>` used when resolving an
+            :class:`SDPrior <liesel_gam.SDPrior>`. Required for SD construction;
+            ignored by ordinary explicit-scale specifications.
 
         Notes
         -----
@@ -411,6 +432,9 @@ class TermBuilder:
         - If it is ``"default"``, the return will be created based on the
             ``default_scale_fn`` argument supplied to the TermBuilder upon
             initialization.
+        - If it is an :class:`SDPrior <liesel_gam.SDPrior>`, calibrate against
+          ``basis`` and construct a scale with the configured variance prior,
+          starting value, bijector, and inference specification.
         - If it is a :class:`VarIGPrior <liesel_gam.VarIGPrior>`, the return
             will be ``scale = sqrt(var)``, where ``var ~ InverseGamma(concentration,
             scale)``, with concentration and scale given by the :class:`VarIGPrior
@@ -427,16 +451,34 @@ class TermBuilder:
             generated name based on the ``term_name``.
         """
         if scale == "default":
-            if isinstance(self._default_scale_fn, VarIGPrior):
-                scale_var: lsl.Var | ScaleIG = ScaleIG(
-                    value=self._default_scale_fn.value,
-                    concentration=self._default_scale_fn.concentration,
-                    scale=self._default_scale_fn.scale,
-                    name="{x}",
-                    variance_name="{x}^2",
-                )
+            default = self._default_scale_fn
+            if isinstance(default, VarIGPrior | SDPrior):
+                scale = default
             else:
-                scale_var = self._default_scale_fn()
+                scale = default()
+                if not isinstance(scale, lsl.Var | ScaleIG):
+                    raise TypeError(
+                        "default_scale_fn must return an lsl.Var or ScaleIG, "
+                        f"got {type(scale).__name__}."
+                    )
+        if isinstance(scale, SDPrior):
+            if basis is None:
+                raise ValueError(
+                    f"SDPrior calibration for {term_name!r} needs a fitted scalar "
+                    "basis; pass an explicit, non-SDPrior scale for this term."
+                )
+            result = scale.calibrate(basis)
+            factory = scale._variance_factories[0]
+            prior = lsl.Dist(
+                lambda s: _independent_scalar(factory(s)), s=result.prior_scale
+            )
+            scale_var = _scale_from_variance(
+                result.initial_scales[0] if scale.value is None else scale.value,
+                prior,
+                scale.bijector,
+                name="{x}",
+                inference=scale.inference,
+            )
         elif isinstance(scale, VarIGPrior):
             scale_var = ScaleIG(
                 value=scale.value,
@@ -463,7 +505,9 @@ class TermBuilder:
         data: Mapping[str, Any],
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
-        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior | SDPrior = VarIGPrior(
+            1.0, 0.005
+        ),
         approximation: bool | ApproximationSpec = False,
     ) -> TermBuilder:
         """
@@ -496,7 +540,9 @@ class TermBuilder:
         data: pd.DataFrame,
         prefix_names_by: str = "",
         default_inference: InferenceTypes | None = gs.MCMCSpec(gs.IWLSKernel.untuned),
-        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior = VarIGPrior(1.0, 0.005),
+        default_scale_fn: Callable[[], lsl.Var] | VarIGPrior | SDPrior = VarIGPrior(
+            1.0, 0.005
+        ),
         approximation: bool | ApproximationSpec = False,
     ) -> TermBuilder:
         """
@@ -919,7 +965,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -943,6 +994,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1055,7 +1109,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1069,7 +1123,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1093,6 +1152,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1204,7 +1266,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1218,7 +1280,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1242,6 +1309,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1355,7 +1425,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1369,7 +1439,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int | Sequence[int] = 2,
@@ -1394,6 +1469,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1508,7 +1586,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1523,7 +1601,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -1548,6 +1631,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1676,7 +1762,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, term_name),
+            scale=self.init_scale(scale, term_name, basis=basis),
             name=term_name,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1691,7 +1777,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -1715,6 +1806,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior after removing the constant and linear directions.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1841,7 +1935,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1856,7 +1950,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -1881,6 +1980,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -2000,7 +2102,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
