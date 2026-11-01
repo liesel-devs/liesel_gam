@@ -52,9 +52,16 @@ def test_explicit_calibration_bounds_a_known_scalar_effect() -> None:
     )
 
 
-def test_ps_constructs_a_variance_prior_under_ordinary_singular_defaults() -> None:
+@pytest.mark.parametrize("convenience", [False, True])
+def test_ps_constructs_a_variance_prior_under_ordinary_singular_defaults(
+    convenience,
+) -> None:
     tb = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 30)})
-    prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=512)
+    prior = (
+        gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=512)
+        if convenience
+        else gam.SDPrior(calibration=gam.MaxAbsEffect(3.0, probability=0.95, draws=512))
+    )
 
     term = tb.ps("x", k=6, scale=prior)
 
@@ -67,7 +74,8 @@ def test_ps_constructs_a_variance_prior_under_ordinary_singular_defaults() -> No
     assert actual.scale == pytest.approx(result.prior_scale)
     assert term.scale.value == pytest.approx(result.initial_scales[0])
     assert variance.value == pytest.approx(float(term.scale.value) ** 2)
-    assert parameter.inference is None
+    assert parameter.inference.kernel is gs.NUTSKernel
+    assert parameter.value == pytest.approx(float(jnp.log(variance.value)))
     assert result.diagnostics["nullity"] == 1
     assert term.scale.name == r"$\tau_{ps(x)}$"
     assert np.isfinite(lsl.Model(term).log_prob)
@@ -267,7 +275,7 @@ def test_explicit_start_bijector_and_inference_are_preserved(
     method, factor_scale
 ) -> None:
     tb = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)})
-    inference = gs.MCMCSpec(gs.NUTSKernel)
+    inference = gs.MCMCSpec(gs.HMCKernel)
     prior = gam.SDPrior(
         calibration=gam.MaxAbsEffect(3.0, probability=0.95, draws=128),
         value=0.7,
@@ -283,6 +291,26 @@ def test_explicit_start_bijector_and_inference_are_preserved(
     assert variance.value == pytest.approx(0.49)
     assert parameter.inference is inference
     assert float(parameter.value) == pytest.approx(float(tfb.Softplus().inverse(0.49)))
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+@pytest.mark.parametrize("convenience", [False, True])
+def test_explicit_none_disables_the_sd_variance_sampler(convenience) -> None:
+    prior = (
+        gam.SDPrior.from_max_abs_effect(
+            3.0, probability=0.95, draws=128, inference=None
+        )
+        if convenience
+        else gam.SDPrior(
+            calibration=gam.MaxAbsEffect(3.0, probability=0.95, draws=128),
+            inference=None,
+        )
+    )
+    term = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).np(
+        "x", k=6, scale=prior
+    )
+    variance = term.scale.value_node[0]
+    assert variance.bijected_var.inference is None
     assert np.isfinite(lsl.Model(term).log_prob)
 
 

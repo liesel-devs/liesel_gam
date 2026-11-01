@@ -111,15 +111,15 @@ model and are outside this bound.
 sd_prior = gam.SDPrior.from_max_abs_effect(
     3.0,
     probability=0.95,
-    inference=gs.MCMCSpec(gs.NUTSKernel),
 )
 sd_smooth = tb.ps("x_nonlin", k=15, scale=sd_prior, name="sd_smooth")
 ```
 
 The calibrated prior is Weibull with concentration 0.5 on $\tau^2$; the term
 exposes $\tau$. Its automatic starting value is the prior median of $\tau$.
-Supply `value=...` to choose a positive starting $\tau$ explicitly. The example
-sets a variance sampler because the recipe's `inference` default is `None`.
+Supply `value=...` to choose a positive starting $\tau$ explicitly. The recipe
+assigns NUTS to the log variance by default. Supply a different `inference`
+specification to override it, or `inference=None` to disable automatic sampling.
 
 Inspect a pure calculation through
 {meth}`sd_prior.calibrate <liesel_gam.SDPrior.calibrate>`:

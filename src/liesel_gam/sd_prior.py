@@ -7,6 +7,7 @@ from types import MappingProxyType
 from typing import Any
 
 import jax.numpy as jnp
+import liesel.goose as gs
 import numpy as np
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
@@ -266,8 +267,10 @@ class SDPrior:
     bijector
         Transform from an unconstrained parameter to tau squared; default Exp.
     inference
-        Inference specification for that unconstrained parameter. Default None
-        leaves sampler choice to the caller, as with :func:`liesel_gam.scale_wb`.
+        Inference specification for the unconstrained variance parameter. Defaults
+        to :class:`liesel.goose.MCMCSpec` with :class:`liesel.goose.NUTSKernel`.
+        With the default Exp bijector, NUTS samples log variance. Explicit ``None``
+        disables automatic sampling; an explicit specification overrides NUTS.
 
     See Also
     --------
@@ -296,7 +299,7 @@ class SDPrior:
     """Explicit initial tau, or None for the calibrated prior median."""
     bijector: tfb.Bijector = field(default_factory=tfb.Exp)
     """Bijector from the unconstrained parameter to tau squared."""
-    inference: Any = None
+    inference: Any = field(default_factory=lambda: gs.MCMCSpec(gs.NUTSKernel))
     """Inference specification for the unconstrained variance parameter."""
 
     def __post_init__(self) -> None:
@@ -315,7 +318,7 @@ class SDPrior:
         draws: int = 4096,
         value: float | None = None,
         bijector: tfb.Bijector | None = None,
-        inference: Any = None,
+        inference: Any = gs.MCMCSpec(gs.NUTSKernel),
     ) -> "SDPrior":
         """Create a recipe with :class:`liesel_gam.MaxAbsEffect` settings.
 
