@@ -146,14 +146,102 @@ Reuse the recipe as an opt-in builder default. Supported scalar constructors are
 {meth}`cr <liesel_gam.TermBuilder.cr>`, {meth}`cs <liesel_gam.TermBuilder.cs>`,
 {meth}`cc <liesel_gam.TermBuilder.cc>`, {meth}`bs <liesel_gam.TermBuilder.bs>`, and
 {meth}`cp <liesel_gam.TermBuilder.cp>`. They receive independently calibrated
-scale variables. Other term constructors require an explicit `scale=` with this
-builder default. Multivariate SD calibration is unsupported. A builder without
-this opt-in uses the inverse-gamma default described above.
+scale variables. Random intercepts, MRF fields, and eligible custom bases also
+support this default, as shown below. Other term constructors require an explicit
+`scale=` with this builder default. Multivariate SD calibration is unsupported.
+A builder without this opt-in uses the inverse-gamma default described above.
 
 ```{code-cell} ipython3
 sd_tb = gam.TermBuilder.from_df(df, default_scale_fn=sd_prior)
 another_smooth = sd_tb.np("x_nonlin", k=10)
 ```
+
+## Bound group coefficients and region fields
+
+Use the same recipe for a random intercept. Declare all categories, including
+ones absent from the setup data:
+
+```{code-cell} ipython3
+group = gam.CatVar(
+    ["treated", "control", "treated"],
+    categories=["treated", "unused", "control"],
+    name="group",
+)
+group_effect = sd_tb.ri(group)
+group_calibration = sd_prior.calibrate(group_effect.basis)
+group_calibration.diagnostics["evaluation_points"]
+```
+
+Calibration includes each of the three coefficients once. Repeating observations
+or changing category frequencies alone leaves this RI calibration unchanged. The
+model retains its indexed representation. A custom fixed PSD `penalty=` uses
+category-code order, including unused categories. An explicit zero penalty has no
+stochastic component to calibrate and raises an error.
+
+For an MRF, the bound applies to region field values after the fitted constraints,
+penalty scaling, diagonalization, and low-rank transformations:
+
+```{code-cell} ipython3
+neighbors = {
+    "control": ["treated"],
+    "treated": ["control", "unused"],
+    "unused": ["treated"],
+}
+region_effect = sd_tb.mrf(group, nb=neighbors)
+region_calibration = sd_prior.calibrate(region_effect.basis)
+region_calibration.diagnostics["evaluation_points"]
+```
+
+Both finite domains use every declared level or represented region;
+`grid_size=` never subsamples them. MRF setup geometry can depend on setup data,
+so changing those data can change its calibration. For singular penalties,
+unpenalized directions remain outside the bound.
+
+## Reuse a calibrated coefficient in a product
+
+{meth}`rs <liesel_gam.TermBuilder.rs>` calibrates its group coefficients through
+{meth}`ri <liesel_gam.TermBuilder.ri>`.
+{meth}`vc <liesel_gam.TermBuilder.vc>` preserves the supplied coefficient term's
+prior and starting value. Neither calibrates the multiplied contribution, even
+when the multiplier is random:
+
+```{code-cell} ipython3
+random_slope = sd_tb.rs("x_lin", cluster="x_cat")
+varying_coefficient = sd_tb.vc(another_smooth, by="x_lin")
+```
+
+The bound describes the underlying coefficients or smooth. A large multiplier
+can make the product exceed that bound. Wrapping an existing smooth does not
+recalibrate it.
+
+## Calibrate a compatible custom basis
+
+{meth}`f <liesel_gam.TermBuilder.f>` uses the same numeric scalar grid when you
+supply a known row-wise basis. Its input is a one-column numeric matrix, and its
+output must be a matrix with one row per input row:
+
+```{code-cell} ipython3
+import jax.numpy as jnp
+
+
+def quadratic_basis(x):
+    return jnp.column_stack((x[:, 0], x[:, 0] ** 2))
+
+
+custom_effect = sd_tb.f(
+    "x_lin",
+    basis_fn=quadratic_basis,
+    row_wise=True,
+    use_callback=False,
+)
+```
+
+Omitting the penalty gives iid coefficients; a fixed PSD penalty is also
+supported. Python callback evaluation works with `use_callback=True`. Automatic
+calibration rejects categorical inputs, unknown or non-row-wise behavior,
+multiple input columns, and vector or higher-dimensional outputs. Use an ordinary
+explicit scale for custom bases outside this contract. Later arbitrary basis or
+constraint edits do not automatically update calibration.
 
 ## Choose coefficient updates
 

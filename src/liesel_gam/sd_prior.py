@@ -14,6 +14,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 from scipy.optimize import brentq
 
 from .basis import Basis
+from .var import CatVar
 
 type _VariancePriorFactory = Callable[[float], tfd.Distribution]
 
@@ -103,6 +104,7 @@ class MaxAbsEffect:
     grid_size
         Points over the scalar input's setup range, including endpoints.
         ``None`` selects 129 points. An explicit integer must be at least two.
+        Finite categorical domains always evaluate every declared level.
     seed
         Nonnegative integer seed for independent fit and validation draws.
     draws
@@ -168,7 +170,7 @@ class MaxAbsEffect:
 class SDPrior:
     r"""Reusable recipe for a basis-dependent prior on :math:`\tau^2`.
 
-    Pass this configuration as ``scale`` to a compatible scalar spline constructor
+    Pass this configuration as ``scale`` to a compatible term constructor
     on :class:`TermBuilder <liesel_gam.TermBuilder>`, or opt in for a builder
     instance with ``default_scale_fn``. Every independent term receives fresh scale
     variables; reusing the recipe does not share random variables. Creating the
@@ -283,9 +285,12 @@ class SDPrior:
         Parameters
         ----------
         basis
-            Fitted numeric scalar, known row-wise :class:`Basis <liesel_gam.Basis>` with
-            its coefficient penalty. Constraints and reparameterizations are
-            retained during evaluation. Singular PSD penalties are supported.
+            Fitted :class:`Basis <liesel_gam.Basis>` with its coefficient penalty.
+            Numeric scalar inputs (vectors or one-column matrices) require known
+            row-wise evaluation. Categorical inputs evaluate every declared code
+            once; indexed outputs use equivalent indicator geometry. Constraints,
+            scaling, and reparameterizations are retained, including for MRF fields.
+            Singular PSD penalties calibrate only their stochastic subspace.
 
         Returns
         -------
@@ -325,22 +330,32 @@ class SDPrior:
             raise ValueError(
                 "A single-variance basis requires exactly one variance-prior factory."
             )
-        size = 129 if target.grid_size is None else target.grid_size
-        x = np.asarray(basis.x.value)
-        if (
-            basis.row_wise is not True
-            or x.ndim != 1
-            or not x.size
-            or not np.issubdtype(x.dtype, np.number)
-            or not np.isfinite(x).all()
-        ):
-            raise ValueError(
-                "Automatic grids require a finite numeric scalar row-wise basis."
-            )
-        grid = jnp.asarray(np.linspace(x.min(), x.max(), size))
-        design = np.asarray(
-            basis._exact_basis_fn(grid, **basis._basis_kwargs_values()), dtype=float
-        )
+        if isinstance(basis.x, CatVar):
+            size = len(basis.x.mapping.labels_to_codes_map)
+            grid = jnp.arange(size)
+        else:
+            size = 129 if target.grid_size is None else target.grid_size
+            x = np.asarray(basis.x.value)
+            scalar_input = x.ndim == 1 or (x.ndim == 2 and x.shape[1] == 1)
+            if (
+                not basis._numeric_input
+                or basis.row_wise is not True
+                or not scalar_input
+                or not x.size
+                or not np.issubdtype(x.dtype, np.number)
+                or not np.isfinite(x).all()
+            ):
+                raise ValueError(
+                    "Automatic grids require a finite numeric scalar row-wise basis."
+                )
+            grid = jnp.asarray(np.linspace(x.min(), x.max(), size))
+            if x.ndim == 2:
+                grid = grid[:, None]
+        design = np.asarray(basis._exact_basis_fn(grid, **basis._basis_kwargs_values()))
+        if isinstance(basis.x, CatVar) and design.ndim == 1:
+            # Indexed category codes represent indicator rows without storing them.
+            design = np.eye(size)[design]
+        design = np.asarray(design, dtype=float)
         if (
             design.ndim != 2
             or not design.size
