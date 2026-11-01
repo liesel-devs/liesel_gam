@@ -452,19 +452,23 @@ class TermBuilder:
         """
         if scale == "default":
             default = self._default_scale_fn
-            scale = default if isinstance(default, VarIGPrior | SDPrior) else default()
+            if isinstance(default, VarIGPrior | SDPrior):
+                scale = default
+            else:
+                scale = default()
+                if not isinstance(scale, lsl.Var | ScaleIG):
+                    raise TypeError(
+                        "default_scale_fn must return an lsl.Var or ScaleIG, "
+                        f"got {type(scale).__name__}."
+                    )
         if isinstance(scale, SDPrior):
             if basis is None:
                 raise ValueError(
                     f"SDPrior calibration for {term_name!r} needs a fitted scalar "
-                    "basis; pass an explicit scale= for this term."
+                    "basis; pass an explicit, non-SDPrior scale for this term."
                 )
             result = scale.calibrate(basis)
-            factory = (
-                scale.variance_prior[0]
-                if isinstance(scale.variance_prior, tuple)
-                else scale.variance_prior
-            )
+            factory = scale._variance_factories[0]
             prior = lsl.Dist(
                 lambda s: _independent_scalar(factory(s)), s=result.prior_scale
             )
@@ -991,6 +995,9 @@ class TermBuilder:
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
 
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
+
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
               <liesel_gam.TermBuilder>` instance.
@@ -1146,6 +1153,9 @@ class TermBuilder:
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
 
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
+
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
               <liesel_gam.TermBuilder>` instance.
@@ -1299,6 +1309,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1456,6 +1469,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -1964,6 +1980,9 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates a new variance
+            prior to this fitted basis, including its constraints and penalty.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder

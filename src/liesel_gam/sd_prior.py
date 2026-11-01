@@ -234,7 +234,17 @@ class SDPrior:
         if self.value is not None and (not np.isfinite(self.value) or self.value <= 0):
             raise ValueError("value must be finite and positive on the tau scale.")
         if not isinstance(self.bijector, tfb.Bijector):
-            raise ValueError("bijector must be a TFD Bijector; None is not supported.")
+            raise ValueError(
+                f"bijector must be a TFP bijector instance, got {self.bijector!r}."
+            )
+
+    @property
+    def _variance_factories(self) -> tuple[_VariancePriorFactory, ...]:
+        return (
+            self.variance_prior
+            if isinstance(self.variance_prior, tuple)
+            else (self.variance_prior,)
+        )
 
     @classmethod
     def from_max_abs_effect(
@@ -308,11 +318,7 @@ class SDPrior:
         The search spans normal positive prior parameters in the model's default
         floating precision, with log-scale tolerance ``1e-7``.
         """
-        factories = (
-            self.variance_prior
-            if isinstance(self.variance_prior, tuple)
-            else (self.variance_prior,)
-        )
+        factories = self._variance_factories
         target = self.calibration
         _validate_target(target)
         if len(factories) != 1:
@@ -430,13 +436,14 @@ class SDPrior:
                 raise ValueError(
                     "The variance-prior CDF must return one probability per limit."
                 )
+            rounding = 4 * np.finfo(np.result_type(probabilities.dtype, np.float32)).eps
             if not np.isfinite(probabilities).all() or np.any(
-                (probabilities < 0) | (probabilities > 1)
+                (probabilities < -rounding) | (probabilities > 1 + rounding)
             ):
                 raise ValueError(
                     "The variance-prior CDF must return finite probabilities in [0, 1]."
                 )
-            return np.where(unlimited, 1.0, probabilities)
+            return np.where(unlimited, 1.0, np.clip(probabilities, 0.0, 1.0))
 
         # Search the normal floating-point range used by the model's prior nodes.
         precision = np.finfo(jnp.asarray(1.0).dtype)

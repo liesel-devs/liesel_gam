@@ -31,6 +31,26 @@ class _RootMeanSquare:
         return (self.threshold / values) ** 2
 
 
+def _ps_basis() -> gam.Basis:
+    return gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+
+
+def _scalar_coverage(prior_scale: float, factor: float = 1.0) -> float:
+    # Integrate the exact Weibull-times-Normal density independently of calibration.
+    tail, _ = quad(
+        lambda z: (
+            np.exp(-2.0 / (np.sqrt(prior_scale) * factor * z))
+            * np.sqrt(2.0 / np.pi)
+            * np.exp(-z * z / 2.0)
+        ),
+        0.0,
+        np.inf,
+    )
+    return 1.0 - tail
+
+
 def test_explicit_calibration_bounds_a_known_scalar_effect() -> None:
     basis = gam.Basis(
         jnp.linspace(-1.0, 1.0, 20),
@@ -45,17 +65,7 @@ def test_explicit_calibration_bounds_a_known_scalar_effect() -> None:
     result = prior.calibrate(basis)
 
     # Here max |f| = |beta|, beta = sqrt(s) * Exp(1) * Normal(0, 1).
-    # Integrating the exact scalar density is independent of the MC calibration.
-    tail, _ = quad(
-        lambda z: (
-            np.exp(-2.0 / (np.sqrt(result.prior_scale) * z))
-            * np.sqrt(2.0 / np.pi)
-            * np.exp(-z * z / 2.0)
-        ),
-        0.0,
-        np.inf,
-    )
-    assert 1.0 - tail == pytest.approx(0.9, abs=0.01)
+    assert _scalar_coverage(result.prior_scale) == pytest.approx(0.9, abs=0.01)
     assert result.diagnostics["evaluation_points"] == 129
     assert result.diagnostics["rank"] == 1
     distribution = result.variance_priors[0]
@@ -380,6 +390,20 @@ def test_float32_penalty_roundoff_does_not_reject_valid_smooths(k, order) -> Non
     assert np.isfinite(lsl.Model(term).log_prob)
 
 
+def test_float32_half_normal_cdf_roundoff_allows_calibration() -> None:
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0, probability=0.95, variance_prior=lambda s: tfd.HalfNormal(s)
+    )
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 100)})
+
+    term = builder.ps("x", k=10, scale=prior)
+
+    result = prior.calibrate(term.basis)
+    assert isinstance(result.variance_priors[0], tfd.HalfNormal)
+    assert result.diagnostics["validation_probability"] == pytest.approx(0.95, abs=0.02)
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
 @pytest.mark.parametrize("use_default", [False, True])
 def test_multivariate_terms_reject_univariate_sd_calibration(use_default) -> None:
     prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=64)
@@ -397,6 +421,23 @@ def test_multivariate_terms_reject_univariate_sd_calibration(use_default) -> Non
     # An explicit ordinary scale remains usable under an opted-in scalar default.
     term = builder.ps("x", k=6, dimension_scale=1.0, scale=1.0)
     assert np.isfinite(lsl.Model(term).log_prob)
+
+
+@pytest.mark.parametrize("multivariate", [False, True])
+def test_callable_defaults_must_return_scale_variables(multivariate) -> None:
+    prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=64)
+    data = {"x": np.linspace(0.0, 1.0, 20)}
+    invalid_default = cast(Any, lambda: prior)
+    builder = (
+        gam.MVTermBuilder.from_dict(data, jnp.eye(2), default_scale_fn=invalid_default)
+        if multivariate
+        else gam.TermBuilder.from_dict(data, default_scale_fn=invalid_default)
+    )
+    with pytest.raises(TypeError, match="default_scale_fn.*lsl.Var.*ScaleIG"):
+        if isinstance(builder, gam.MVTermBuilder):
+            builder.ps("x", k=6, dimension_scale=1.0)
+        else:
+            builder.ps("x", k=6)
 
 
 @pytest.mark.parametrize("convenience", [False, True])
@@ -430,16 +471,14 @@ def test_unsupported_default_term_identifies_the_term_and_explicit_override() ->
         {"group": ["a", "b"] * 10},
         default_scale_fn=gam.SDPrior.from_max_abs_effect(3.0, probability=0.95),
     )
-    with pytest.raises(ValueError, match=r"ri\(group\).*explicit scale="):
+    with pytest.raises(ValueError, match=r"ri\(group\).*explicit, non-SDPrior scale"):
         builder.ri("group")
     term = builder.ri("group", scale=1.0)
     assert np.isfinite(lsl.Model(term).log_prob)
 
 
 def test_invalid_cdf_is_not_reported_as_an_unattainable_target() -> None:
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     prior = gam.SDPrior.from_max_abs_effect(
         3.0,
         probability=0.95,
@@ -451,9 +490,7 @@ def test_invalid_cdf_is_not_reported_as_an_unattainable_target() -> None:
 
 
 def test_a_valid_factory_with_an_unattainable_target_fails_clearly() -> None:
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     prior = gam.SDPrior.from_max_abs_effect(
         3.0,
         probability=0.95,
@@ -470,9 +507,7 @@ def test_single_variance_calibration_rejects_wrong_factory_counts(count) -> None
     prior = gam.SDPrior.from_max_abs_effect(
         3.0, probability=0.95, draws=64, variance_prior=cast(Any, factories)
     )
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     with pytest.raises(ValueError, match="exactly one variance-prior factory"):
         prior.calibrate(basis)
 
@@ -486,9 +521,7 @@ def test_variance_prior_must_be_scalar(event_shape) -> None:
     prior = gam.SDPrior.from_max_abs_effect(
         3.0, probability=0.95, draws=64, variance_prior=factory
     )
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     with pytest.raises(ValueError, match="scalar"):
         prior.calibrate(basis)
 
@@ -505,9 +538,7 @@ def test_invalid_variance_prior_medians_are_rejected(median) -> None:
         draws=64,
         variance_prior=lambda s: InvalidMedian(0.5, s),
     )
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     with pytest.raises(ValueError, match="median.*finite.*positive"):
         prior.calibrate(basis)
 
@@ -545,24 +576,13 @@ def test_shared_workflow_calibrates_a_target_without_its_own_algorithm() -> None
     result = gam.SDPrior(calibration=target).calibrate(basis)
 
     rms_x = np.sqrt(np.mean(np.linspace(-1.0, 1.0, 65) ** 2))
-    tail, _ = quad(
-        lambda z: (
-            np.exp(-2.0 / (np.sqrt(result.prior_scale) * rms_x * z))
-            * np.sqrt(2.0 / np.pi)
-            * np.exp(-z * z / 2.0)
-        ),
-        0.0,
-        np.inf,
-    )
-    assert 1.0 - tail == pytest.approx(0.9, abs=0.01)
+    assert _scalar_coverage(result.prior_scale, rms_x) == pytest.approx(0.9, abs=0.01)
     assert result.diagnostics["method"] == "integrated_variance_cdf"
     assert result.diagnostics["evaluation_points"] == 65
 
 
 def test_maximum_effect_retains_the_single_variance_cdf_method() -> None:
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     result = gam.SDPrior.from_max_abs_effect(
         3.0, probability=0.95, draws=512
     ).calibrate(basis)
@@ -583,9 +603,7 @@ def test_shared_workflow_validates_settings_for_target_only_objects(
     settings, message
 ) -> None:
     target = _RootMeanSquare(**settings)
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     with pytest.raises(ValueError, match=message):
         gam.SDPrior(calibration=target).calibrate(basis)
 
@@ -602,9 +620,7 @@ def test_shared_workflow_rejects_malformed_cdf_probabilities(invalid) -> None:
         draws=64,
         variance_prior=lambda s: InvalidCDF(0.5, s),
     )
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     with pytest.raises(ValueError, match="CDF"):
         prior.calibrate(basis)
 
@@ -625,16 +641,9 @@ def test_cdf_shortcut_handles_a_target_with_zero_unit_statistics() -> None:
         basis
     )
     # Half the unit draws have a nonpositive slope and always satisfy this event.
-    tail, _ = quad(
-        lambda z: (
-            np.exp(-2.0 / (np.sqrt(result.prior_scale) * z))
-            * np.sqrt(2.0 / np.pi)
-            * np.exp(-z * z / 2.0)
-        ),
-        0.0,
-        np.inf,
+    assert 0.5 + 0.5 * _scalar_coverage(result.prior_scale) == pytest.approx(
+        0.9, abs=0.01
     )
-    assert 1.0 - 0.5 * tail == pytest.approx(0.9, abs=0.01)
 
 
 @pytest.mark.parametrize(
@@ -656,8 +665,6 @@ def test_shared_workflow_rejects_invalid_target_outputs(invalid) -> None:
                 return np.asarray(1.0)
             return super().variance_limits(values)
 
-    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
-        "x", k=6
-    )
+    basis = _ps_basis()
     with pytest.raises(ValueError, match="(statistic|variance limits)"):
         gam.SDPrior(calibration=InvalidTarget(draws=64)).calibrate(basis)
