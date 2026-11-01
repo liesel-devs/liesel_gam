@@ -21,6 +21,7 @@ from .mv_utils import (
     scale_penalty_value,
 )
 from .registry import DictRegistry
+from .sd_prior import SDPrior
 from .term import (
     LinMixin,
     MultivariateStrctInteractionTerm,
@@ -594,6 +595,13 @@ class MVTermBuilder:
         **kwargs,
     ) -> MultivariateStrctTerm:
         self._reject_factor_scale(kwargs)
+        scale = kwargs.get("scale", "default")
+        if scale == "default":
+            scale = self.marginal_builder._default_scale_fn
+        if isinstance(scale, SDPrior):
+            raise ValueError(
+                "SDPrior calibration is not supported for multivariate terms."
+            )
         marginal = getattr(self.marginal_builder, method)(
             *args,
             inference=inference,

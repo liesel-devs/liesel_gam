@@ -130,6 +130,7 @@ def test_invalid_calibration_settings_fail_clearly(settings, message) -> None:
         (np.zeros((2, 2)), "stochastic"),
         (np.diag([1.0, -0.1]), "positive semidefinite"),
         (np.array([[1.0, 1.0], [0.0, 1.0]]), "symmetric"),
+        (np.array([[1.0, 1e-3], [0.0, 1.0]]), "symmetric"),
         (np.diag([1.0, np.nan]), "finite"),
     ],
 )
@@ -349,3 +350,167 @@ def test_explicit_iid_basis_uses_identity_precision() -> None:
     assert result.diagnostics["rank"] == 1
     assert result.diagnostics["nullity"] == 0
     assert result.prior_scale > 0
+
+
+@pytest.mark.parametrize("k, order", [(20, 2), (40, 2), (40, 3)])
+def test_float32_penalty_roundoff_does_not_reject_valid_smooths(k, order) -> None:
+    x = (
+        np.linspace(0.0, 1.0, 200)
+        if k == 20
+        else np.random.default_rng(1).normal(size=200)
+    )
+    tb = gam.TermBuilder.from_dict({"x": x})
+    prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=64)
+    term = tb.ps("x", k=k, penalty_order=order, diagonal_penalty=False, scale=prior)
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+@pytest.mark.parametrize("use_default", [False, True])
+def test_multivariate_terms_reject_univariate_sd_calibration(use_default) -> None:
+    prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=64)
+    builder = gam.MVTermBuilder.from_dict(
+        {"x": np.linspace(0.0, 1.0, 20)},
+        jnp.eye(2),
+        default_scale_fn=cast(
+            Any, prior if use_default else gam.VarIGPrior(1.0, 0.005)
+        ),
+    )
+    with pytest.raises(ValueError, match="SDPrior.*multivariate"):
+        builder.ps(
+            "x", k=6, dimension_scale=1.0, **({} if use_default else {"scale": prior})
+        )
+    # An explicit ordinary scale remains usable under an opted-in scalar default.
+    term = builder.ps("x", k=6, dimension_scale=1.0, scale=1.0)
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+@pytest.mark.parametrize("convenience", [False, True])
+def test_none_bijector_is_rejected_consistently(convenience) -> None:
+    with pytest.raises(ValueError, match="bijector"):
+        if convenience:
+            gam.SDPrior.from_max_abs_effect(
+                3.0, probability=0.95, bijector=cast(Any, None)
+            )
+        else:
+            gam.SDPrior(
+                calibration=gam.MaxAbsEffect(3.0, probability=0.95),
+                bijector=cast(Any, None),
+            )
+
+
+@pytest.mark.parametrize("method", ["cr", "cs", "cc", "bs", "cp"])
+def test_compatible_splines_use_the_sd_builder_default(method) -> None:
+    prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=64)
+    builder = gam.TermBuilder.from_dict(
+        {"x": np.linspace(0.0, 1.0, 30)}, default_scale_fn=prior
+    )
+    term = getattr(builder, method)("x", k=6)
+    variance = term.scale.value_node[0]
+    assert variance.bijected_var.inference.kernel is gs.NUTSKernel
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+def test_unsupported_default_term_identifies_the_term_and_explicit_override() -> None:
+    builder = gam.TermBuilder.from_dict(
+        {"group": ["a", "b"] * 10},
+        default_scale_fn=gam.SDPrior.from_max_abs_effect(3.0, probability=0.95),
+    )
+    with pytest.raises(ValueError, match=r"ri\(group\).*explicit scale="):
+        builder.ri("group")
+    term = builder.ri("group", scale=1.0)
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+def test_invalid_cdf_is_not_reported_as_an_unattainable_target() -> None:
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        draws=64,
+        variance_prior=lambda s: tfd.Weibull(0.5, s if s < 1000 else np.nan),
+    )
+    with pytest.raises(ValueError, match="CDF.*finite"):
+        prior.calibrate(basis)
+
+
+def test_a_valid_factory_with_an_unattainable_target_fails_clearly() -> None:
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        draws=64,
+        variance_prior=lambda _: tfd.Weibull(0.5, 1.0),
+    )
+    with pytest.raises(ValueError, match="Cannot calibrate.*finite positive"):
+        prior.calibrate(basis)
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_single_variance_calibration_rejects_wrong_factory_counts(count) -> None:
+    factories = (lambda s: tfd.Weibull(0.5, s),) * count
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0, probability=0.95, draws=64, variance_prior=cast(Any, factories)
+    )
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(ValueError, match="exactly one variance-prior factory"):
+        prior.calibrate(basis)
+
+
+@pytest.mark.parametrize("event_shape", [False, True])
+def test_variance_prior_must_be_scalar(event_shape) -> None:
+    def factory(s):
+        distribution = tfd.Weibull(0.5, jnp.array([s, 2 * s]))
+        return tfd.Independent(distribution, 1) if event_shape else distribution
+
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0, probability=0.95, draws=64, variance_prior=factory
+    )
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(ValueError, match="scalar"):
+        prior.calibrate(basis)
+
+
+@pytest.mark.parametrize("median", [np.nan, np.inf, 0.0, -1.0])
+def test_invalid_variance_prior_medians_are_rejected(median) -> None:
+    class InvalidMedian(tfd.Weibull):
+        def _quantile(self, value, **kwargs):
+            return jnp.asarray(median)
+
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        draws=64,
+        variance_prior=lambda s: InvalidMedian(0.5, s),
+    )
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(ValueError, match="median.*finite.*positive"):
+        prior.calibrate(basis)
+
+
+def test_single_factory_tuple_constructs_the_same_prior() -> None:
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        draws=64,
+        variance_prior=cast(Any, (lambda s: tfd.Weibull(0.5, s),)),
+    )
+    term = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).ps(
+        "x", k=6, scale=prior
+    )
+    assert np.isfinite(lsl.Model(term).log_prob)
+
+
+def test_default_prior_recipe_is_usable_as_a_dictionary_key() -> None:
+    prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95)
+    recipes = {prior: "age"}
+    assert recipes[prior] == "age"

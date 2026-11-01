@@ -15,6 +15,8 @@ from scipy.optimize import brentq
 
 from .basis import Basis
 
+type _VariancePriorFactory = Callable[[float], tfd.Distribution]
+
 
 def _weibull_variance(scale: float) -> tfd.Distribution:
     return tfd.Weibull(concentration=0.5, scale=scale)
@@ -114,12 +116,17 @@ class MaxAbsEffect:
                 raise ValueError(f"{name} must be an integer >= {minimum}.")
 
     def calibrate(
-        self, basis: Basis, *, variance_priors: tuple[Callable, ...]
+        self, basis: Basis, *, variance_priors: tuple[_VariancePriorFactory, ...]
     ) -> CalibrationResult:
-        """Implement the rule protocol used by :class:`liesel_gam.SDPrior`.
+        """Implement the rule protocol used by :class:`SDPrior <liesel_gam.SDPrior>`.
 
-        Use :meth:`liesel_gam.SDPrior.calibrate` for explicit calibration.
+        Use :meth:`SDPrior.calibrate <liesel_gam.SDPrior.calibrate>` for explicit
+        calibration.
         """
+        if len(variance_priors) != 1:
+            raise ValueError(
+                "A single-variance basis requires exactly one variance-prior factory."
+            )
         size = 129 if self.grid_size is None else self.grid_size
         x = np.asarray(basis.x.value)
         if (
@@ -156,14 +163,19 @@ class MaxAbsEffect:
             raise ValueError("The penalty must match the design columns.")
         if not np.isfinite(penalty).all():
             raise ValueError("The penalty must be finite.")
-        if not np.allclose(penalty, penalty.T):
+        relative_tolerance = np.finfo(
+            np.result_type(raw_penalty.dtype, np.float32)
+        ).eps * len(penalty)
+        if not np.allclose(
+            penalty,
+            penalty.T,
+            rtol=0.0,
+            atol=relative_tolerance * np.abs(penalty).max(),
+        ):
             raise ValueError("The penalty must be symmetric.")
+        penalty = (penalty + penalty.T) / 2.0
         eigenvalues, eigenvectors = np.linalg.eigh(penalty)
-        tolerance = (
-            np.finfo(np.result_type(raw_penalty.dtype, np.float32)).eps
-            * len(penalty)
-            * np.max(np.abs(eigenvalues))
-        )
+        tolerance = relative_tolerance * np.max(np.abs(eigenvalues))
         if eigenvalues.min() < -tolerance:
             raise ValueError("The penalty must be positive semidefinite.")
         positive = eigenvalues > tolerance
@@ -189,6 +201,16 @@ class MaxAbsEffect:
         fit, validation = maxima(fit_rng), maxima(validation_rng)
         factory = variance_priors[0]
 
+        def distribution_at(scale: float) -> tfd.Distribution:
+            distribution = factory(scale)
+            if not isinstance(distribution, tfd.Distribution):
+                raise TypeError(
+                    "A variance-prior factory must return a TFD distribution."
+                )
+            if tuple(distribution.batch_shape) or tuple(distribution.event_shape):
+                raise ValueError("Each variance prior must be scalar.")
+            return distribution
+
         def coverage(log_scale: float, values: np.ndarray) -> np.ndarray:
             limits = (
                 np.divide(
@@ -199,33 +221,39 @@ class MaxAbsEffect:
                 )
                 ** 2
             )
-            probabilities = np.asarray(factory(float(np.exp(log_scale))).cdf(limits))
-            if not np.isfinite(probabilities).all():
+            probabilities = np.asarray(
+                distribution_at(float(np.exp(log_scale))).cdf(limits)
+            )
+            if not np.isfinite(probabilities).all() or np.any(
+                (probabilities < 0) | (probabilities > 1)
+            ):
                 raise ValueError(
-                    "The variance-prior CDF must return finite probabilities."
+                    "The variance-prior CDF must return finite probabilities in [0, 1]."
                 )
             return probabilities
 
         # Search the normal floating-point range used by the model's prior nodes.
         precision = np.finfo(jnp.asarray(1.0).dtype)
-        try:
-            log_scale = brentq(
-                lambda value: float(coverage(value, fit).mean()) - self.probability,
-                np.log(float(precision.tiny)),
-                np.log(float(precision.max)),
-                xtol=1.0e-7,
-            )
-        except ValueError as error:
+        lower, upper = np.log(float(precision.tiny)), np.log(float(precision.max))
+
+        def residual(value: float) -> float:
+            return float(coverage(value, fit).mean()) - self.probability
+
+        if residual(lower) * residual(upper) > 0:
             raise ValueError(
                 "Cannot calibrate the target within finite positive prior parameters."
-            ) from error
+            )
+        log_scale = brentq(residual, lower, upper, xtol=1.0e-7)
         scale = float(np.exp(log_scale))
-        distribution = factory(scale)
+        distribution = distribution_at(scale)
+        median = np.asarray(distribution.quantile(0.5))
+        if median.ndim or not np.isfinite(median) or median <= 0:
+            raise ValueError("The variance-prior median must be finite and positive.")
         achieved = coverage(log_scale, validation)
         return CalibrationResult(
             prior_scale=scale,
             variance_priors=(distribution,),
-            initial_scales=(float(jnp.sqrt(distribution.quantile(0.5))),),
+            initial_scales=(float(np.sqrt(median)),),
             diagnostics={
                 "method": "integrated_variance_cdf",
                 "target_probability": self.probability,
@@ -246,18 +274,20 @@ class MaxAbsEffect:
 class SDPrior:
     r"""Reusable recipe for a basis-dependent prior on :math:`\tau^2`.
 
-    Pass this configuration as ``scale`` to :meth:`liesel_gam.TermBuilder.ps`
-    or :meth:`liesel_gam.TermBuilder.np`, or opt in for a builder instance with
-    ``default_scale_fn``. Every independent term receives fresh scale variables;
-    reusing the recipe does not share random variables. Library defaults stay
-    unchanged. Creating the recipe constructs no model variables.
+    Pass this configuration as ``scale`` to a compatible scalar spline constructor
+    on :class:`TermBuilder <liesel_gam.TermBuilder>`, or opt in for a builder
+    instance with ``default_scale_fn``. Every independent term receives fresh scale
+    variables; reusing the recipe does not share random variables. Creating the
+    recipe constructs no model variables.
 
     Parameters
     ----------
     calibration
-        :class:`liesel_gam.MaxAbsEffect` settings for the stochastic effect.
+        :class:`MaxAbsEffect <liesel_gam.MaxAbsEffect>` settings for the stochastic
+        effect.
     variance_prior
-        Callable mapping a positive scalar to a scalar TFD prior on tau squared.
+        Callable, or a one-element tuple of callables, mapping a positive scalar
+        to a scalar TFD prior on tau squared.
         The default is Weibull with concentration 0.5 and that scalar as its TFD
         scale. The current single-variance rule requires CDF and median-quantile
         methods. This argument is not a prior on tau itself.
@@ -268,7 +298,8 @@ class SDPrior:
         Transform from an unconstrained parameter to tau squared; default Exp.
     inference
         Inference specification for the unconstrained variance parameter. Defaults
-        to :class:`liesel.goose.MCMCSpec` with :class:`liesel.goose.NUTSKernel`.
+        to :class:`MCMCSpec <liesel.goose.MCMCSpec>` with
+        :class:`NUTSKernel <liesel.goose.NUTSKernel>`.
         With the default Exp bijector, NUTS samples log variance. Explicit ``None``
         disables automatic sampling; an explicit specification overrides NUTS.
 
@@ -291,7 +322,7 @@ class SDPrior:
 
     calibration: MaxAbsEffect
     """Effect criterion and numerical settings."""
-    variance_prior: Callable[[float], tfd.Distribution] = field(
+    variance_prior: _VariancePriorFactory | tuple[_VariancePriorFactory, ...] = field(
         default_factory=lambda: _weibull_variance
     )
     """Factory producing a scalar prior on tau squared."""
@@ -299,12 +330,16 @@ class SDPrior:
     """Explicit initial tau, or None for the calibrated prior median."""
     bijector: tfb.Bijector = field(default_factory=tfb.Exp)
     """Bijector from the unconstrained parameter to tau squared."""
-    inference: Any = field(default_factory=lambda: gs.MCMCSpec(gs.NUTSKernel))
+    inference: Any = field(
+        default_factory=lambda: gs.MCMCSpec(gs.NUTSKernel), hash=False
+    )
     """Inference specification for the unconstrained variance parameter."""
 
     def __post_init__(self) -> None:
         if self.value is not None and (not np.isfinite(self.value) or self.value <= 0):
             raise ValueError("value must be finite and positive on the tau scale.")
+        if not isinstance(self.bijector, tfb.Bijector):
+            raise ValueError("bijector must be a TFD Bijector; None is not supported.")
 
     @classmethod
     def from_max_abs_effect(
@@ -312,19 +347,20 @@ class SDPrior:
         max_abs_effect: float,
         *,
         probability: float,
-        variance_prior: Callable[[float], tfd.Distribution] = _weibull_variance,
+        variance_prior: _VariancePriorFactory
+        | tuple[_VariancePriorFactory, ...] = _weibull_variance,
         grid_size: int | None = None,
         seed: int = 42,
         draws: int = 4096,
         value: float | None = None,
-        bijector: tfb.Bijector | None = None,
+        bijector: tfb.Bijector = tfb.Exp(),
         inference: Any = gs.MCMCSpec(gs.NUTSKernel),
     ) -> "SDPrior":
-        """Create a recipe with :class:`liesel_gam.MaxAbsEffect` settings.
+        """Create a recipe with :class:`MaxAbsEffect <liesel_gam.MaxAbsEffect>`.
 
         ``max_abs_effect``, ``probability``, ``grid_size``, ``seed``, and ``draws``
         configure that rule. Remaining arguments configure
-        :class:`liesel_gam.SDPrior`; their meaning and defaults are unchanged.
+        :class:`SDPrior <liesel_gam.SDPrior>`.
         """
         return cls(
             calibration=MaxAbsEffect(
@@ -332,7 +368,7 @@ class SDPrior:
             ),
             variance_prior=variance_prior,
             value=value,
-            bijector=tfb.Exp() if bijector is None else bijector,
+            bijector=bijector,
             inference=inference,
         )
 
@@ -342,7 +378,7 @@ class SDPrior:
         Parameters
         ----------
         basis
-            Fitted numeric scalar, known row-wise :class:`liesel_gam.Basis` with
+            Fitted numeric scalar, known row-wise :class:`Basis <liesel_gam.Basis>` with
             its coefficient penalty. Constraints and reparameterizations are
             retained during evaluation. Singular PSD penalties are supported.
 
@@ -359,4 +395,9 @@ class SDPrior:
             If the fitted geometry is invalid, has no stochastic effect on the
             grid, or the target cannot be calibrated within finite prior parameters.
         """
-        return self.calibration.calibrate(basis, variance_priors=(self.variance_prior,))
+        factories = (
+            self.variance_prior
+            if isinstance(self.variance_prior, tuple)
+            else (self.variance_prior,)
+        )
+        return self.calibration.calibrate(basis, variance_priors=factories)

@@ -107,8 +107,15 @@ class TermBuilder:
         inverse Gamma prior on the level of the variance parameter, i.e.
         :math:`\tau^2 \sim \operatorname{InverseGamma}(1.0, 0.005)`.
         Passing an :class:`SDPrior <liesel_gam.SDPrior>` opts this builder instance
-        into automatic calibration for :meth:`ps` and :meth:`np`, creating fresh
-        scale variables for each term. The library default is unchanged.
+        into automatic calibration for :meth:`ps <liesel_gam.TermBuilder.ps>`,
+        :meth:`np <liesel_gam.TermBuilder.np>`,
+        :meth:`cr <liesel_gam.TermBuilder.cr>`,
+        :meth:`cs <liesel_gam.TermBuilder.cs>`,
+        :meth:`cc <liesel_gam.TermBuilder.cc>`,
+        :meth:`bs <liesel_gam.TermBuilder.bs>`, and
+        :meth:`cp <liesel_gam.TermBuilder.cp>`, creating fresh scale variables
+        for each term. Other constructors require an explicit ``scale=`` under
+        this default. SD calibration is not supported for multivariate terms.
     approximation
         Default approximation policy passed to the internal
         :class:`BasisBuilder <liesel_gam.BasisBuilder>`. ``False`` keeps exact
@@ -443,15 +450,21 @@ class TermBuilder:
             holder ``{x}`` in its name to allow this method to fill in an automatically
             generated name based on the ``term_name``.
         """
-        if scale == "default" and isinstance(self._default_scale_fn, SDPrior):
-            scale = self._default_scale_fn
+        if scale == "default":
+            default = self._default_scale_fn
+            scale = default if isinstance(default, VarIGPrior | SDPrior) else default()
         if isinstance(scale, SDPrior):
             if basis is None:
                 raise ValueError(
-                    "SDPrior construction currently requires a ps/np basis."
+                    f"SDPrior calibration for {term_name!r} needs a fitted scalar "
+                    "basis; pass an explicit scale= for this term."
                 )
             result = scale.calibrate(basis)
-            factory = scale.variance_prior
+            factory = (
+                scale.variance_prior[0]
+                if isinstance(scale.variance_prior, tuple)
+                else scale.variance_prior
+            )
             prior = lsl.Dist(
                 lambda s: _independent_scalar(factory(s)), s=result.prior_scale
             )
@@ -462,18 +475,6 @@ class TermBuilder:
                 name="{x}",
                 inference=scale.inference,
             )
-        elif scale == "default":
-            if isinstance(self._default_scale_fn, VarIGPrior):
-                scale_var = ScaleIG(
-                    value=self._default_scale_fn.value,
-                    concentration=self._default_scale_fn.concentration,
-                    scale=self._default_scale_fn.scale,
-                    name="{x}",
-                    variance_name="{x}^2",
-                )
-            else:
-                assert not isinstance(self._default_scale_fn, SDPrior)
-                scale_var = self._default_scale_fn()
         elif isinstance(scale, VarIGPrior):
             scale_var = ScaleIG(
                 value=scale.value,
@@ -960,7 +961,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1096,7 +1102,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1110,7 +1116,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1245,7 +1256,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1259,7 +1270,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty_order: int = 2,
         knots: ArrayLike | None = None,
@@ -1396,7 +1412,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1410,7 +1426,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int | Sequence[int] = 2,
@@ -1549,7 +1570,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,
@@ -1913,7 +1934,12 @@ class TermBuilder:
         x: str | lsl.Var,
         *,
         k: int,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         basis_degree: int = 3,
         penalty_order: int = 2,
@@ -2057,7 +2083,7 @@ class TermBuilder:
         term = StrctTerm(
             basis=basis,
             penalty=basis.penalty,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
             inference=self._get_inference(inference),
             coef_name=coef_name,

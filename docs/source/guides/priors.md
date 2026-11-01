@@ -141,9 +141,14 @@ this calculation. The automatic scalar grid has 129 points, including the input
 range endpoints; `grid_size=` overrides that count. Both the finite grid and
 Monte Carlo validation are approximations, not certified continuous-domain bounds.
 
-Reuse the recipe as an opt-in builder default. This creates independently
-calibrated scales for the supported `ps` and `np` terms; it does not change the
-library's inverse-gamma default or share random variables:
+Reuse the recipe as an opt-in builder default. Supported scalar constructors are
+{meth}`ps <liesel_gam.TermBuilder.ps>`, {meth}`np <liesel_gam.TermBuilder.np>`,
+{meth}`cr <liesel_gam.TermBuilder.cr>`, {meth}`cs <liesel_gam.TermBuilder.cs>`,
+{meth}`cc <liesel_gam.TermBuilder.cc>`, {meth}`bs <liesel_gam.TermBuilder.bs>`, and
+{meth}`cp <liesel_gam.TermBuilder.cp>`. They receive independently calibrated
+scale variables. Other term constructors require an explicit `scale=` with this
+builder default. Multivariate SD calibration is unsupported. A builder without
+this opt-in uses the inverse-gamma default described above.
 
 ```{code-cell} ipython3
 sd_tb = gam.TermBuilder.from_df(df, default_scale_fn=sd_prior)
