@@ -27,10 +27,12 @@ class _VarianceSampleError(ValueError):
     """Variance draws are unavailable at a requested factory argument."""
 
 
-def _is_real(values: np.ndarray, *, allow_infinite: bool = False) -> bool:
+def _is_real_numeric(values: np.ndarray, *, allow_infinite: bool = False) -> bool:
     try:
-        if np.iscomplexobj(values) or not np.issubdtype(
-            np.result_type(values.dtype, np.float32), np.number
+        if (
+            np.issubdtype(values.dtype, np.bool_)
+            or np.iscomplexobj(values)
+            or not np.issubdtype(np.result_type(values.dtype, np.float32), np.number)
         ):
             return False
         return bool(
@@ -50,7 +52,7 @@ def _variance_samples(
     values = np.asarray(distribution.sample(draws, seed=seed))
     if (
         values.shape != (draws,)
-        or not _is_real(values, allow_infinite=allow_infinite)
+        or not _is_real_numeric(values, allow_infinite=allow_infinite)
         or np.any(values < 0)
     ):
         raise _VarianceSampleError(
@@ -70,7 +72,7 @@ def _variance_median(distribution: tfd.Distribution) -> float:
         median = np.asarray(distribution.quantile(0.5))
     except NotImplementedError:
         median = np.median(samples)
-    if np.ndim(median) or not _is_real(np.asarray(median)) or median <= 0:
+    if np.ndim(median) or not _is_real_numeric(np.asarray(median)) or median <= 0:
         raise ValueError("The variance-prior median must be finite and positive.")
     return float(median)
 
@@ -168,6 +170,7 @@ class GaussianGeometry:
     design
         Finite nonempty matrix with one row per evaluation location and one
         column per coefficient. Include fitted constraints and transformations.
+        The target's grid_size does not resample these rows.
     penalties
         One symmetric PSD matrix per independent variance parameter, matching
         the design columns. Conditional precision is their sum after division
@@ -185,6 +188,7 @@ class GaussianGeometry:
 class _PreparedGaussian:
     design: np.ndarray
     penalties: tuple[np.ndarray, ...]
+    penalty_sizes: np.ndarray
     unit_design: np.ndarray | None
     nullity: int
     grid_shape: tuple[int, ...]
@@ -203,6 +207,11 @@ class _PreparedGaussian:
             if self.unit_design is not None:
                 effects = (z @ self.unit_design.T) * np.sqrt(v[:, :1])
             else:
+                normalized = v / np.where(
+                    self.penalty_sizes > 0, self.penalty_sizes, np.inf
+                )
+                floor = 1e-12 * normalized.max(axis=1, keepdims=True)
+                v = np.maximum(v, floor * self.penalty_sizes)
                 precision = sum(
                     penalty[None, :, :] / v[:, i, None, None]
                     for i, penalty in enumerate(self.penalties)
@@ -232,15 +241,17 @@ def _prepare_gaussian(
             basis.row_wise is not True
             or x.ndim != 1
             or not x.size
-            or not np.issubdtype(x.dtype, np.number)
-            or np.iscomplexobj(x)
-            or not np.isfinite(x).all()
+            or not _is_real_numeric(x)
         ):
             raise ValueError(
                 "Automatic grids require a finite numeric scalar row-wise basis."
             )
         grid = jnp.asarray(np.linspace(x.min(), x.max(), size))
         design = np.asarray(basis._exact_basis_fn(grid, **basis._basis_kwargs_values()))
+        if design.ndim == 2 and len(design) != size:
+            raise ValueError(
+                "A fitted basis must return one row per evaluation-grid point."
+            )
         raw_penalties = None if basis.penalty is None else (basis.penalty.value,)
         grid_shape = (size,)
     elif isinstance(basis, GaussianGeometry):
@@ -249,7 +260,7 @@ def _prepare_gaussian(
         grid_shape = None
     else:
         raise TypeError("Expected a fitted Basis or evaluated GaussianGeometry.")
-    if design.ndim != 2 or not design.size or not _is_real(design):
+    if design.ndim != 2 or not design.size or not _is_real_numeric(design):
         raise ValueError(
             "Calibration requires a finite nonempty real matrix-valued basis."
         )
@@ -263,17 +274,16 @@ def _prepare_gaussian(
     if not raw_penalties:
         raise ValueError("Gaussian geometry requires at least one penalty.")
     penalties = []
+    penalty_sizes = []
     normalized_penalties = []
     rank_relative_tolerance = 0.0
     for raw in raw_penalties:
         raw = np.asarray(raw)
-        if np.iscomplexobj(raw):
-            raise ValueError("The penalty must be real.")
+        if not _is_real_numeric(raw):
+            raise ValueError("The penalty must be finite and real numeric.")
         penalty = np.asarray(raw, dtype=float)
         if penalty.shape != (design.shape[1], design.shape[1]):
             raise ValueError("The penalty must match the design columns.")
-        if not np.isfinite(penalty).all():
-            raise ValueError("The penalty must be finite.")
         relative_tolerance = np.finfo(np.result_type(raw.dtype, np.float32)).eps * len(
             penalty
         )
@@ -287,6 +297,7 @@ def _prepare_gaussian(
         penalty = (penalty + penalty.T) / 2.0
         eigenvalues, eigenvectors = np.linalg.eigh(penalty)
         scale = np.max(np.abs(eigenvalues))
+        penalty_sizes.append(scale)
         if eigenvalues.min() < -relative_tolerance * scale:
             raise ValueError("The penalty must be positive semidefinite.")
         if scale > 0:
@@ -298,8 +309,6 @@ def _prepare_gaussian(
     if len(penalties) > 1:
         eigenvalues, eigenvectors = np.linalg.eigh(sum(normalized_penalties))
     positive = eigenvalues > rank_relative_tolerance * np.max(np.abs(eigenvalues))
-    if not positive.any():
-        raise ValueError("Calibration requires a nonzero stochastic penalty.")
     rotation = eigenvectors[:, positive]
     design = design @ rotation
     if not np.any(design):
@@ -307,6 +316,7 @@ def _prepare_gaussian(
     return _PreparedGaussian(
         design=design,
         penalties=tuple(rotation.T @ penalty @ rotation for penalty in penalties),
+        penalty_sizes=np.asarray(penalty_sizes),
         unit_design=design / np.sqrt(eigenvalues[positive])
         if len(penalties) == 1
         else None,
@@ -317,7 +327,7 @@ def _prepare_gaussian(
 
 def _target_statistics(target: CalibrationTarget, effects: np.ndarray) -> np.ndarray:
     values = np.asarray(target.statistic(effects))
-    if values.shape != (len(effects),) or not _is_real(values):
+    if values.shape != (len(effects),) or not _is_real_numeric(values):
         raise ValueError("The target statistic must return one finite value per draw.")
     return values
 
@@ -475,7 +485,7 @@ class SDPrior:
         The default is Weibull with concentration 0.5 and that scalar as its TFD
         scale. Priors must be sampleable; CDF and quantile implementations are
         optional. See :meth:`calibrate <liesel_gam.SDPrior.calibrate>` for numeric
-        draw handling. This argument is a prior on tau squared.
+        draw handling.
     value
         Explicit finite positive initial tau. ``None`` initializes tau at
         ``sqrt(median(tau**2))`` under the calibrated variance prior. If quantile
@@ -533,6 +543,15 @@ class SDPrior:
             raise ValueError(
                 f"bijector must be a TFP bijector instance, got {self.bijector!r}."
             )
+        factories = (
+            self.variance_prior
+            if isinstance(self.variance_prior, tuple)
+            else (self.variance_prior,)
+        )
+        if not factories:
+            raise ValueError("variance_prior must not be an empty tuple.")
+        if any(not callable(factory) for factory in factories):
+            raise TypeError("variance_prior must be a callable or tuple of callables.")
 
     def _variance_factories(self, count: int) -> tuple[_VariancePriorFactory, ...]:
         factories = (
@@ -540,8 +559,6 @@ class SDPrior:
             if isinstance(self.variance_prior, tuple)
             else (self.variance_prior,) * count
         )
-        if any(not callable(factory) for factory in factories):
-            raise TypeError("variance_prior must be a callable or tuple of callables.")
         if len(factories) != count:
             raise ValueError(
                 f"Expected {count} variance-prior factories, got {len(factories)}."
@@ -603,6 +620,9 @@ class SDPrior:
         ValueError
             If the fitted geometry is invalid, has no stochastic effect on the
             grid, or the target cannot be calibrated within finite prior parameters.
+        TypeError
+            If basis is unsupported, penalties is not a tuple or None, or a
+            variance-prior factory does not return a TFD distribution.
 
         Notes
         -----
@@ -621,8 +641,13 @@ class SDPrior:
         where ``eps`` is the penalty's floating precision (at least float32).
         For multiple penalties, their sum after individual spectral normalization
         identifies the common null space; the original penalties determine
-        conditional precision.
-        Both searches double a log-scale bracket around ``s=1``, bounded by
+        conditional precision. Before forming precision, each draw's variances
+        divided by their penalty's spectral size are floored at ``1e-12`` times
+        the largest such value in that draw. Zero penalties are excluded from
+        this ratio bound. This numerical approximation prevents extreme variance
+        ratios from erasing stochastic directions during factorization.
+        Both searches double a log-scale bracket around the factory argument
+        ``s=1``, bounded by
         normal positive prior parameters in the model's default floating
         precision, with log-scale tolerance ``1e-7``. When
         either shortcut capability is unavailable, fixed independent variance
@@ -633,9 +658,11 @@ class SDPrior:
 
         Predictive variance draws must be finite and nonnegative; exact zeros
         are replaced by the smallest positive normal value of their draw dtype.
+        Zeros are treated as numerical rounding; use priors with no point mass
+        at zero.
         Support checks and median estimation also allow positive-infinite draws,
-        provided the resulting median is finite and positive. A quantile median
-        is preferred; otherwise 4,096 seed-zero draws supply a deterministic median.
+        provided the resulting median is finite and positive. See ``value`` for
+        the deterministic median fallback.
         Search expansion stops on a side whose variance draws become invalid,
         while continuing on the other side. On the sampled path, draws at
         ``s=1`` must be valid.
@@ -700,7 +727,7 @@ class SDPrior:
                 limits = np.asarray(variance_limits(values))
                 if (
                     limits.shape != values.shape
-                    or not _is_real(limits, allow_infinite=True)
+                    or not _is_real_numeric(limits, allow_infinite=True)
                     or np.any(limits < 0)
                 ):
                     raise ValueError(
@@ -731,22 +758,18 @@ class SDPrior:
             def sampled_statistics(
                 value: float, normals: np.ndarray, key: jax.Array
             ) -> np.ndarray:
-                try:
-                    with np.errstate(over="raise", invalid="raise", divide="raise"):
-                        variances = np.column_stack(
-                            [
-                                _variance_samples(
-                                    distribution_at(float(np.exp(value)), factory),
-                                    target.draws,
-                                    jax.random.fold_in(key, index),
-                                )
-                                for index, factory in enumerate(factories)
-                            ]
-                        )
-                except FloatingPointError as error:
-                    raise _VarianceSampleError(
-                        "Variance samples must be finite and positive scalar draws."
-                    ) from error
+                # Overflow at trial scales is checked in the resulting draws.
+                with np.errstate(over="ignore"):
+                    variances = np.column_stack(
+                        [
+                            _variance_samples(
+                                distribution_at(float(np.exp(value)), factory),
+                                target.draws,
+                                jax.random.fold_in(key, index),
+                            )
+                            for index, factory in enumerate(factories)
+                        ]
+                    )
                 return geometry.statistics(target, normals, variances)
 
             def quantile_residual(value: float) -> float:

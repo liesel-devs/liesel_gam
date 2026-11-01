@@ -501,9 +501,8 @@ def test_a_valid_factory_with_an_unattainable_target_fails_clearly() -> None:
         prior.calibrate(basis)
 
 
-@pytest.mark.parametrize("count", [0, 2])
-def test_single_variance_calibration_rejects_wrong_factory_counts(count) -> None:
-    factories = (lambda s: tfd.Weibull(0.5, s),) * count
+def test_single_variance_calibration_rejects_wrong_factory_counts() -> None:
+    factories = (lambda s: tfd.Weibull(0.5, s),) * 2
     prior = gam.SDPrior.from_max_abs_effect(
         3.0, probability=0.95, draws=64, variance_prior=cast(Any, factories)
     )

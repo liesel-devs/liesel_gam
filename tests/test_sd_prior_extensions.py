@@ -198,7 +198,7 @@ def test_repeated_factory_uses_independent_variances_in_the_sum_of_precisions():
     assert result.prior_scale == tuple_result.prior_scale
 
 
-@pytest.mark.parametrize("count", [0, 1, 3])
+@pytest.mark.parametrize("count", [1, 3])
 def test_explicit_geometry_rejects_a_mismatched_factory_tuple(count):
     geometry = gam.GaussianGeometry(
         np.eye(2), penalties=(np.diag([1.0, 0.0]), np.diag([0.0, 1.0]))
@@ -224,7 +224,7 @@ def test_variance_priors_with_negative_support_are_rejected(integrated):
         prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
 
 
-@pytest.mark.parametrize("dtype", [str, complex])
+@pytest.mark.parametrize("dtype", [str, complex, bool])
 def test_generic_targets_must_return_real_numeric_statistics(dtype):
     class InvalidTarget(_WeightedRMS):
         def statistic(self, effects):
@@ -235,13 +235,20 @@ def test_generic_targets_must_return_real_numeric_statistics(dtype):
         prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
 
 
-@pytest.mark.parametrize("specification", [3, (3,), [tfd.HalfNormal]])
-def test_variance_factories_must_be_a_callable_or_tuple_of_callables(specification):
-    prior = gam.SDPrior.from_max_abs_effect(
-        2.0, probability=0.9, variance_prior=cast(Any, specification)
-    )
-    with pytest.raises(TypeError, match="variance_prior.*callable"):
-        prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))
+@pytest.mark.parametrize(
+    "specification, error",
+    [
+        (3, TypeError),
+        ((3,), TypeError),
+        ([tfd.HalfNormal], TypeError),
+        ((), ValueError),
+    ],
+)
+def test_invalid_variance_recipes_fail_at_construction(specification, error):
+    with pytest.raises(error, match="variance_prior"):
+        gam.SDPrior.from_max_abs_effect(
+            2.0, probability=0.9, variance_prior=cast(Any, specification)
+        )
 
 
 def test_noncommuting_penalties_match_an_independent_covariance_reference():
@@ -310,6 +317,7 @@ def test_sample_median_initialization_is_independent_of_seed_and_variance_order(
         ({"design": np.array([[np.nan]])}, "finite"),
         ({"design": np.eye(2, dtype=complex)}, "real"),
         ({"penalties": (np.eye(2, dtype=complex),)}, "real"),
+        ({"penalties": (np.full((2, 2), "a"),)}, "real"),
         ({"penalties": ()}, "at least one penalty"),
         ({"penalties": (np.eye(3),)}, "design columns"),
         ({"penalties": (np.array([[1.0, 1.0], [0.0, 1.0]]),)}, "symmetric"),
@@ -504,3 +512,60 @@ def test_complex_variance_limits_raise_a_clear_target_error():
         gam.SDPrior(calibration=ComplexLimits(2.0, 0.9)).calibrate(
             gam.GaussianGeometry(np.ones((1, 1)))
         )
+
+
+def test_a_fitted_basis_must_return_one_row_per_evaluation_location():
+    basis = gam.Basis(
+        jnp.linspace(0.0, 1.0, 20),
+        basis_fn=lambda x: jnp.ones((20, 3)),
+        penalty=jnp.eye(3),
+        xname="x",
+        row_wise=True,
+        use_callback=False,
+    )
+    with pytest.raises(ValueError, match="one row per.*grid"):
+        gam.SDPrior.from_max_abs_effect(2.0, probability=0.9).calibrate(basis)
+
+
+@pytest.mark.parametrize("penalty_factor", [1.0, 1e-8])
+def test_tensor_like_penalties_tolerate_a_rounded_zero_variance_draw(penalty_factor):
+    class RoundedZeroWeibull(tfd.Weibull):
+        def sample(self, sample_shape=(), seed=None, name="sample", **kwargs):
+            return (
+                super()
+                .sample(sample_shape, seed=seed, name=name, **kwargs)
+                .at[0]
+                .set(0.0)
+            )
+
+    penalty = np.diff(np.eye(6), n=2, axis=0)
+    penalty = penalty.T @ penalty
+    geometry = gam.GaussianGeometry(
+        np.random.default_rng(0).normal(size=(40, 36)),
+        penalties=(
+            np.kron(penalty, np.eye(6)),
+            penalty_factor * np.kron(np.eye(6), penalty),
+        ),
+    )
+    result = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        draws=512,
+        variance_prior=(
+            lambda s: RoundedZeroWeibull(0.5, s),
+            lambda s: tfd.Weibull(0.5, s),
+        ),
+    ).calibrate(geometry)
+
+    assert result.diagnostics["rank"] == 32
+    assert result.diagnostics["nullity"] == 4
+    assert result.diagnostics["validation_probability"] == pytest.approx(0.95, abs=0.04)
+
+
+def test_an_arithmetic_error_from_a_factory_propagates_to_the_caller():
+    def factory(s):
+        raise FloatingPointError("factory arithmetic failed")
+
+    prior = gam.SDPrior(calibration=_WeightedRMS(draws=64), variance_prior=factory)
+    with pytest.raises(FloatingPointError, match="factory arithmetic failed"):
+        prior.calibrate(gam.GaussianGeometry(np.ones((1, 1))))

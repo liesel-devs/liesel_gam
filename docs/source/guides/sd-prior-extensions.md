@@ -230,10 +230,8 @@ null space is excluded from calibration. The design rows fix evaluation location
 
 Read the method, validation probability and Monte Carlo error, stochastic rank,
 nullity, and actual evaluation dimensions in
-{attr}`diagnostics <liesel_gam.CalibrationResult.diagnostics>`. Predictive variance
-samples must be finite and nonnegative; exact zeros are replaced by the smallest
-positive normal value of their dtype. Support checks allow positive infinity
-when the median remains finite. Malformed statistics and unattainable targets
+{attr}`diagnostics <liesel_gam.CalibrationResult.diagnostics>`.
+Malformed statistics and unattainable targets
 raise errors. Finite grids and Monte Carlo calculations approximate the target.
 
 The shared search needs a meaningful relationship between factory argument `s`
