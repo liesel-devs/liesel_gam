@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from numbers import Integral
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Protocol
 
 import jax.numpy as jnp
 import liesel.goose as gs
@@ -45,9 +45,50 @@ class CalibrationResult:
         )
 
 
+class _CalibrationTarget(Protocol):
+    @property
+    def threshold(self) -> float: ...
+
+    @property
+    def probability(self) -> float: ...
+
+    @property
+    def grid_size(self) -> int | None: ...
+
+    @property
+    def seed(self) -> int: ...
+
+    @property
+    def draws(self) -> int: ...
+
+    def statistic(self, effects: np.ndarray) -> np.ndarray: ...
+
+
+def _validate_target(
+    target: _CalibrationTarget, *, threshold_name: str = "threshold"
+) -> None:
+    if not np.isfinite(target.threshold) or target.threshold <= 0:
+        raise ValueError(f"{threshold_name} must be finite and positive.")
+    if not np.isfinite(target.probability) or not 0 < target.probability < 1:
+        raise ValueError("probability must be finite and strictly between 0 and 1.")
+    for name, value, minimum in (
+        ("grid_size", target.grid_size, 2),
+        ("draws", target.draws, 2),
+        ("seed", target.seed, 0),
+    ):
+        if name == "grid_size" and value is None:
+            continue
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, Integral)
+            or value < minimum
+        ):
+            raise ValueError(f"{name} must be an integer >= {minimum}.")
+
+
 @dataclass(frozen=True)
 class MaxAbsEffect:
-    r"""Calibrate simultaneous stochastic effects on the additive predictor scale.
+    r"""Define a simultaneous stochastic-effect bound on the predictor scale.
 
     The target is :math:`P(\max_{x \in G}|f_\mathrm{stochastic}(x)| \le c)=p`.
     This bounds the penalized part on a finite grid, excluding unpenalized
@@ -69,16 +110,9 @@ class MaxAbsEffect:
 
     Notes
     -----
-    The single-variance calculation samples unit-scale Gaussian coefficients and
-    integrates the variance prior through its CDF. Draws stay fixed throughout
-    the scalar search; validation uses a separate random stream. Grid and Monte
-    Carlo approximations do not certify continuous-domain coverage.
-
-    Penalty eigenvalues within ``n * eps * max(abs(eigenvalues))`` of zero are
-    treated as numerical null directions, where ``eps`` is the penalty's floating
-    precision (at least float32). The scalar search covers normal positive prior
-    parameters in the model's default floating precision, with log-scale
-    tolerance ``1e-7``. A target outside that range fails explicitly.
+    This target supplies a per-draw statistic and its allowable-variance limits.
+    :meth:`SDPrior.calibrate <liesel_gam.SDPrior.calibrate>` performs the shared
+    sampling, CDF integration, search, validation, and result construction.
 
     See Also
     --------
@@ -97,37 +131,195 @@ class MaxAbsEffect:
     """Gaussian draws in each stream."""
 
     def __post_init__(self) -> None:
-        if not np.isfinite(self.max_abs_effect) or self.max_abs_effect <= 0:
-            raise ValueError("max_abs_effect must be finite and positive.")
-        if not np.isfinite(self.probability) or not 0 < self.probability < 1:
-            raise ValueError("probability must be finite and strictly between 0 and 1.")
-        for name, value, minimum in (
-            ("grid_size", self.grid_size, 2),
-            ("draws", self.draws, 2),
-            ("seed", self.seed, 0),
-        ):
-            if name == "grid_size" and value is None:
-                continue
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, Integral)
-                or value < minimum
-            ):
-                raise ValueError(f"{name} must be an integer >= {minimum}.")
+        _validate_target(self, threshold_name="max_abs_effect")
 
-    def calibrate(
-        self, basis: Basis, *, variance_priors: tuple[_VariancePriorFactory, ...]
-    ) -> CalibrationResult:
-        """Implement the rule protocol used by :class:`SDPrior <liesel_gam.SDPrior>`.
+    @property
+    def threshold(self) -> float:
+        """Effect bound, equal to ``max_abs_effect``."""
+        return self.max_abs_effect
 
-        Use :meth:`SDPrior.calibrate <liesel_gam.SDPrior.calibrate>` for explicit
-        calibration.
+    def statistic(self, effects: np.ndarray) -> np.ndarray:
+        """Return the maximum absolute effect for each predictive draw.
+
+        ``effects`` has shape ``(draws, evaluation_points)``. The returned array
+        has shape ``(draws,)``.
         """
-        if len(variance_priors) != 1:
+        return np.max(np.abs(effects), axis=-1)
+
+    def variance_limits(self, values: np.ndarray) -> np.ndarray:
+        """Return the largest allowed variance for each unit-scale statistic.
+
+        For unit-Gaussian maxima ``M``, this is ``(max_abs_effect / M)**2``.
+        Zero maxima allow infinite variance. The shared workflow uses these
+        limits for the single-variance CDF shortcut.
+        """
+        return (
+            np.divide(
+                self.max_abs_effect,
+                values,
+                out=np.full_like(values, np.inf, dtype=float),
+                where=values > 0,
+            )
+            ** 2
+        )
+
+
+@dataclass(frozen=True)
+class SDPrior:
+    r"""Reusable recipe for a basis-dependent prior on :math:`\tau^2`.
+
+    Pass this configuration as ``scale`` to a compatible scalar spline constructor
+    on :class:`TermBuilder <liesel_gam.TermBuilder>`, or opt in for a builder
+    instance with ``default_scale_fn``. Every independent term receives fresh scale
+    variables; reusing the recipe does not share random variables. Creating the
+    recipe constructs no model variables.
+
+    Parameters
+    ----------
+    calibration
+        Target definition, such as :class:`MaxAbsEffect <liesel_gam.MaxAbsEffect>`,
+        carrying the statistic, threshold, probability, and numerical settings.
+        The target supplies no calibration algorithm.
+    variance_prior
+        Callable, or a one-element tuple of callables, mapping a positive scalar
+        to a scalar TFD prior on tau squared.
+        The default is Weibull with concentration 0.5 and that scalar as its TFD
+        scale. The current single-variance rule requires CDF and median-quantile
+        methods. This argument is not a prior on tau itself.
+    value
+        Explicit finite positive initial tau. ``None`` initializes tau at
+        ``sqrt(median(tau**2))`` under the calibrated variance prior.
+    bijector
+        Transform from an unconstrained parameter to tau squared; default Exp.
+    inference
+        Inference specification for the unconstrained variance parameter. Defaults
+        to :class:`MCMCSpec <liesel.goose.MCMCSpec>` with
+        :class:`NUTSKernel <liesel.goose.NUTSKernel>`.
+        With the default Exp bijector, NUTS samples log variance. Explicit ``None``
+        disables automatic sampling; an explicit specification overrides NUTS.
+
+    See Also
+    --------
+    liesel_gam.SDPrior.calibrate : Inspect a pure calibration result.
+    liesel_gam.scale_wb : Construct an explicitly specified variance prior.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import liesel_gam as gam
+    >>> prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=128)
+    >>> tb = gam.TermBuilder.from_dict({"age": np.linspace(0.0, 1.0, 20)})
+    >>> smooth = tb.ps("age", k=6, scale=prior)
+    >>> result = prior.calibrate(smooth.basis)
+    >>> result.diagnostics["evaluation_points"]
+    129
+    """
+
+    calibration: _CalibrationTarget
+    """Effect criterion and numerical settings."""
+    variance_prior: _VariancePriorFactory | tuple[_VariancePriorFactory, ...] = field(
+        default_factory=lambda: _weibull_variance
+    )
+    """Factory producing a scalar prior on tau squared."""
+    value: float | None = None
+    """Explicit initial tau, or None for the calibrated prior median."""
+    bijector: tfb.Bijector = field(default_factory=tfb.Exp)
+    """Bijector from the unconstrained parameter to tau squared."""
+    inference: Any = field(
+        default_factory=lambda: gs.MCMCSpec(gs.NUTSKernel), hash=False
+    )
+    """Inference specification for the unconstrained variance parameter."""
+
+    def __post_init__(self) -> None:
+        if self.value is not None and (not np.isfinite(self.value) or self.value <= 0):
+            raise ValueError("value must be finite and positive on the tau scale.")
+        if not isinstance(self.bijector, tfb.Bijector):
+            raise ValueError("bijector must be a TFD Bijector; None is not supported.")
+
+    @classmethod
+    def from_max_abs_effect(
+        cls,
+        max_abs_effect: float,
+        *,
+        probability: float,
+        variance_prior: _VariancePriorFactory
+        | tuple[_VariancePriorFactory, ...] = _weibull_variance,
+        grid_size: int | None = None,
+        seed: int = 42,
+        draws: int = 4096,
+        value: float | None = None,
+        bijector: tfb.Bijector = tfb.Exp(),
+        inference: Any = gs.MCMCSpec(gs.NUTSKernel),
+    ) -> "SDPrior":
+        """Create a recipe with :class:`MaxAbsEffect <liesel_gam.MaxAbsEffect>`.
+
+        ``max_abs_effect``, ``probability``, ``grid_size``, ``seed``, and ``draws``
+        configure that rule. Remaining arguments configure
+        :class:`SDPrior <liesel_gam.SDPrior>`.
+        """
+        return cls(
+            calibration=MaxAbsEffect(
+                max_abs_effect, probability, grid_size, seed, draws
+            ),
+            variance_prior=variance_prior,
+            value=value,
+            bijector=bijector,
+            inference=inference,
+        )
+
+    def calibrate(self, basis: Basis) -> CalibrationResult:
+        """Run shared calibration without constructing or updating model variables.
+
+        Parameters
+        ----------
+        basis
+            Fitted numeric scalar, known row-wise :class:`Basis <liesel_gam.Basis>` with
+            its coefficient penalty. Constraints and reparameterizations are
+            retained during evaluation. Singular PSD penalties are supported.
+
+        Returns
+        -------
+        liesel_gam.CalibrationResult
+            Immutable priors, suggested starts, and diagnostics for this calculation.
+            An explicit recipe ``value`` changes constructed starts, not these
+            median-based suggestions.
+
+        Raises
+        ------
+        ValueError
+            If the fitted geometry is invalid, has no stochastic effect on the
+            grid, or the target cannot be calibrated within finite prior parameters.
+
+        Notes
+        -----
+        The workflow normalizes variance-prior factories, prepares the fitted
+        stochastic geometry, draws unit-Gaussian effects, solves for the prior
+        parameter, and constructs the validated result. Targets supply a
+        ``statistic(effects)`` returning one finite value per draw. The scalar
+        CDF path also requires a target ``variance_limits(statistics)`` capability
+        returning one nonnegative allowable variance per draw; positive infinity
+        is allowed. The workflow integrates the variance prior at those limits.
+
+        Fitting draws stay fixed during search; validation uses an independent
+        random stream. Grid and Monte Carlo approximations do not certify
+        continuous-domain coverage. Penalty eigenvalues within
+        ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
+        where ``eps`` is the penalty's floating precision (at least float32).
+        The search spans normal positive prior parameters in the model's default
+        floating precision, with log-scale tolerance ``1e-7``.
+        """
+        factories = (
+            self.variance_prior
+            if isinstance(self.variance_prior, tuple)
+            else (self.variance_prior,)
+        )
+        target = self.calibration
+        _validate_target(target)
+        if len(factories) != 1:
             raise ValueError(
                 "A single-variance basis requires exactly one variance-prior factory."
             )
-        size = 129 if self.grid_size is None else self.grid_size
+        size = 129 if target.grid_size is None else target.grid_size
         x = np.asarray(basis.x.value)
         if (
             basis.row_wise is not True
@@ -189,17 +381,33 @@ class MaxAbsEffect:
                 "The evaluation grid has no stochastic effect to calibrate."
             )
         rank = int(positive.sum())
-        fit_rng, validation_rng = (
-            np.random.default_rng(child)
-            for child in np.random.SeedSequence(self.seed).spawn(2)
-        )
+        variance_limits = getattr(target, "variance_limits", None)
+        if not callable(variance_limits):
+            raise ValueError(
+                "This target does not provide a single-variance CDF shortcut."
+            )
+        fit_rng, validation_rng = np.random.default_rng(target.seed).spawn(2)
 
-        def maxima(rng: np.random.Generator) -> np.ndarray:
-            coefficients = rng.standard_normal((self.draws, rank))
-            return np.max(np.abs(coefficients @ unit_design.T), axis=1)
+        def predictive_limits(rng: np.random.Generator) -> np.ndarray:
+            coefficients = rng.standard_normal((target.draws, rank))
+            values = np.asarray(target.statistic(coefficients @ unit_design.T))
+            if values.shape != (target.draws,) or not np.isfinite(values).all():
+                raise ValueError(
+                    "The target statistic must return one finite value per draw."
+                )
+            limits = np.asarray(variance_limits(values))
+            if (
+                limits.shape != values.shape
+                or np.isnan(limits).any()
+                or np.any(limits < 0)
+            ):
+                raise ValueError(
+                    "Target variance limits must be nonnegative values, one per draw."
+                )
+            return limits
 
-        fit, validation = maxima(fit_rng), maxima(validation_rng)
-        factory = variance_priors[0]
+        fit, validation = predictive_limits(fit_rng), predictive_limits(validation_rng)
+        factory = factories[0]
 
         def distribution_at(scale: float) -> tfd.Distribution:
             distribution = factory(scale)
@@ -211,33 +419,31 @@ class MaxAbsEffect:
                 raise ValueError("Each variance prior must be scalar.")
             return distribution
 
-        def coverage(log_scale: float, values: np.ndarray) -> np.ndarray:
-            limits = (
-                np.divide(
-                    self.max_abs_effect,
-                    values,
-                    out=np.full_like(values, np.inf),
-                    where=values > 0,
-                )
-                ** 2
-            )
+        def coverage(log_scale: float, limits: np.ndarray) -> np.ndarray:
+            unlimited = np.isposinf(limits)
+            # Avoid distribution-specific NaNs at infinity for extreme scales.
+            cdf_limits = np.where(unlimited, 0.0, limits)
             probabilities = np.asarray(
-                distribution_at(float(np.exp(log_scale))).cdf(limits)
+                distribution_at(float(np.exp(log_scale))).cdf(cdf_limits)
             )
+            if probabilities.shape != limits.shape:
+                raise ValueError(
+                    "The variance-prior CDF must return one probability per limit."
+                )
             if not np.isfinite(probabilities).all() or np.any(
                 (probabilities < 0) | (probabilities > 1)
             ):
                 raise ValueError(
                     "The variance-prior CDF must return finite probabilities in [0, 1]."
                 )
-            return probabilities
+            return np.where(unlimited, 1.0, probabilities)
 
         # Search the normal floating-point range used by the model's prior nodes.
         precision = np.finfo(jnp.asarray(1.0).dtype)
         lower, upper = np.log(float(precision.tiny)), np.log(float(precision.max))
 
         def residual(value: float) -> float:
-            return float(coverage(value, fit).mean()) - self.probability
+            return float(coverage(value, fit).mean()) - target.probability
 
         if residual(lower) * residual(upper) > 0:
             raise ValueError(
@@ -256,148 +462,15 @@ class MaxAbsEffect:
             initial_scales=(float(np.sqrt(median)),),
             diagnostics={
                 "method": "integrated_variance_cdf",
-                "target_probability": self.probability,
+                "target_probability": target.probability,
                 "validation_probability": float(achieved.mean()),
-                "validation_mc_se": float(achieved.std(ddof=1) / np.sqrt(self.draws)),
-                "threshold": self.max_abs_effect,
-                "seed": self.seed,
-                "draws": self.draws,
+                "validation_mc_se": float(achieved.std(ddof=1) / np.sqrt(target.draws)),
+                "threshold": target.threshold,
+                "seed": target.seed,
+                "draws": target.draws,
                 "rank": rank,
                 "nullity": design.shape[1] - rank,
                 "grid_size": size,
                 "evaluation_points": len(design),
             },
         )
-
-
-@dataclass(frozen=True)
-class SDPrior:
-    r"""Reusable recipe for a basis-dependent prior on :math:`\tau^2`.
-
-    Pass this configuration as ``scale`` to a compatible scalar spline constructor
-    on :class:`TermBuilder <liesel_gam.TermBuilder>`, or opt in for a builder
-    instance with ``default_scale_fn``. Every independent term receives fresh scale
-    variables; reusing the recipe does not share random variables. Creating the
-    recipe constructs no model variables.
-
-    Parameters
-    ----------
-    calibration
-        :class:`MaxAbsEffect <liesel_gam.MaxAbsEffect>` settings for the stochastic
-        effect.
-    variance_prior
-        Callable, or a one-element tuple of callables, mapping a positive scalar
-        to a scalar TFD prior on tau squared.
-        The default is Weibull with concentration 0.5 and that scalar as its TFD
-        scale. The current single-variance rule requires CDF and median-quantile
-        methods. This argument is not a prior on tau itself.
-    value
-        Explicit finite positive initial tau. ``None`` initializes tau at
-        ``sqrt(median(tau**2))`` under the calibrated variance prior.
-    bijector
-        Transform from an unconstrained parameter to tau squared; default Exp.
-    inference
-        Inference specification for the unconstrained variance parameter. Defaults
-        to :class:`MCMCSpec <liesel.goose.MCMCSpec>` with
-        :class:`NUTSKernel <liesel.goose.NUTSKernel>`.
-        With the default Exp bijector, NUTS samples log variance. Explicit ``None``
-        disables automatic sampling; an explicit specification overrides NUTS.
-
-    See Also
-    --------
-    liesel_gam.SDPrior.calibrate : Inspect a pure calibration result.
-    liesel_gam.scale_wb : Construct an explicitly specified variance prior.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> import liesel_gam as gam
-    >>> prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95, draws=128)
-    >>> tb = gam.TermBuilder.from_dict({"age": np.linspace(0.0, 1.0, 20)})
-    >>> smooth = tb.ps("age", k=6, scale=prior)
-    >>> result = prior.calibrate(smooth.basis)
-    >>> result.diagnostics["evaluation_points"]
-    129
-    """
-
-    calibration: MaxAbsEffect
-    """Effect criterion and numerical settings."""
-    variance_prior: _VariancePriorFactory | tuple[_VariancePriorFactory, ...] = field(
-        default_factory=lambda: _weibull_variance
-    )
-    """Factory producing a scalar prior on tau squared."""
-    value: float | None = None
-    """Explicit initial tau, or None for the calibrated prior median."""
-    bijector: tfb.Bijector = field(default_factory=tfb.Exp)
-    """Bijector from the unconstrained parameter to tau squared."""
-    inference: Any = field(
-        default_factory=lambda: gs.MCMCSpec(gs.NUTSKernel), hash=False
-    )
-    """Inference specification for the unconstrained variance parameter."""
-
-    def __post_init__(self) -> None:
-        if self.value is not None and (not np.isfinite(self.value) or self.value <= 0):
-            raise ValueError("value must be finite and positive on the tau scale.")
-        if not isinstance(self.bijector, tfb.Bijector):
-            raise ValueError("bijector must be a TFD Bijector; None is not supported.")
-
-    @classmethod
-    def from_max_abs_effect(
-        cls,
-        max_abs_effect: float,
-        *,
-        probability: float,
-        variance_prior: _VariancePriorFactory
-        | tuple[_VariancePriorFactory, ...] = _weibull_variance,
-        grid_size: int | None = None,
-        seed: int = 42,
-        draws: int = 4096,
-        value: float | None = None,
-        bijector: tfb.Bijector = tfb.Exp(),
-        inference: Any = gs.MCMCSpec(gs.NUTSKernel),
-    ) -> "SDPrior":
-        """Create a recipe with :class:`MaxAbsEffect <liesel_gam.MaxAbsEffect>`.
-
-        ``max_abs_effect``, ``probability``, ``grid_size``, ``seed``, and ``draws``
-        configure that rule. Remaining arguments configure
-        :class:`SDPrior <liesel_gam.SDPrior>`.
-        """
-        return cls(
-            calibration=MaxAbsEffect(
-                max_abs_effect, probability, grid_size, seed, draws
-            ),
-            variance_prior=variance_prior,
-            value=value,
-            bijector=bijector,
-            inference=inference,
-        )
-
-    def calibrate(self, basis: Basis) -> CalibrationResult:
-        """Calculate a prior without constructing or updating model variables.
-
-        Parameters
-        ----------
-        basis
-            Fitted numeric scalar, known row-wise :class:`Basis <liesel_gam.Basis>` with
-            its coefficient penalty. Constraints and reparameterizations are
-            retained during evaluation. Singular PSD penalties are supported.
-
-        Returns
-        -------
-        liesel_gam.CalibrationResult
-            Immutable priors, suggested starts, and diagnostics for this calculation.
-            An explicit recipe ``value`` changes constructed starts, not these
-            median-based suggestions.
-
-        Raises
-        ------
-        ValueError
-            If the fitted geometry is invalid, has no stochastic effect on the
-            grid, or the target cannot be calibrated within finite prior parameters.
-        """
-        factories = (
-            self.variance_prior
-            if isinstance(self.variance_prior, tuple)
-            else (self.variance_prior,)
-        )
-        return self.calibration.calibrate(basis, variance_priors=factories)

@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, dataclass
 from operator import setitem
 from typing import Any, cast
 
@@ -14,6 +14,21 @@ from liesel.types import Position
 from scipy.integrate import quad
 
 import liesel_gam as gam
+
+
+@dataclass(frozen=True)
+class _RootMeanSquare:
+    threshold: float = 2.0
+    probability: float = 0.9
+    grid_size: int = 65
+    seed: int = 42
+    draws: int = 8192
+
+    def statistic(self, effects):
+        return np.sqrt(np.mean(effects**2, axis=-1))
+
+    def variance_limits(self, values):
+        return (self.threshold / values) ** 2
 
 
 def test_explicit_calibration_bounds_a_known_scalar_effect() -> None:
@@ -514,3 +529,135 @@ def test_default_prior_recipe_is_usable_as_a_dictionary_key() -> None:
     prior = gam.SDPrior.from_max_abs_effect(3.0, probability=0.95)
     recipes = {prior: "age"}
     assert recipes[prior] == "age"
+
+
+def test_shared_workflow_calibrates_a_target_without_its_own_algorithm() -> None:
+    target = _RootMeanSquare()
+    basis = gam.Basis(
+        jnp.linspace(-1.0, 1.0, 20),
+        basis_fn=lambda x: x[:, None],
+        penalty=jnp.eye(1),
+        xname="x",
+        use_callback=False,
+        row_wise=True,
+    )
+
+    result = gam.SDPrior(calibration=target).calibrate(basis)
+
+    rms_x = np.sqrt(np.mean(np.linspace(-1.0, 1.0, 65) ** 2))
+    tail, _ = quad(
+        lambda z: (
+            np.exp(-2.0 / (np.sqrt(result.prior_scale) * rms_x * z))
+            * np.sqrt(2.0 / np.pi)
+            * np.exp(-z * z / 2.0)
+        ),
+        0.0,
+        np.inf,
+    )
+    assert 1.0 - tail == pytest.approx(0.9, abs=0.01)
+    assert result.diagnostics["method"] == "integrated_variance_cdf"
+    assert result.diagnostics["evaluation_points"] == 65
+
+
+def test_maximum_effect_retains_the_single_variance_cdf_method() -> None:
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    result = gam.SDPrior.from_max_abs_effect(
+        3.0, probability=0.95, draws=512
+    ).calibrate(basis)
+    assert result.diagnostics["method"] == "integrated_variance_cdf"
+    assert abs(float(result.diagnostics["validation_probability"]) - 0.95) < 0.025
+
+
+@pytest.mark.parametrize(
+    "settings, message",
+    [
+        ({"probability": 1.0}, "probability"),
+        ({"threshold": np.nan}, "threshold"),
+        ({"draws": 1}, "draws"),
+        ({"seed": -1}, "seed"),
+    ],
+)
+def test_shared_workflow_validates_settings_for_target_only_objects(
+    settings, message
+) -> None:
+    target = _RootMeanSquare(**settings)
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(ValueError, match=message):
+        gam.SDPrior(calibration=target).calibrate(basis)
+
+
+@pytest.mark.parametrize("invalid", ["shape", "range"])
+def test_shared_workflow_rejects_malformed_cdf_probabilities(invalid) -> None:
+    class InvalidCDF(tfd.Weibull):
+        def _cdf(self, y, **kwargs):
+            return jnp.asarray(0.5) if invalid == "shape" else jnp.full_like(y, 2.0)
+
+    prior = gam.SDPrior.from_max_abs_effect(
+        3.0,
+        probability=0.95,
+        draws=64,
+        variance_prior=lambda s: InvalidCDF(0.5, s),
+    )
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(ValueError, match="CDF"):
+        prior.calibrate(basis)
+
+
+def test_cdf_shortcut_handles_a_target_with_zero_unit_statistics() -> None:
+    class PositiveMaximum(gam.MaxAbsEffect):
+        def statistic(self, effects):
+            return np.maximum(0.0, np.max(effects, axis=-1))
+
+    basis = gam.Basis(
+        jnp.linspace(0.0, 1.0, 20),
+        basis_fn=lambda x: x[:, None],
+        xname="x",
+        row_wise=True,
+        use_callback=False,
+    )
+    result = gam.SDPrior(calibration=PositiveMaximum(2.0, 0.9, draws=8192)).calibrate(
+        basis
+    )
+    # Half the unit draws have a nonpositive slope and always satisfy this event.
+    tail, _ = quad(
+        lambda z: (
+            np.exp(-2.0 / (np.sqrt(result.prior_scale) * z))
+            * np.sqrt(2.0 / np.pi)
+            * np.exp(-z * z / 2.0)
+        ),
+        0.0,
+        np.inf,
+    )
+    assert 1.0 - 0.5 * tail == pytest.approx(0.9, abs=0.01)
+
+
+@pytest.mark.parametrize(
+    "invalid", ["statistic_nan", "statistic_shape", "limits_negative", "limits_shape"]
+)
+def test_shared_workflow_rejects_invalid_target_outputs(invalid) -> None:
+    class InvalidTarget(_RootMeanSquare):
+        def statistic(self, effects):
+            if invalid == "statistic_nan":
+                return np.full(len(effects), np.nan)
+            if invalid == "statistic_shape":
+                return np.asarray(1.0)
+            return super().statistic(effects)
+
+        def variance_limits(self, values):
+            if invalid == "limits_negative":
+                return -np.ones_like(values)
+            if invalid == "limits_shape":
+                return np.asarray(1.0)
+            return super().variance_limits(values)
+
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 20)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(ValueError, match="(statistic|variance limits)"):
+        gam.SDPrior(calibration=InvalidTarget(draws=64)).calibrate(basis)
