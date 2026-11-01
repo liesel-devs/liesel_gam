@@ -110,6 +110,9 @@ class CalibrationTarget(Protocol):
     <liesel_gam.SDPrior.calibrate>` owns sampling, prior construction, solving,
     independent validation, and results.
 
+    Define targets without inheriting from this protocol: its read-only
+    properties can prevent dataclass field assignment when inherited.
+
     A scalar fitted basis is evaluated at equally spaced locations from its
     setup-input minimum to its maximum, including endpoints. ``grid_size=None``
     selects 129 locations. Explicit geometry uses design-row order. Targets that
@@ -266,9 +269,8 @@ def _prepare_gaussian(
         raise ValueError(
             "Calibration requires a finite nonempty real matrix-valued basis."
         )
-    design_precision = np.finfo(np.result_type(design.dtype, np.float32)).eps
+    effect_precision = np.finfo(np.result_type(design.dtype, np.float32)).eps
     design = np.asarray(design, dtype=float)
-    effect_tolerance = max(design.shape) * design_precision * np.linalg.norm(design)
     if grid_shape is None:
         grid_shape = (len(design),)
     if raw_penalties is None:
@@ -288,9 +290,9 @@ def _prepare_gaussian(
         penalty = np.asarray(raw, dtype=float)
         if penalty.shape != (design.shape[1], design.shape[1]):
             raise ValueError("The penalty must match the design columns.")
-        relative_tolerance = np.finfo(np.result_type(raw.dtype, np.float32)).eps * len(
-            penalty
-        )
+        penalty_precision = np.finfo(np.result_type(raw.dtype, np.float32)).eps
+        effect_precision = max(effect_precision, penalty_precision)
+        relative_tolerance = penalty_precision * len(penalty)
         if not np.allclose(
             penalty,
             penalty.T,
@@ -322,6 +324,9 @@ def _prepare_gaussian(
         eigenvalues, eigenvectors = np.linalg.eigh(sum(normalized_penalties))
     positive = eigenvalues > rank_relative_tolerance * np.max(np.abs(eigenvalues))
     rotation = eigenvectors[:, positive]
+    effect_tolerance = (
+        effect_precision * design.shape[1] * np.linalg.norm(design, axis=1).max()
+    )
     design = design @ rotation
     if not np.any(np.abs(design) > effect_tolerance):
         raise ValueError("The evaluation grid has no stochastic effect to calibrate.")
@@ -352,13 +357,16 @@ def _calibration_root(objective: Callable[[float], float]) -> float:
         return 0.0
     radius = 1.0
     active = [True, True]
+    invalid_trial: tuple[float, _InvalidPriorValues] | None = None
     while any(active):
         for side, trial in enumerate((max(lower, -radius), min(upper, radius))):
             if not active[side]:
                 continue
             try:
                 value = objective(trial)
-            except _InvalidPriorValues:
+            except _InvalidPriorValues as error:
+                if invalid_trial is None:
+                    invalid_trial = (trial, error)
                 active[side] = False
                 continue
             if center * value <= 0:
@@ -366,9 +374,13 @@ def _calibration_root(objective: Callable[[float], float]) -> float:
             if trial in (lower, upper):
                 active[side] = False
         radius *= 2
-    raise ValueError(
-        "Cannot calibrate the target within finite positive prior parameters."
-    )
+    message = "Cannot calibrate the target within finite positive prior parameters."
+    if invalid_trial is not None:
+        trial, error = invalid_trial
+        raise ValueError(
+            f"{message} The variance prior is invalid at s={np.exp(trial):.3g}: {error}"
+        ) from error
+    raise ValueError(message)
 
 
 def _validate_target(
@@ -654,8 +666,8 @@ class SDPrior:
         where ``eps`` is the penalty's floating precision (at least float32).
         Each penalty is reconstructed with those eigenvalues set to zero before
         computing conditional precision. A design's stochastic projection counts
-        as zero below ``max(design.shape) * eps * norm(design)`` using its
-        Frobenius norm and floating precision (at least float32).
+        as zero below ``eps * n_columns * max_row_norm(design)``, using the
+        larger epsilon of the design and penalties (at least float32).
         For multiple penalties, their sum after individual spectral normalization
         identifies the common null space; the original penalties determine
         conditional precision. Before forming precision, each draw's variances
@@ -668,10 +680,9 @@ class SDPrior:
         default floating precision, with log-scale tolerance ``1e-7``. For several
         variances or when either shortcut capability is unavailable, fixed
         independent variance and Gaussian draws supply a sampled statistic
-        quantile. That search
-        uses linear sample-quantile interpolation. Fitting coverage must be
-        within two draw counts of the target; targets with incompatible atoms or
-        unattainable probabilities fail.
+        quantile. That search uses linear sample-quantile interpolation.
+        Fitting coverage must be within two draw counts of the target; targets
+        with incompatible atoms or unattainable probabilities fail.
 
         Predictive variance draws must be finite and nonnegative; exact zeros
         are replaced by the smallest positive normal value of their draw dtype.
@@ -681,10 +692,12 @@ class SDPrior:
         :attr:`value <liesel_gam.SDPrior.value>` for the deterministic median
         fallback. Search expansion stops on a side whose variance draws or CDF
         values become invalid, while continuing on the other side. Values at
-        ``s=1`` must be valid. Common random numbers stabilize the objective but
-        do not establish monotonicity for arbitrary factories or criteria. Use a
-        factory argument whose effect on the target is meaningful over the
-        searched range. Diagnostics report either ``integrated_variance_cdf`` or
+        ``s=1`` must be valid. If no bracket is found, the error includes and
+        chains the first invalid trial when one occurred. Common random numbers
+        stabilize the objective but do not establish monotonicity for arbitrary
+        factories or criteria. Use a factory argument whose effect on the target
+        is meaningful over the searched range. Diagnostics report either
+        ``integrated_variance_cdf`` or
         ``sampled_variance_quantile``.
         """
         target = self.calibration
@@ -739,7 +752,10 @@ class SDPrior:
 
         if use_cdf and callable(variance_limits):
 
-            def predictive_limits(values: np.ndarray) -> np.ndarray:
+            def predictive_limits(normals: np.ndarray) -> np.ndarray:
+                values = geometry.statistics(
+                    target, normals, np.ones((target.draws, 1))
+                )
                 limits = np.asarray(variance_limits(values))
                 if (
                     limits.shape != values.shape
@@ -752,13 +768,9 @@ class SDPrior:
                     )
                 return limits
 
-            fit = predictive_limits(
-                geometry.statistics(target, fit_normals, np.ones((target.draws, 1))),
-            )
-            validation = predictive_limits(
-                geometry.statistics(
-                    target, validation_normals, np.ones((target.draws, 1))
-                ),
+            fit, validation = (
+                predictive_limits(fit_normals),
+                predictive_limits(validation_normals),
             )
 
             def residual(value: float) -> float:

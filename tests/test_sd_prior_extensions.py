@@ -645,3 +645,59 @@ def test_inverse_gamma_cdf_calibration_matches_exact_student_t_coverage(
 
     assert result.diagnostics["method"] == "integrated_variance_cdf"
     assert exact.cdf(2.0) - exact.cdf(-2.0) == pytest.approx(0.9, abs=0.01)
+
+
+@pytest.mark.parametrize(
+    "bound, minimum, maximum", [(3.0, 0.9, np.inf), (300.0, 0.0, 1000.0)]
+)
+def test_an_unbracketed_root_reports_invalid_prior_trials(bound, minimum, maximum):
+    prior = gam.SDPrior.from_max_abs_effect(
+        bound,
+        probability=0.95,
+        draws=256,
+        variance_prior=lambda s: tfd.Weibull(
+            0.5, s if minimum <= s < maximum else np.nan
+        ),
+    )
+    basis = gam.TermBuilder.from_dict({"x": np.linspace(0.0, 1.0, 30)}).bases.ps(
+        "x", k=6
+    )
+    with pytest.raises(
+        ValueError, match="Cannot calibrate.*variance prior.*invalid at s"
+    ) as error:
+        prior.calibrate(basis)
+
+    assert isinstance(error.value.__cause__, ValueError)
+    assert "CDF" in str(error.value.__cause__)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_a_small_real_effect_is_preserved_next_to_a_large_unpenalized_column(dtype):
+    design = np.column_stack(
+        (np.full(200, 1000.0), 0.05 * np.sin(np.linspace(0.0, 6.0, 200)))
+    ).astype(dtype)
+    result = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=512).calibrate(
+        gam.GaussianGeometry(design, penalties=(np.diag([0.0, 1.0]),))
+    )
+
+    assert result.diagnostics["rank"] == 1
+    assert result.diagnostics["nullity"] == 1
+    assert result.diagnostics["validation_probability"] == pytest.approx(0.9, abs=0.04)
+
+
+@pytest.mark.parametrize("rotated", [False, True])
+def test_a_float32_penalty_null_space_is_rejected_for_a_float64_design(rotated):
+    differences = np.diff(np.eye(7), axis=0)
+    rotation = (
+        np.linalg.qr(np.random.default_rng(0).normal(size=(7, 7)))[0]
+        if rotated
+        else np.eye(7)
+    )
+    geometry = gam.GaussianGeometry(
+        np.outer([1.0, 2.0, 3.0], np.ones(7)) @ rotation,
+        penalties=(
+            (rotation.T @ differences.T @ differences @ rotation).astype(np.float32),
+        ),
+    )
+    with pytest.raises(ValueError, match="no stochastic effect"):
+        gam.SDPrior.from_max_abs_effect(2.0, probability=0.9).calibrate(geometry)
