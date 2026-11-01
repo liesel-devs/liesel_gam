@@ -483,7 +483,7 @@ def test_invalid_cdf_is_not_reported_as_an_unattainable_target() -> None:
         3.0,
         probability=0.95,
         draws=64,
-        variance_prior=lambda s: tfd.Weibull(0.5, s if s < 1000 else np.nan),
+        variance_prior=lambda s: tfd.Weibull(0.5, np.nan),
     )
     with pytest.raises(ValueError, match="CDF.*finite"):
         prior.calibrate(basis)
