@@ -19,6 +19,7 @@ def test_ri_calibrates_all_declared_categories_once(factor_scale) -> None:
             group, scale=prior, factor_scale=factor_scale
         )
         result = prior.calibrate(term.basis)
+        assert term.scale.value == pytest.approx(result.initial_scales[0])
         assert result.diagnostics["evaluation_points"] == 3
         assert result.diagnostics["rank"] == 3
         assert term.coef.value.shape == (3,)
@@ -63,6 +64,7 @@ def test_mrf_calibrates_transformed_region_values(settings, rank) -> None:
         group, nb=neighbors, scale=prior, **settings
     )
     result = prior.calibrate(term.basis)
+    assert term.scale.value == pytest.approx(result.initial_scales[0])
     assert result.diagnostics["evaluation_points"] == 4
     assert result.diagnostics["rank"] == rank
     assert term.mapping is group.mapping
@@ -162,7 +164,7 @@ def test_custom_f_unknown_row_dependence_requires_an_explicit_scale(row_wise) ->
         {"x": np.linspace(-1, 1, 10)},
         default_scale_fn=gam.SDPrior.from_max_abs_effect(2.0, probability=0.9),
     )
-    with pytest.raises(ValueError, match="scalar row-wise"):
+    with pytest.raises(ValueError, match=r"f\(x\).*scalar row-wise.*explicit"):
         tb.f("x", basis_fn=lambda x: x, row_wise=row_wise)
     term = tb.f("x", basis_fn=lambda x: x, row_wise=row_wise, scale=1.0)
     assert np.isfinite(lsl.Model(term).log_prob)
@@ -194,7 +196,8 @@ def test_rs_and_vc_preserve_coefficient_priors_and_starts(
         default_scale_fn=prior,
     )
     smooth = tb.ps("x", k=6)
-    variance = smooth.scale.value_node[0]
+    original_scale = smooth.scale
+    variance = original_scale.value_node[0]
     parameter = variance.bijected_var
     prior_node = parameter.dist_node
     parameter_start = np.array(parameter.value)
@@ -237,6 +240,7 @@ def test_rs_and_vc_preserve_coefficient_priors_and_starts(
         .distribution.distribution
     )
     assert group_prior.scale == pytest.approx(float(standalone_prior.scale))
+    assert smooth.scale is original_scale
     assert parameter.dist_node is prior_node
     np.testing.assert_array_equal(parameter.value, parameter_start)
     np.testing.assert_array_equal(smooth.scale.value, scale_start)
@@ -274,3 +278,34 @@ def test_custom_f_categorical_domain_requires_an_explicit_scale(
     assert np.isfinite(lsl.Model(term).log_prob)
     with pytest.raises(ValueError, match="numeric scalar row-wise"):
         prior.calibrate(term.basis)
+
+
+@pytest.mark.parametrize("row_wise", [None, False])
+def test_categorical_calibration_requires_row_wise_basis(row_wise) -> None:
+    group = gam.CatVar(["a", "a", "b"], name="group")
+    basis = gam.Basis(
+        group,
+        basis_fn=lambda codes: codes[:, None] - codes.mean(),
+        use_callback=False,
+        row_wise=row_wise,
+    )
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=64)
+
+    with pytest.raises(ValueError, match="row_wise=True"):
+        prior.calibrate(basis)
+
+
+@pytest.mark.parametrize("bad_code", [-1, 2, 0.5])
+def test_categorical_calibration_rejects_invalid_indexed_codes(bad_code) -> None:
+    group = gam.CatVar(["a", "b"], name="group")
+    basis = gam.Basis(
+        group,
+        basis_fn=lambda codes: jnp.full(codes.shape, bad_code),
+        penalty=None,
+        use_callback=False,
+        row_wise=True,
+    )
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=64)
+
+    with pytest.raises(ValueError, match="valid integer code"):
+        prior.calibrate(basis)

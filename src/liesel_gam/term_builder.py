@@ -475,7 +475,13 @@ class TermBuilder:
                     f"SDPrior calibration for {term_name!r} needs a fitted scalar "
                     "basis; pass an explicit, non-SDPrior scale for this term."
                 )
-            result = scale.calibrate(basis)
+            try:
+                result = scale.calibrate(basis)
+            except ValueError as error:
+                raise ValueError(
+                    f"SDPrior calibration for {term_name!r} failed: {error} "
+                    "Pass an explicit, non-SDPrior scale for this term."
+                ) from error
             factory = scale._variance_factories[0]
             prior = lsl.Dist(
                 lambda s: _independent_scalar(factory(s)), s=result.prior_scale
@@ -2461,8 +2467,8 @@ class TermBuilder:
         -----
 
         The supplied coefficient term keeps its prior and starting value.
-        No calibration request is made for the multiplied contribution, whether
-        the multiplier is fixed or random.
+        The bound applies to the coefficient term before multiplication,
+        for both fixed and random multipliers.
 
         The old
         ``vc(x, by=term)`` and ``vc(x=x, by=term)`` conventions are deprecated.
@@ -2824,7 +2830,7 @@ class TermBuilder:
 
             An :class:`SDPrior <liesel_gam.SDPrior>` requires a scalar numeric
             input, matrix-valued output, and ``row_wise=True``. One-column input
-            matrices and callback or JAX evaluation use the same generic path.
+            matrices are supported with either callback or JAX evaluation.
             Later basis edits do not automatically recalibrate the prior.
 
             - If ``"default"``, the scale will be initialized according to the default

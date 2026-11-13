@@ -1774,6 +1774,7 @@ class BasisBuilder:
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
+            row_wise=True,
         )
 
         return basis
@@ -2059,6 +2060,7 @@ class BasisBuilder:
             cache_basis=True,
             use_callback=False,
             penalty=smooth.penalty,
+            row_wise=True,
         )
         basis._penalty_rank = smooth.rank
         if absorb_cons:

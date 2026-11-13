@@ -40,6 +40,7 @@ The examples use `gam` and a builder `tb` for `gam.demo_data(n=200, seed=1)`.
 See the {doc}`smooth-curve tutorial <../tutorials/smooth-curve>` for the setup.
 
 ```{code-cell} ipython3
+import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import tensorflow_probability.substrates.jax.bijectors as tfb
@@ -173,9 +174,9 @@ group_calibration.diagnostics["evaluation_points"]
 ```
 
 Calibration includes each of the three coefficients once. Repeating observations
-or changing category frequencies alone leaves this RI calibration unchanged. The
-model retains its indexed representation. A custom fixed PSD `penalty=` uses
-category-code order, including unused categories. An explicit zero penalty has no
+or changing category frequencies alone leaves this RI calibration unchanged.
+A custom fixed PSD `penalty=` uses category-code order, including unused
+categories. An explicit zero penalty has no
 stochastic component to calibrate and raises an error.
 
 For an MRF, the bound applies to region field values after the fitted constraints,
@@ -221,9 +222,6 @@ supply a known row-wise basis. Its input is a one-column numeric matrix, and its
 output must be a matrix with one row per input row:
 
 ```{code-cell} ipython3
-import jax.numpy as jnp
-
-
 def quadratic_basis(x):
     return jnp.column_stack((x[:, 0], x[:, 0] ** 2))
 
@@ -232,14 +230,13 @@ custom_effect = sd_tb.f(
     "x_lin",
     basis_fn=quadratic_basis,
     row_wise=True,
-    use_callback=False,
 )
 ```
 
 Omitting the penalty gives iid coefficients; a fixed PSD penalty is also
-supported. Python callback evaluation works with `use_callback=True`. Automatic
-calibration rejects categorical inputs, unknown or non-row-wise behavior,
-multiple input columns, and vector or higher-dimensional outputs. Use an ordinary
+supported. Automatic calibration rejects categorical inputs, unknown or
+non-row-wise behavior, multiple input columns, and vector or higher-dimensional
+outputs. Use an ordinary
 explicit scale for custom bases outside this contract. Later arbitrary basis or
 constraint edits do not automatically update calibration.
 

@@ -23,6 +23,37 @@ def _weibull_variance(scale: float) -> tfd.Distribution:
     return tfd.Weibull(concentration=0.5, scale=scale)
 
 
+def _penalty_geometry(
+    raw_penalty, n_coefficients: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return penalized eigenvectors and the square roots of their eigenvalues."""
+    raw_penalty = np.asarray(raw_penalty)
+    penalty = np.asarray(raw_penalty, dtype=float)
+    if penalty.shape != (n_coefficients, n_coefficients):
+        raise ValueError("The penalty must match the design columns.")
+    if not np.isfinite(penalty).all():
+        raise ValueError("The penalty must be finite.")
+    relative_tolerance = np.finfo(
+        np.result_type(raw_penalty.dtype, np.float32)
+    ).eps * len(penalty)
+    if not np.allclose(
+        penalty,
+        penalty.T,
+        rtol=0.0,
+        atol=relative_tolerance * np.abs(penalty).max(),
+    ):
+        raise ValueError("The penalty must be symmetric.")
+    penalty = (penalty + penalty.T) / 2.0
+    eigenvalues, eigenvectors = np.linalg.eigh(penalty)
+    tolerance = relative_tolerance * np.max(np.abs(eigenvalues))
+    if eigenvalues.min() < -tolerance:
+        raise ValueError("The penalty must be positive semidefinite.")
+    positive = eigenvalues > tolerance
+    if not positive.any():
+        raise ValueError("Calibration requires a nonzero stochastic penalty.")
+    return eigenvectors[:, positive], np.sqrt(eigenvalues[positive])
+
+
 @dataclass(frozen=True)
 class CalibrationResult:
     """Immutable output of :meth:`SDPrior.calibrate <liesel_gam.SDPrior.calibrate>`.
@@ -330,16 +361,22 @@ class SDPrior:
             raise ValueError(
                 "A single-variance basis requires exactly one variance-prior factory."
             )
-        if isinstance(basis.x, CatVar):
-            size = len(basis.x.mapping.labels_to_codes_map)
+        if basis.row_wise is not True:
+            raise ValueError(
+                "Automatic calibration requires a scalar row-wise basis; "
+                "declare row_wise=True."
+            )
+        basis_input = basis.x
+        categorical = isinstance(basis_input, CatVar)
+        if categorical:
+            size = len(basis_input.mapping.labels_to_codes_map)
             grid = jnp.arange(size)
         else:
             size = 129 if target.grid_size is None else target.grid_size
-            x = np.asarray(basis.x.value)
+            x = np.asarray(basis_input.value)
             scalar_input = x.ndim == 1 or (x.ndim == 2 and x.shape[1] == 1)
             if (
                 not basis._numeric_input
-                or basis.row_wise is not True
                 or not scalar_input
                 or not x.size
                 or not np.issubdtype(x.dtype, np.number)
@@ -351,57 +388,51 @@ class SDPrior:
             grid = jnp.asarray(np.linspace(x.min(), x.max(), size))
             if x.ndim == 2:
                 grid = grid[:, None]
+
         design = np.asarray(basis._exact_basis_fn(grid, **basis._basis_kwargs_values()))
-        if isinstance(basis.x, CatVar) and design.ndim == 1:
-            # Indexed category codes represent indicator rows without storing them.
-            design = np.eye(size)[design]
-        design = np.asarray(design, dtype=float)
-        if (
-            design.ndim != 2
-            or not design.size
-            or design.shape[0] != size
-            or not np.isfinite(design).all()
-        ):
-            raise ValueError(
-                "Calibration requires a finite nonempty matrix-valued basis."
-            )
+        codes = None
+        if categorical and design.ndim == 1:
+            if (
+                design.size != size
+                or not size
+                or not np.issubdtype(design.dtype, np.integer)
+                or np.any((design < 0) | (design >= size))
+            ):
+                raise ValueError(
+                    "Indexed categorical bases must return one valid integer code "
+                    "per evaluation point."
+                )
+            codes = design
+            n_coefficients = size
+        else:
+            design = np.asarray(design, dtype=float)
+            if (
+                design.ndim != 2
+                or not design.size
+                or design.shape[0] != size
+                or not np.isfinite(design).all()
+            ):
+                raise ValueError(
+                    "Calibration requires a finite nonempty matrix-valued basis."
+                )
+            n_coefficients = design.shape[1]
+
+        rank = n_coefficients
+        unit_design = design if codes is None else None
         penalty_node = basis.penalty
-        raw_penalty = (
-            np.eye(design.shape[1])
-            if penalty_node is None
-            else np.asarray(penalty_node.value)
-        )
-        penalty = np.asarray(raw_penalty, dtype=float)
-        if penalty.shape != (design.shape[1], design.shape[1]):
-            raise ValueError("The penalty must match the design columns.")
-        if not np.isfinite(penalty).all():
-            raise ValueError("The penalty must be finite.")
-        relative_tolerance = np.finfo(
-            np.result_type(raw_penalty.dtype, np.float32)
-        ).eps * len(penalty)
-        if not np.allclose(
-            penalty,
-            penalty.T,
-            rtol=0.0,
-            atol=relative_tolerance * np.abs(penalty).max(),
-        ):
-            raise ValueError("The penalty must be symmetric.")
-        penalty = (penalty + penalty.T) / 2.0
-        eigenvalues, eigenvectors = np.linalg.eigh(penalty)
-        tolerance = relative_tolerance * np.max(np.abs(eigenvalues))
-        if eigenvalues.min() < -tolerance:
-            raise ValueError("The penalty must be positive semidefinite.")
-        positive = eigenvalues > tolerance
-        if not positive.any():
-            raise ValueError("Calibration requires a nonzero stochastic penalty.")
-        unit_design = (design @ eigenvectors[:, positive]) / np.sqrt(
-            eigenvalues[positive]
-        )
-        if not np.any(unit_design):
+        if penalty_node is not None:
+            eigenvectors, sd = _penalty_geometry(penalty_node.value, n_coefficients)
+            rank = len(sd)
+            unit_design = (
+                eigenvectors[codes] if codes is not None else design @ eigenvectors
+            ) / sd
+        if unit_design is not None and not np.any(unit_design):
             raise ValueError(
                 "The evaluation grid has no stochastic effect to calibrate."
             )
-        rank = int(positive.sum())
+        # A native iid RI returns every coefficient in order, so no gather is needed.
+        if codes is not None and np.array_equal(codes, np.arange(size)):
+            codes = None
         variance_limits = getattr(target, "variance_limits", None)
         if not callable(variance_limits):
             raise ValueError(
@@ -411,7 +442,13 @@ class SDPrior:
 
         def predictive_limits(rng: np.random.Generator) -> np.ndarray:
             coefficients = rng.standard_normal((target.draws, rank))
-            values = np.asarray(target.statistic(coefficients @ unit_design.T))
+            if unit_design is not None:
+                effects = coefficients @ unit_design.T
+            elif codes is not None:
+                effects = coefficients[:, codes]
+            else:
+                effects = coefficients
+            values = np.asarray(target.statistic(effects))
             if values.shape != (target.draws,) or not np.isfinite(values).all():
                 raise ValueError(
                     "The target statistic must return one finite value per draw."
@@ -491,7 +528,7 @@ class SDPrior:
                 "seed": target.seed,
                 "draws": target.draws,
                 "rank": rank,
-                "nullity": design.shape[1] - rank,
+                "nullity": n_coefficients - rank,
                 "grid_size": size,
                 "evaluation_points": len(design),
             },
