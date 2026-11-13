@@ -205,6 +205,13 @@ class _PreparedGaussian:
     def statistics(
         self, target: CalibrationTarget, normals: np.ndarray, variances: np.ndarray
     ) -> np.ndarray:
+        def factor_precision(v: np.ndarray) -> np.ndarray:
+            precision = sum(
+                penalty[None, :, :] / v[:, i, None, None]
+                for i, penalty in enumerate(self.penalties)
+            )
+            return np.linalg.cholesky(precision)
+
         values = []
         for start in range(0, len(normals), 128):
             stop = start + 128
@@ -212,17 +219,17 @@ class _PreparedGaussian:
             if self.unit_design is not None:
                 effects = (z @ self.unit_design.T) * np.sqrt(v[:, :1])
             else:
-                normalized = v / np.where(
-                    self.penalty_sizes > 0, self.penalty_sizes, np.inf
-                )
-                floor = 1e-12 * normalized.max(axis=1, keepdims=True)
-                v = np.maximum(v, floor * self.penalty_sizes)
-                precision = sum(
-                    penalty[None, :, :] / v[:, i, None, None]
-                    for i, penalty in enumerate(self.penalties)
-                )
                 try:
-                    factor = np.linalg.cholesky(precision)
+                    try:
+                        factor = factor_precision(v)
+                    except np.linalg.LinAlgError:
+                        normalized = v / np.where(
+                            self.penalty_sizes > 0, self.penalty_sizes, np.inf
+                        )
+                        floor = 1e-12 * normalized.max(axis=1, keepdims=True)
+                        factor = factor_precision(
+                            np.maximum(v, floor * self.penalty_sizes)
+                        )
                     coefficients = np.linalg.solve(
                         factor.swapaxes(-1, -2), z[..., None]
                     )[..., 0]
@@ -670,11 +677,12 @@ class SDPrior:
         larger epsilon of the design and penalties (at least float32).
         For multiple penalties, their sum after individual spectral normalization
         identifies the common null space; the original penalties determine
-        conditional precision. Before forming precision, each draw's variances
-        divided by their penalty's spectral size are floored at ``1e-12`` times
-        the largest such value in that draw. Zero penalties are excluded from
-        this ratio bound. This numerical approximation prevents extreme variance
-        ratios from erasing stochastic directions during factorization.
+        conditional precision. If the Cholesky factorization fails for a batch,
+        retry with a variance-ratio floor. Within each draw in that batch,
+        variances divided by their penalty's spectral size are floored at
+        ``1e-12`` times the largest such value. Zero penalties are excluded from
+        this ratio bound. The retry limits the effect of extreme variance ratios
+        on the factorization.
         Both searches double a log-scale bracket around the factory argument
         ``s=1``, bounded by normal positive prior parameters in the model's
         default floating precision, with log-scale tolerance ``1e-7``. For several

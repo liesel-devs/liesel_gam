@@ -124,6 +124,29 @@ def test_sample_only_variance_prior_builds_a_smooth_and_keeps_results_pure(
     )
 
 
+def test_heavy_tailed_variance_priors_calibrate_overlapping_penalties():
+    design = np.random.default_rng(0).normal(size=(20, 4))
+    geometry = gam.GaussianGeometry(design, penalties=(np.eye(4), np.eye(4)))
+    threshold, probability = 3.0, 0.95
+    concentration = 0.15
+    prior = gam.SDPrior.from_max_abs_effect(
+        threshold,
+        probability=probability,
+        draws=8192,
+        variance_prior=lambda s: tfd.InverseGamma(concentration, s),
+    )
+
+    result = prior.calibrate(geometry)
+
+    # At unit scale the two inverse variances add to a Gamma(2 * concentration, 1).
+    rng = np.random.default_rng(975)
+    precision = rng.gamma(2 * concentration, size=200_000)
+    coefficients = rng.normal(size=(len(precision), 4)) / np.sqrt(precision[:, None])
+    maxima = np.max(np.abs(coefficients @ design.T), axis=1)
+    coverage = np.mean(maxima * np.sqrt(result.prior_scale) <= threshold)
+    assert coverage == pytest.approx(probability, abs=0.005)
+
+
 def test_explicit_geometry_calibrates_different_independent_variance_families():
     geometry = gam.GaussianGeometry(
         design=np.eye(3),
