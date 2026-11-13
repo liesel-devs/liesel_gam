@@ -492,6 +492,99 @@ def test_iwls_proposal_precision_uses_score_squared_weights():
     assert jnp.allclose(info.precision(state), expected, rtol=1e-6, atol=1e-6)
 
 
+@pytest.mark.parametrize("eta", [jnp.array(1.0), jnp.array([-1.0, 0.25, 1.5])])
+def test_iwls_weights_observed_information_matches_gaussian_location(eta):
+    model, state, values = _gaussian_eta_liesel_state(eta=eta, y=eta)
+
+    actual = jnp.asarray(IWLSWeights.observed_information("eta")(model, state))
+
+    assert actual.shape == eta.shape
+    assert jnp.allclose(actual, 1.0 / values["scale"] ** 2)
+
+
+@pytest.mark.parametrize("max_weight", [None, 2.5])
+def test_iwls_weights_observed_information_clips_nonlinear_curvature(max_weight):
+    model, state, values = _squared_eta_liesel_state(
+        eta=jnp.array([0.0, 1.0, 2.0, 3.0]),
+        y=jnp.array([1.0, 3.0, 0.0, 0.0]),
+        scale=2.0,
+    )
+    # Normal location eta**2 gives negative, zero, and positive information here.
+    information = (6 * values["eta"] ** 2 - 2 * values["y"]) / values["scale"] ** 2
+    expected = jnp.clip(information, min=0.25, max=max_weight)
+
+    actual = IWLSWeights.observed_information(
+        "eta", min_weight=0.25, max_weight=max_weight
+    )(model, state)
+
+    assert jnp.allclose(actual, expected)
+
+
+@pytest.mark.parametrize("use_interface", [False, True])
+def test_iwls_weights_observed_information_log_scale_weak_predictor_jit(use_interface):
+    eta = jnp.array([-1.0, 0.25, 1.5], dtype=jnp.float32)
+    y = jnp.array([0.0, -0.75, 2.0], dtype=eta.dtype)
+    scale = AdditivePredictor("scale", inv_link=jnp.exp, intercept=False)
+    scale += lsl.Var.new_value(eta, name="offset")
+    y_var = lsl.Var.new_obs(y, lsl.Dist(tfd.Normal, loc=0.0, scale=scale), name="y")
+    model = lsl.Model([y_var])
+    target = gs.LieselInterface(model) if use_interface else model
+    weights_fn = IWLSWeights.observed_information(scale.linear_predictor.name)
+
+    actual = jax.jit(lambda state: weights_fn(target, state))(model.state)
+
+    expected = jnp.clip(2.0 * y**2 / jnp.exp(eta) ** 2, min=1e-6)
+    assert actual.shape == eta.shape
+    assert jnp.allclose(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "construction", ["model", "interface", "from_term", "mcmc_spec"]
+)
+@pytest.mark.parametrize("coupled", [False, True])
+def test_observed_information_proposal_uses_hessian_row_sums(construction, coupled):
+    term, obs_scale = _term_and_scale()
+    loc = AdditivePredictor("loc", intercept=False)
+    loc += term
+    mean = lsl.Calc(lambda eta: eta + jnp.sum(eta), loc) if coupled else loc
+    y = lsl.Var.new_obs(
+        jnp.zeros(term.value.shape),
+        lsl.Dist(tfd.Normal, loc=mean, scale=obs_scale),
+        name="y",
+    )
+    model = lsl.Model([y])
+    weights = IWLSWeights.observed_information(loc.linear_predictor.name)
+
+    def construct():
+        if construction == "mcmc_spec":
+            spec = IWLSProposal.mcmc_spec(term, weights)
+            kernel = spec.kernel([term.coef.name], **spec.kernel_kwargs)
+            assert isinstance(kernel, gs.IWLSKernel)
+            return kernel.chol_info_fn
+        if construction == "from_term":
+            return IWLSProposal.from_term(term, weights).chol_info
+        target = gs.LieselInterface(model) if construction == "interface" else model
+        return IWLSProposal(
+            basis=term.basis.value,
+            term_scale_name=term.scale.name,
+            penalty=term._penalty.value,
+            model=target,
+            working_weights_fn=weights,
+        ).chol_info
+
+    chol_info = construct()
+    actual = jax.jit(chol_info)(model.state)
+    # For mean = (I + 11') eta, each row of A'A sums to (n + 1)**2.
+    expected_weights = (term.value.size + 1) ** 2 if coupled else 1.0
+    expected_weights /= obs_scale.value**2
+    expected = jnp.linalg.cholesky(
+        _expected_precision(
+            term.basis.value, term._penalty.value, expected_weights, term.scale.value
+        )
+    )
+    assert jnp.allclose(actual, expected)
+
+
 def test_gaussian_iwls_weights_backwards_compatible_loc_alias():
     state = {"obs_scale": jnp.array([0.0, 2.0], dtype=jnp.float32)}
 
