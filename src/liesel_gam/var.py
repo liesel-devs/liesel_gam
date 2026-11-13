@@ -460,7 +460,10 @@ class ScaleIG(UserVar):
         super().__init__(lsl.Calc(jnp.sqrt, self._variance_param), name=name)
 
     def setup_gibbs_inference(
-        self, coef: lsl.Var, penalty: jax.typing.ArrayLike | None = None
+        self,
+        coef: lsl.Var,
+        penalty: jax.typing.ArrayLike | None = None,
+        penalty_rank: jax.typing.ArrayLike | None = None,
     ) -> ScaleIG:
         r"""
         Sets up a :class:`liesel.goose.GibbsKernel` for this variable, assuming
@@ -482,8 +485,13 @@ class ScaleIG(UserVar):
         coef
             Coefficient variable.
         penalty
-            Penalty matrix. If ``None``, the penalty is assumed to be the identity
-            matrix of a dimension fitting the coefficient dimension.
+            Penalty matrix. If ``None``, the penalty is taken from the coefficient's
+            prior, or assumed to be the identity matrix of a dimension fitting the
+            coefficient dimension if the prior has no penalty.
+        penalty_rank
+            Rank of the penalty matrix. If ``None``, the rank is taken from the
+            coefficient's prior along with the penalty. For an explicit ``penalty``,
+            it is computed with :func:`jax.numpy.linalg.matrix_rank`.
 
         See Also
         --------
@@ -499,7 +507,12 @@ class ScaleIG(UserVar):
 
         self._variance_param.inference = gs.MCMCSpec(
             init_star_ig_gibbs,
-            kernel_kwargs={"coef": coef, "scale": self, "penalty": penalty},
+            kernel_kwargs={
+                "coef": coef,
+                "scale": self,
+                "penalty": penalty,
+                "penalty_rank": penalty_rank,
+            },
         )
         return self
 
@@ -508,6 +521,7 @@ class ScaleIG(UserVar):
         scaled_coef: lsl.Var,
         latent_coef: lsl.Var,
         penalty: jax.typing.ArrayLike | None = None,
+        penalty_rank: jax.typing.ArrayLike | None = None,
     ) -> ScaleIG:
         if self.value.size != 1:
             raise ValueError(
@@ -523,6 +537,7 @@ class ScaleIG(UserVar):
                 "latent_coef": latent_coef,
                 "scale": self,
                 "penalty": penalty,
+                "penalty_rank": penalty_rank,
             },
         )
         return self
