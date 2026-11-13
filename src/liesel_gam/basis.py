@@ -282,6 +282,7 @@ class Basis(UserVar):
         self._exact_basis_fn = fn
         self._basis_kwargs = basis_kwargs
         self._row_wise = row_wise
+        self._penalty_rank: int | None = None
         self._approximation_spec: ApproximationSpec | None = None
         self._approximation_grid_size: int | None = None
 
@@ -422,6 +423,7 @@ class Basis(UserVar):
             self._penalty = self._validate_penalty_shape(value)
         else:
             self._penalty.value = self._validate_penalty_shape(value).value
+        self._penalty_rank = None
 
     @classmethod
     def new_linear(
@@ -765,7 +767,7 @@ class Basis(UserVar):
         self._use_exact_basis_fn()
         penalty = jnp.diag(target_diagonal)
         self.update_penalty(penalty)
-        self._penalty_rank = rank
+        self._penalty_rank = int(rank)
 
         return self
 
@@ -793,7 +795,9 @@ class Basis(UserVar):
             raise ValueError("Cannot scale a zero or non-finite penalty matrix.")
         scale = penalty_size / design_size
         penalty = K / scale
+        known_rank = getattr(self, "_penalty_rank", None)
         self.update_penalty(penalty)
+        self._penalty_rank = known_rank
         return self
 
     def _apply_constraint(self, Z: Array) -> Self:
@@ -1013,7 +1017,10 @@ class Basis(UserVar):
             case "custom":
                 Z = LinearConstraintEVD.general(constraint_matrix)
 
+        known_rank = getattr(self, "_penalty_rank", None)
         self._apply_constraint(Z)
+        if known_rank is not None and type_ != "custom":
+            self._penalty_rank = min(int(known_rank), self.nbases)
         self._constraint = type_
         self._reparam_matrix = Z
 
