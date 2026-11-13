@@ -481,7 +481,8 @@ class TermBuilder:
             except ValueError as error:
                 raise ValueError(
                     f"SDPrior calibration for {term_name!r} failed: {error} "
-                    "Or pass an explicit, non-SDPrior scale for this term."
+                    "To skip calibration, pass an explicit, non-SDPrior scale "
+                    "for this term."
                 ) from error
             factory = scale._variance_factories(1)[0]
             prior = lsl.Dist(

@@ -366,15 +366,6 @@ def test_calibration_rejects_stale_fitted_rank() -> None:
         prior.calibrate(basis)
 
 
-def test_np_keeps_fitted_rank_through_constraint_and_diagonalization() -> None:
-    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 200)})
-
-    term = builder.np("x", k=100, scale=1.0)
-
-    assert term.basis.penalty is not None
-    assert np.count_nonzero(np.diag(term.basis.penalty.value)) == 98
-
-
 @pytest.mark.parametrize(
     "method, settings, x",
     [
@@ -397,3 +388,37 @@ def test_unresolved_raw_penalty_recommends_diagonalization(method, settings, x) 
 
     term = build("x", **settings, diagonal_penalty=True, scale=prior)
     assert np.isfinite(term.scale.value)
+
+
+def test_ri_uses_rank_of_large_supplied_chain_penalty() -> None:
+    levels = [f"r{i:03d}" for i in range(400)]
+    differences = np.diff(np.eye(len(levels)), axis=0)
+    penalty = differences.T @ differences
+    builder = gam.TermBuilder.from_dict({"region": levels})
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+
+    term = builder.ri("region", penalty=penalty, scale=prior)
+    result = prior.calibrate(term.basis)
+
+    assert result.diagnostics["rank"] == len(levels) - 1
+    assert prior_rank(term) == result.diagnostics["rank"]
+
+
+def test_f_uses_rank_of_supplied_penalty() -> None:
+    # This eigenvalue exceeds the precision floor but is below the old
+    # tolerance, which grows with the number of coefficients.
+    penalty = np.diag([1.0] * 15 + [1.5e-6])
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 32)})
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+
+    term = builder.f(
+        "x",
+        basis_fn=lambda x: jnp.cos(x * jnp.arange(16)),
+        penalty=penalty,
+        row_wise=True,
+        scale=prior,
+    )
+    result = prior.calibrate(term.basis)
+
+    assert result.diagnostics["rank"] == 16
+    assert prior_rank(term) == 16

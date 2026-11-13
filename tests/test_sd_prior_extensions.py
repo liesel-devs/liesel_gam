@@ -26,7 +26,8 @@ class _SampleOnlyWeibull(_SampleMedianWeibull):
         raise NotImplementedError("No CDF implementation")
 
 
-def test_sample_only_prior_calibrates_all_indexed_categories():
+@pytest.mark.parametrize("penalized", [False, True])
+def test_sample_only_prior_calibrates_all_indexed_categories(penalized):
     group = gam.CatVar(["a", "b"], categories=["a", "b", "unused"], name="group")
     prior = gam.SDPrior.from_max_abs_effect(
         2.0,
@@ -34,12 +35,14 @@ def test_sample_only_prior_calibrates_all_indexed_categories():
         draws=4096,
         variance_prior=lambda s: _SampleOnlyWeibull(0.5, s),
     )
-    term = gam.TermBuilder.from_dict({}).ri(group, scale=prior)
+    differences = np.diff(np.eye(3), axis=0)
+    penalty = differences.T @ differences if penalized else None
+    term = gam.TermBuilder.from_dict({}).ri(group, scale=prior, penalty=penalty)
     result = prior.calibrate(term.basis)
 
     assert result.diagnostics["method"] == "sampled_variance_quantile"
     assert result.diagnostics["grid_shape"] == (3,)
-    assert result.diagnostics["rank"] == 3
+    assert result.diagnostics["rank"] == (2 if penalized else 3)
     assert result.diagnostics["validation_probability"] == pytest.approx(0.9, abs=0.02)
     assert term.scale.value == pytest.approx(result.initial_scales[0])
 

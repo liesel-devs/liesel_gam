@@ -116,8 +116,10 @@ class CalibrationTarget(Protocol):
 
     A scalar fitted basis is evaluated at equally spaced locations from its
     setup-input minimum to its maximum, including endpoints. ``grid_size=None``
-    selects 129 locations. Explicit geometry uses design-row order. Targets that
-    need locations store matching domain context themselves.
+    selects 129 locations. Categorical bases evaluate every declared code in
+    category-code order, regardless of ``grid_size``. Explicit geometry uses
+    design-row order. Targets that need locations store matching domain context
+    themselves.
 
     A target may additionally supply ``variance_limits(values)`` for the
     single-variance CDF shortcut. Each limit must be nonnegative and describe

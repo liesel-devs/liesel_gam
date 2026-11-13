@@ -32,6 +32,22 @@ logger = logging.getLogger(__name__)
 _QUOTED_FORMULA_VARIABLE = re.compile(r"""\bQ\(\s*(['"])(.*?)\1\s*\)""")
 
 
+def _supplied_penalty_rank(penalty: ArrayLike | lsl.Value | None) -> int | None:
+    """Estimate rank from the supplied precision before JAX converts the dtype."""
+    if penalty is None:
+        return None
+    matrix = np.asarray(penalty.value if isinstance(penalty, lsl.Value) else penalty)
+    if (
+        matrix.ndim != 2
+        or matrix.shape[0] != matrix.shape[1]
+        or not matrix.size
+        or np.iscomplexobj(matrix)
+        or not np.isfinite(matrix).all()
+    ):
+        return None
+    return int(np.linalg.matrix_rank(matrix.astype(np.float64, copy=False)))
+
+
 def _validate_bs(bs):
     if isinstance(bs, str):
         bs = [bs]
@@ -253,6 +269,7 @@ class BasisBuilder:
         >>> basis.value.shape
         (100, 3)
         """
+        penalty_rank = _supplied_penalty_rank(penalty)
         if isinstance(penalty, lsl.Value):
             penalty.value = jnp.asarray(penalty.value)
         elif penalty is not None:
@@ -283,6 +300,7 @@ class BasisBuilder:
             row_wise=row_wise,
         )
         basis._input_name = Xname
+        basis._penalty_rank = penalty_rank
         # Stacking encoded categories must not turn them into a numeric domain.
         basis._numeric_input = all(not isinstance(var, CatVar) for var in x_vars)
 
@@ -1758,11 +1776,9 @@ class BasisBuilder:
         Basis(name="B(x_cat)")
 
         """
-        if penalty is not None:
-            penalty = jnp.asarray(penalty)
         var, mapping, input_name = self._get_categorical_input(cluster)
         n_categories = len(mapping.labels_to_integers_map)
-        if penalty is not None and penalty.shape != (n_categories, n_categories):
+        if penalty is not None and np.shape(penalty) != (n_categories, n_categories):
             raise ValueError(
                 f"Random-intercept penalty must be {n_categories} x {n_categories}."
             )
@@ -1773,9 +1789,10 @@ class BasisBuilder:
             name=self.names.create(basis_name + "(" + input_name + ")"),
             use_callback=False,
             cache_basis=False,
-            penalty=jnp.asarray(penalty) if penalty is not None else penalty,
+            penalty=penalty,
             row_wise=True,
         )
+        basis._penalty_rank = _supplied_penalty_rank(penalty)
 
         return basis
 
