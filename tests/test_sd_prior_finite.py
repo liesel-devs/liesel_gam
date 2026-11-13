@@ -6,6 +6,8 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 
 import liesel_gam as gam
 
+from .test_prior_penalty_rank import prior_rank
+
 
 @pytest.mark.parametrize("factor_scale", [False, True])
 def test_ri_calibrates_all_declared_categories_once(factor_scale) -> None:
@@ -340,6 +342,7 @@ def test_raw_chain_mrf_calibrates_every_penalized_direction() -> None:
     result = prior.calibrate(term.basis)
 
     assert result.diagnostics["rank"] == len(regions) - 1
+    assert prior_rank(term) == result.diagnostics["rank"]
     assert term.scale.value == pytest.approx(result.initial_scales[0])
 
 
@@ -350,6 +353,17 @@ def test_calibration_uses_rank_of_replacement_penalty() -> None:
     prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
 
     assert prior.calibrate(basis).diagnostics["rank"] == basis.nbases
+
+
+def test_calibration_rejects_stale_fitted_rank() -> None:
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 20)})
+    basis = builder.ps("x", k=8).basis
+    assert basis.penalty is not None
+    basis.penalty.value = jnp.eye(basis.nbases)
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+
+    with pytest.raises(ValueError, match="fitted rank no longer matches"):
+        prior.calibrate(basis)
 
 
 def test_np_keeps_fitted_rank_through_constraint_and_diagonalization() -> None:

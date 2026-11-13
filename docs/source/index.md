@@ -97,6 +97,7 @@ Location and scale <tutorials/location-scale>
 
 guides/terms
 Priors and samplers <guides/priors>
+SD prior extensions <guides/sd-prior-extensions>
 guides/interactions
 guides/initialization
 guides/prediction
@@ -203,6 +204,8 @@ regression.
    ~liesel_gam.SDPrior
    ~liesel_gam.MaxAbsEffect
    ~liesel_gam.CalibrationResult
+   ~liesel_gam.CalibrationTarget
+   ~liesel_gam.GaussianGeometry
    ~liesel_gam.MultivariateNormalSingular
    ~liesel_gam.MultivariateNormalStructured
    ~liesel_gam.StructuredPenaltyOperator

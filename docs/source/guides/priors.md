@@ -142,6 +142,9 @@ this calculation. The automatic scalar grid has 129 points, including the input
 range endpoints; `grid_size=` overrides that count. Both the finite grid and
 Monte Carlo validation are approximations, not certified continuous-domain bounds.
 
+See {doc}`sd-prior-extensions` to supply another variance-prior family, use a
+sample-only distribution, or define a custom calibration target.
+
 Reuse the recipe as an opt-in builder default. Supported scalar constructors are
 {meth}`ps <liesel_gam.TermBuilder.ps>`, {meth}`np <liesel_gam.TermBuilder.np>`,
 {meth}`cr <liesel_gam.TermBuilder.cr>`, {meth}`cs <liesel_gam.TermBuilder.cs>`,
