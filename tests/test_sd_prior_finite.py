@@ -307,5 +307,21 @@ def test_categorical_calibration_rejects_invalid_indexed_codes(bad_code) -> None
     )
     prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=64)
 
-    with pytest.raises(ValueError, match="valid integer code"):
+    with pytest.raises(ValueError, match="each declared code"):
+        prior.calibrate(basis)
+
+
+@pytest.mark.parametrize("penalty", [None, jnp.eye(2)])
+def test_categorical_calibration_rejects_many_to_one_indexing(penalty) -> None:
+    group = gam.CatVar(["a", "b", "c", "d"], name="group")
+    basis = gam.Basis(
+        group,
+        basis_fn=lambda codes: codes // 2,
+        penalty=penalty,
+        use_callback=False,
+        row_wise=True,
+    )
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=64)
+
+    with pytest.raises(ValueError, match="each declared code"):
         prior.calibrate(basis)

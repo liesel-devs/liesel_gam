@@ -9,6 +9,7 @@ from typing import Any, Protocol
 import jax.numpy as jnp
 import liesel.goose as gs
 import numpy as np
+import numpy.typing as npt
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 from scipy.optimize import brentq
@@ -24,7 +25,7 @@ def _weibull_variance(scale: float) -> tfd.Distribution:
 
 
 def _penalty_geometry(
-    raw_penalty, n_coefficients: int
+    raw_penalty: npt.ArrayLike, n_coefficients: int
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return penalized eigenvectors and the square roots of their eigenvalues."""
     raw_penalty = np.asarray(raw_penalty)
@@ -317,10 +318,11 @@ class SDPrior:
         ----------
         basis
             Fitted :class:`Basis <liesel_gam.Basis>` with its coefficient penalty.
-            Numeric scalar inputs (vectors or one-column matrices) require known
-            row-wise evaluation. Categorical inputs evaluate every declared code
-            once; indexed outputs use equivalent indicator geometry. Constraints,
-            scaling, and reparameterizations are retained, including for MRF fields.
+            Every basis must declare ``row_wise=True``. Numeric scalar inputs may be
+            vectors or one-column matrices. Categorical inputs evaluate every declared
+            code once. Indexed outputs must return those integer codes in order.
+            Calibration preserves constraints, scaling, and reparameterizations,
+            including for MRF fields.
             Singular PSD penalties calibrate only their stochastic subspace.
 
         Returns
@@ -390,19 +392,17 @@ class SDPrior:
                 grid = grid[:, None]
 
         design = np.asarray(basis._exact_basis_fn(grid, **basis._basis_kwargs_values()))
-        codes = None
-        if categorical and design.ndim == 1:
+        indexed = categorical and design.ndim == 1
+        if indexed:
             if (
-                design.size != size
-                or not size
+                not size
                 or not np.issubdtype(design.dtype, np.integer)
-                or np.any((design < 0) | (design >= size))
+                or not np.array_equal(design, np.arange(size))
             ):
                 raise ValueError(
-                    "Indexed categorical bases must return one valid integer code "
-                    "per evaluation point."
+                    "Indexed categorical bases must return each declared code "
+                    "as an integer, once and in order."
                 )
-            codes = design
             n_coefficients = size
         else:
             design = np.asarray(design, dtype=float)
@@ -418,21 +418,20 @@ class SDPrior:
             n_coefficients = design.shape[1]
 
         rank = n_coefficients
-        unit_design = design if codes is None else None
+        unit_design = None if indexed else design
         penalty_node = basis.penalty
         if penalty_node is not None:
-            eigenvectors, sd = _penalty_geometry(penalty_node.value, n_coefficients)
-            rank = len(sd)
+            eigenvectors, root_eigenvalues = _penalty_geometry(
+                penalty_node.value, n_coefficients
+            )
+            rank = len(root_eigenvalues)
             unit_design = (
-                eigenvectors[codes] if codes is not None else design @ eigenvectors
-            ) / sd
+                eigenvectors if indexed else design @ eigenvectors
+            ) / root_eigenvalues
         if unit_design is not None and not np.any(unit_design):
             raise ValueError(
                 "The evaluation grid has no stochastic effect to calibrate."
             )
-        # A native iid RI returns every coefficient in order, so no gather is needed.
-        if codes is not None and np.array_equal(codes, np.arange(size)):
-            codes = None
         variance_limits = getattr(target, "variance_limits", None)
         if not callable(variance_limits):
             raise ValueError(
@@ -442,12 +441,9 @@ class SDPrior:
 
         def predictive_limits(rng: np.random.Generator) -> np.ndarray:
             coefficients = rng.standard_normal((target.draws, rank))
-            if unit_design is not None:
-                effects = coefficients @ unit_design.T
-            elif codes is not None:
-                effects = coefficients[:, codes]
-            else:
-                effects = coefficients
+            effects = (
+                coefficients if unit_design is None else coefficients @ unit_design.T
+            )
             values = np.asarray(target.statistic(effects))
             if values.shape != (target.draws,) or not np.isfinite(values).all():
                 raise ValueError(

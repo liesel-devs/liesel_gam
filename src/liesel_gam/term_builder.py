@@ -2467,8 +2467,8 @@ class TermBuilder:
         -----
 
         The supplied coefficient term keeps its prior and starting value.
-        The bound applies to the coefficient term before multiplication,
-        for both fixed and random multipliers.
+        If the coefficient term uses an :class:`SDPrior <liesel_gam.SDPrior>` scale,
+        its bound applies before multiplication for both fixed and random multipliers.
 
         The old
         ``vc(x, by=term)`` and ``vc(x=x, by=term)`` conventions are deprecated.

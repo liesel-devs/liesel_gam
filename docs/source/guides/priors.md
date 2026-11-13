@@ -174,10 +174,10 @@ group_calibration.diagnostics["evaluation_points"]
 ```
 
 Calibration includes each of the three coefficients once. Repeating observations
-or changing category frequencies alone leaves this RI calibration unchanged.
-A custom fixed PSD `penalty=` uses category-code order, including unused
-categories. An explicit zero penalty has no
-stochastic component to calibrate and raises an error.
+or changing category frequencies alone leaves the random-intercept calibration
+unchanged. A fixed positive semidefinite (PSD) `penalty=` uses category-code order,
+including unused categories. An explicit zero penalty has no stochastic component
+to calibrate and raises an error.
 
 For an MRF, the bound applies to region field values after the fitted constraints,
 penalty scaling, diagonalization, and low-rank transformations:
@@ -233,11 +233,12 @@ custom_effect = sd_tb.f(
 )
 ```
 
-Omitting the penalty gives iid coefficients; a fixed PSD penalty is also
-supported. Automatic calibration rejects categorical inputs, unknown or
+Omitting the penalty gives independent, identically distributed (iid)
+coefficients. You can also supply a fixed PSD penalty. Automatic calibration
+rejects categorical inputs, unknown or
 non-row-wise behavior, multiple input columns, and vector or higher-dimensional
-outputs. Use an ordinary
-explicit scale for custom bases outside this contract. Later arbitrary basis or
+outputs. Use an ordinary explicit scale for custom bases outside this contract.
+Later arbitrary basis or
 constraint edits do not automatically update calibration.
 
 ## Choose coefficient updates
