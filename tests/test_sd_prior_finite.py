@@ -325,3 +325,28 @@ def test_categorical_calibration_rejects_many_to_one_indexing(penalty) -> None:
 
     with pytest.raises(ValueError, match="each declared code"):
         prior.calibrate(basis)
+
+
+def test_raw_chain_mrf_calibrates_every_penalized_direction() -> None:
+    regions = [f"r{i:03d}" for i in range(400)]
+    neighbors = {
+        region: regions[max(i - 1, 0) : i] + regions[i + 1 : i + 2]
+        for i, region in enumerate(regions)
+    }
+    builder = gam.TermBuilder.from_dict({"region": regions})
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+
+    term = builder.mrf("region", nb=neighbors, diagonal_penalty=False, scale=prior)
+    result = prior.calibrate(term.basis)
+
+    assert result.diagnostics["rank"] == len(regions) - 1
+    assert term.scale.value == pytest.approx(result.initial_scales[0])
+
+
+def test_calibration_uses_rank_of_replacement_penalty() -> None:
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 20)})
+    basis = builder.ps("x", k=8).basis
+    basis.update_penalty(jnp.eye(basis.nbases))
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+
+    assert prior.calibrate(basis).diagnostics["rank"] == basis.nbases

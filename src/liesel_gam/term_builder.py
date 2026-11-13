@@ -119,7 +119,8 @@ class TermBuilder:
         :meth:`f <liesel_gam.TermBuilder.f>` bases, creating fresh scale variables
         for each term. Custom bases require a known row-wise scalar numeric input
         and matrix output. :meth:`rs <liesel_gam.TermBuilder.rs>` inherits its
-        group-coefficient calibration through ``ri``; :meth:`vc
+        group-coefficient calibration through :meth:`ri <liesel_gam.TermBuilder.ri>`.
+        :meth:`vc
         <liesel_gam.TermBuilder.vc>` preserves the supplied coefficient term's
         prior and start. Other constructors that resolve a scale require an
         explicit ``scale=`` under this default. SD calibration is not supported for
@@ -2604,7 +2605,7 @@ class TermBuilder:
 
             An :class:`SDPrior <liesel_gam.SDPrior>` bounds stochastic region
             field values after the fitted basis transformations. Every represented
-            region is evaluated; continuous grid counts do not subsample regions.
+            region is evaluated regardless of the ``grid_size`` setting.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder

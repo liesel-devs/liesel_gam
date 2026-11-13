@@ -12,7 +12,7 @@ from formulaic import ModelSpec
 from liesel_gam.category_mapping import CategoryMapping
 
 from .constraint import LinearConstraintEVD, penalty_to_unit_design
-from .var import CatVar, UserVar, _append_name, _ensure_var_or_node
+from .var import UserVar, _append_name, _ensure_var_or_node
 
 InferenceTypes = Any
 Array = jax.Array
@@ -282,7 +282,7 @@ class Basis(UserVar):
         self._exact_basis_fn = fn
         self._basis_kwargs = basis_kwargs
         self._row_wise = row_wise
-        self._numeric_input = not isinstance(value_var, CatVar)
+        self._numeric_input = True
         self._approximation_spec: ApproximationSpec | None = None
         self._approximation_grid_size: int | None = None
 
@@ -423,6 +423,7 @@ class Basis(UserVar):
             self._penalty = self._validate_penalty_shape(value)
         else:
             self._penalty.value = self._validate_penalty_shape(value).value
+        self._penalty_rank = None
 
     @classmethod
     def new_linear(
@@ -794,7 +795,9 @@ class Basis(UserVar):
             raise ValueError("Cannot scale a zero or non-finite penalty matrix.")
         scale = penalty_size / design_size
         penalty = K / scale
+        known_rank = getattr(self, "_penalty_rank", None)
         self.update_penalty(penalty)
+        self._penalty_rank = known_rank
         return self
 
     def _apply_constraint(self, Z: Array) -> Self:

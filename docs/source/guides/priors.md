@@ -147,8 +147,8 @@ Reuse the recipe as an opt-in builder default. Supported scalar constructors are
 {meth}`cr <liesel_gam.TermBuilder.cr>`, {meth}`cs <liesel_gam.TermBuilder.cs>`,
 {meth}`cc <liesel_gam.TermBuilder.cc>`, {meth}`bs <liesel_gam.TermBuilder.bs>`, and
 {meth}`cp <liesel_gam.TermBuilder.cp>`. They receive independently calibrated
-scale variables. Random intercepts, MRF fields, and eligible custom bases also
-support this default, as shown below. Other term constructors require an explicit
+scale variables. Random intercepts, Markov random fields (MRFs), and eligible
+custom bases also support this default. Other term constructors require an explicit
 `scale=` with this builder default. Multivariate SD calibration is unsupported.
 A builder without this opt-in uses the inverse-gamma default described above.
 
@@ -183,12 +183,18 @@ For an MRF, the bound applies to region field values after the fitted constraint
 penalty scaling, diagonalization, and low-rank transformations:
 
 ```{code-cell} ipython3
+region = gam.CatVar(
+    ["north", "east", "south", "north"],
+    categories=["north", "east", "south", "west"],
+    name="region",
+)
 neighbors = {
-    "control": ["treated"],
-    "treated": ["control", "unused"],
-    "unused": ["treated"],
+    "north": ["east", "west"],
+    "east": ["north", "south"],
+    "south": ["east", "west"],
+    "west": ["north", "south"],
 }
-region_effect = sd_tb.mrf(group, nb=neighbors)
+region_effect = sd_tb.mrf(region, nb=neighbors)
 region_calibration = sd_prior.calibrate(region_effect.basis)
 region_calibration.diagnostics["evaluation_points"]
 ```
@@ -210,10 +216,6 @@ when the multiplier is random:
 random_slope = sd_tb.rs("x_lin", cluster="x_cat")
 varying_coefficient = sd_tb.vc(another_smooth, by="x_lin")
 ```
-
-The bound describes the underlying coefficients or smooth. A large multiplier
-can make the product exceed that bound. Wrapping an existing smooth does not
-recalibrate it.
 
 ## Calibrate a compatible custom basis
 

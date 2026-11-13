@@ -25,7 +25,7 @@ def _weibull_variance(scale: float) -> tfd.Distribution:
 
 
 def _penalty_geometry(
-    raw_penalty: npt.ArrayLike, n_coefficients: int
+    raw_penalty: npt.ArrayLike, n_coefficients: int, known_rank: int | None = None
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return penalized eigenvectors and the square roots of their eigenvalues."""
     raw_penalty = np.asarray(raw_penalty)
@@ -49,7 +49,17 @@ def _penalty_geometry(
     tolerance = relative_tolerance * np.max(np.abs(eigenvalues))
     if eigenvalues.min() < -tolerance:
         raise ValueError("The penalty must be positive semidefinite.")
-    positive = eigenvalues > tolerance
+    if known_rank is None:
+        positive = eigenvalues > tolerance
+    else:
+        rank = int(known_rank)
+        if not 0 <= rank <= n_coefficients:
+            raise ValueError("The fitted penalty rank must match its dimensions.")
+        positive = np.arange(n_coefficients) >= n_coefficients - rank
+        if np.any(eigenvalues[positive] <= 0):
+            raise ValueError(
+                "The penalty has fewer positive eigenvalues than its fitted rank."
+            )
     if not positive.any():
         raise ValueError("Calibration requires a nonzero stochastic penalty.")
     return eigenvectors[:, positive], np.sqrt(eigenvalues[positive])
@@ -350,7 +360,8 @@ class SDPrior:
 
         Fitting draws stay fixed during search; validation uses an independent
         random stream. Grid and Monte Carlo approximations do not certify
-        continuous-domain coverage. Penalty eigenvalues within
+        continuous-domain coverage. Calibration uses the fitted penalty rank when
+        available. Otherwise, penalty eigenvalues within
         ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
         where ``eps`` is the penalty's floating precision (at least float32).
         The search spans normal positive prior parameters in the model's default
@@ -422,7 +433,9 @@ class SDPrior:
         penalty_node = basis.penalty
         if penalty_node is not None:
             eigenvectors, root_eigenvalues = _penalty_geometry(
-                penalty_node.value, n_coefficients
+                penalty_node.value,
+                n_coefficients,
+                getattr(basis, "_penalty_rank", None),
             )
             rank = len(root_eigenvalues)
             unit_design = (
