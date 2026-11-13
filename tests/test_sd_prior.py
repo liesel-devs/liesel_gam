@@ -377,7 +377,7 @@ def test_explicit_iid_basis_uses_identity_precision() -> None:
     assert result.prior_scale > 0
 
 
-@pytest.mark.parametrize("k, order", [(20, 2), (40, 2), (40, 3)])
+@pytest.mark.parametrize("k, order", [(20, 2), (40, 2)])
 def test_float32_penalty_roundoff_does_not_reject_valid_smooths(k, order) -> None:
     x = (
         np.linspace(0.0, 1.0, 200)

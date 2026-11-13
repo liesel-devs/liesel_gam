@@ -362,11 +362,19 @@ def test_np_keeps_fitted_rank_through_constraint_and_diagonalization() -> None:
 
 
 @pytest.mark.parametrize(
-    "method, settings",
-    [("cr", {"k": 100}), ("ps", {"k": 80, "penalty_order": 4})],
+    "method, settings, x",
+    [
+        ("cr", {"k": 100}, np.linspace(0, 1, 200)),
+        ("ps", {"k": 80, "penalty_order": 4}, np.linspace(0, 1, 200)),
+        (
+            "ps",
+            {"k": 40, "penalty_order": 3},
+            np.random.default_rng(1).normal(size=200),
+        ),
+    ],
 )
-def test_unresolved_raw_penalty_recommends_diagonalization(method, settings) -> None:
-    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 200)})
+def test_unresolved_raw_penalty_recommends_diagonalization(method, settings, x) -> None:
+    builder = gam.TermBuilder.from_dict({"x": x})
     prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
     build = getattr(builder, method)
 
