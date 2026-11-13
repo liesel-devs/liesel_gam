@@ -75,11 +75,28 @@ def mvn_diag_prior(scale: lsl.Var) -> lsl.Dist:
     return lsl.Dist(tfd.Normal, loc=0.0, scale=scale)
 
 
-def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Dist:
+def mvn_structured_prior(
+    scale: lsl.Var,
+    penalty: lsl.Var | lsl.Value,
+    penalty_rank: ArrayLike | None = None,
+) -> lsl.Dist:
     """
     Create a structured Gaussian prior from a fixed penalty matrix.
 
     The penalty must be strong/fixed; varying penalties are not supported here.
+
+    Parameters
+    ----------
+    scale
+        Scale variable of the prior.
+    penalty
+        Penalty matrix of the prior.
+    penalty_rank
+        Rank of ``penalty``. Pass it when you know it, for example from the setup
+        of a spline or Markov random field. If ``None`` (default), the rank is
+        computed with :func:`jax.numpy.linalg.matrix_rank`. Its tolerance grows
+        with the size of the penalty, so it can miss penalized directions of
+        large or poorly conditioned penalties.
 
     Examples
     --------
@@ -88,17 +105,33 @@ def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Di
     >>> prior = mvn_structured_prior(scale, penalty)
     >>> prior.distribution is MultivariateNormalSingular
     True
+
+    A first-difference penalty has rank 1:
+
+    >>> penalty = lsl.Value(jnp.array([[1.0, -1.0], [-1.0, 1.0]]))
+    >>> prior = mvn_structured_prior(scale, penalty, penalty_rank=1)
+    >>> int(prior["penalty_rank"].value)
+    1
     """
     if isinstance(penalty, lsl.Var) and not penalty.strong:
         raise NotImplementedError(
             "Varying penalties are currently not supported by this function."
         )
+    if penalty_rank is None:
+        penalty_rank = jnp.linalg.matrix_rank(penalty.value)
+    else:
+        penalty_rank = jnp.asarray(penalty_rank)
+        dim = jnp.shape(penalty.value)[-1]
+        if jnp.any(penalty_rank < 0) or jnp.any(penalty_rank > dim):
+            raise ValueError(
+                f"penalty_rank must be between 0 and {dim}, got {penalty_rank}."
+            )
     prior = lsl.Dist(
         MultivariateNormalSingular,
         loc=0.0,
         scale=scale,
         penalty=penalty,
-        penalty_rank=jnp.linalg.matrix_rank(penalty.value),
+        penalty_rank=penalty_rank,
     )
     return prior
 
@@ -106,12 +139,15 @@ def mvn_structured_prior(scale: lsl.Var, penalty: lsl.Var | lsl.Value) -> lsl.Di
 def term_prior(
     scale: lsl.Var | None,
     penalty: lsl.Var | lsl.Value | None,
+    penalty_rank: ArrayLike | None = None,
 ) -> lsl.Dist | None:
     """
     Select the coefficient prior for a term.
 
     Returns ``None`` when ``scale`` is ``None``, an independent normal prior when no
     penalty is supplied, and a structured multivariate normal prior otherwise.
+    ``penalty_rank`` is passed to :func:`mvn_structured_prior` and is ignored for
+    the other priors.
 
     Examples
     --------
@@ -128,7 +164,7 @@ def term_prior(
     if penalty is None:
         return mvn_diag_prior(scale)
 
-    return mvn_structured_prior(scale, penalty)
+    return mvn_structured_prior(scale, penalty, penalty_rank)
 
 
 def _init_scale_ig(
@@ -341,7 +377,7 @@ class StrctTerm(UserVar):
             nparam = self.nbases
             self._penalty = None
 
-        prior = term_prior(scale, self._penalty)
+        prior = term_prior(scale, self._penalty, self._known_penalty_rank())
 
         if scale is not None:
             _validate_scalar_or_p_scale(scale.value, nparam)
@@ -368,6 +404,29 @@ class StrctTerm(UserVar):
                 self.scale.setup_gibbs_inference(self.coef)
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
+
+    def _known_penalty_rank(self) -> int | None:
+        """The basis's known penalty rank, if this term uses the basis's penalty."""
+        if self._penalty is None or self._penalty is not self.basis.penalty:
+            return None
+        return getattr(self.basis, "_penalty_rank", None)
+
+    def _prior_penalty_rank(self) -> Array:
+        """The penalty rank that the coefficient prior uses."""
+        assert self._penalty is not None
+        known_rank = self._known_penalty_rank()
+        if known_rank is None:
+            return jnp.linalg.matrix_rank(self._penalty.value)
+        return jnp.asarray(known_rank)
+
+    def _update_prior_penalty_rank(self) -> None:
+        """Set the prior's penalty rank after the penalty was transformed."""
+        dist = self.coef.dist_node
+        if self._penalty is None or dist is None:
+            return
+        rank_node = dist.kwinputs.get("penalty_rank")
+        if isinstance(rank_node, lsl.Value | lsl.Var):
+            rank_node.value = self._prior_penalty_rank()
 
     @property
     def scale_is_factored(self) -> bool:
@@ -497,7 +556,7 @@ class StrctTerm(UserVar):
         if self._penalty is None:
             return jnp.array(self.coef.value.shape[-1])
 
-        pen_rank = jnp.linalg.matrix_rank(self._penalty.value)
+        pen_rank = self._prior_penalty_rank()
 
         if pen_rank == self._penalty.value.shape[-1]:
             # full-rank penalty always works
@@ -593,7 +652,7 @@ class StrctTerm(UserVar):
                 pen = self._penalty.value if self._penalty is not None else None
                 self.scale.update()
                 self.scale.setup_gibbs_inference_factored(
-                    scaled_coef, self.coef, penalty=pen
+                    scaled_coef, self.coef, penalty=pen, penalty_rank=pen_rank
                 )
             except Exception as e:
                 raise RuntimeError(f"Failed to setup Gibbs kernel for {self}") from e
@@ -727,6 +786,7 @@ class StrctTerm(UserVar):
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.diagonalize_penalty(atol)
+        self._update_prior_penalty_rank()
         return self
 
     def scale_penalty(self) -> Self:
@@ -760,6 +820,7 @@ class StrctTerm(UserVar):
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.scale_penalty()
+        self._update_prior_penalty_rank()
         return self
 
     def constrain(
@@ -800,6 +861,7 @@ class StrctTerm(UserVar):
         """
         self._assert_penalty_is_basis_penalty()
         self.basis.constrain(constraint)
+        self._update_prior_penalty_rank()
         self.coef.value = jnp.zeros(self.nbases)
         return self
 
