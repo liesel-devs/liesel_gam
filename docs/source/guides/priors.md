@@ -202,7 +202,8 @@ region_calibration.diagnostics["evaluation_points"]
 Both finite domains use every declared level or represented region;
 `grid_size=` never subsamples them. MRF setup geometry can depend on setup data,
 so changing those data can change its calibration. For singular penalties,
-unpenalized directions remain outside the bound.
+unpenalized directions remain outside the bound. If calibration reports that a raw
+penalty is too ill-conditioned, rebuild the term with `diagonal_penalty=True`.
 
 ## Reuse a calibrated coefficient in a product
 

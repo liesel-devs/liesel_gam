@@ -34,9 +34,8 @@ def _penalty_geometry(
         raise ValueError("The penalty must match the design columns.")
     if not np.isfinite(penalty).all():
         raise ValueError("The penalty must be finite.")
-    relative_tolerance = np.finfo(
-        np.result_type(raw_penalty.dtype, np.float32)
-    ).eps * len(penalty)
+    eps = np.finfo(np.result_type(raw_penalty.dtype, np.float32)).eps
+    relative_tolerance = eps * len(penalty)
     if not np.allclose(
         penalty,
         penalty.T,
@@ -46,7 +45,8 @@ def _penalty_geometry(
         raise ValueError("The penalty must be symmetric.")
     penalty = (penalty + penalty.T) / 2.0
     eigenvalues, eigenvectors = np.linalg.eigh(penalty)
-    tolerance = relative_tolerance * np.max(np.abs(eigenvalues))
+    spectral_scale = np.max(np.abs(eigenvalues))
+    tolerance = relative_tolerance * spectral_scale
     if eigenvalues.min() < -tolerance:
         raise ValueError("The penalty must be positive semidefinite.")
     if known_rank is None:
@@ -56,9 +56,12 @@ def _penalty_geometry(
         if not 0 <= rank <= n_coefficients:
             raise ValueError("The fitted penalty rank must match its dimensions.")
         positive = np.arange(n_coefficients) >= n_coefficients - rank
-        if np.any(eigenvalues[positive] <= 0):
+        # The fitted rank identifies the directions, but cannot restore precision
+        # lost when the raw penalty was stored.
+        if np.any(eigenvalues[positive] <= 10 * eps * spectral_scale):
             raise ValueError(
-                "The penalty has fewer positive eigenvalues than its fitted rank."
+                "The raw penalty is too ill-conditioned to resolve its fitted rank "
+                "at its stored precision. Rebuild the basis with diagonal_penalty=True."
             )
     if not positive.any():
         raise ValueError("Calibration requires a nonzero stochastic penalty.")
@@ -361,7 +364,9 @@ class SDPrior:
         Fitting draws stay fixed during search; validation uses an independent
         random stream. Grid and Monte Carlo approximations do not certify
         continuous-domain coverage. Calibration uses the fitted penalty rank when
-        available. Otherwise, penalty eigenvalues within
+        available. If a required eigenvalue is at or below
+        ``10 * eps * max(abs(eigenvalues))``, rebuild the basis with
+        ``diagonal_penalty=True``. Without a fitted rank, penalty eigenvalues within
         ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
         where ``eps`` is the penalty's floating precision (at least float32).
         The search spans normal positive prior parameters in the model's default
@@ -405,10 +410,8 @@ class SDPrior:
         design = np.asarray(basis._exact_basis_fn(grid, **basis._basis_kwargs_values()))
         indexed = categorical and design.ndim == 1
         if indexed:
-            if (
-                not size
-                or not np.issubdtype(design.dtype, np.integer)
-                or not np.array_equal(design, np.arange(size))
+            if not np.issubdtype(design.dtype, np.integer) or not np.array_equal(
+                design, np.arange(size)
             ):
                 raise ValueError(
                     "Indexed categorical bases must return each declared code "

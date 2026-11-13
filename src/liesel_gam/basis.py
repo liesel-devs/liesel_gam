@@ -283,6 +283,7 @@ class Basis(UserVar):
         self._basis_kwargs = basis_kwargs
         self._row_wise = row_wise
         self._numeric_input = True
+        self._penalty_rank: int | None = None
         self._approximation_spec: ApproximationSpec | None = None
         self._approximation_grid_size: int | None = None
 
@@ -767,7 +768,7 @@ class Basis(UserVar):
         self._use_exact_basis_fn()
         penalty = jnp.diag(target_diagonal)
         self.update_penalty(penalty)
-        self._penalty_rank = rank
+        self._penalty_rank = int(rank)
 
         return self
 
@@ -1017,7 +1018,10 @@ class Basis(UserVar):
             case "custom":
                 Z = LinearConstraintEVD.general(constraint_matrix)
 
+        known_rank = getattr(self, "_penalty_rank", None)
         self._apply_constraint(Z)
+        if known_rank is not None and type_ != "custom":
+            self._penalty_rank = min(int(known_rank), self.nbases)
         self._constraint = type_
         self._reparam_matrix = Z
 

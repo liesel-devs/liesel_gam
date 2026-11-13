@@ -350,3 +350,28 @@ def test_calibration_uses_rank_of_replacement_penalty() -> None:
     prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
 
     assert prior.calibrate(basis).diagnostics["rank"] == basis.nbases
+
+
+def test_np_keeps_fitted_rank_through_constraint_and_diagonalization() -> None:
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 200)})
+
+    term = builder.np("x", k=100, scale=1.0)
+
+    assert term.basis.penalty is not None
+    assert np.count_nonzero(np.diag(term.basis.penalty.value)) == 98
+
+
+@pytest.mark.parametrize(
+    "method, settings",
+    [("cr", {"k": 100}), ("ps", {"k": 80, "penalty_order": 4})],
+)
+def test_unresolved_raw_penalty_recommends_diagonalization(method, settings) -> None:
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 200)})
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+    build = getattr(builder, method)
+
+    with pytest.raises(ValueError, match="diagonal_penalty=True"):
+        build("x", **settings, diagonal_penalty=False, scale=prior)
+
+    term = build("x", **settings, diagonal_penalty=True, scale=prior)
+    assert np.isfinite(term.scale.value)
