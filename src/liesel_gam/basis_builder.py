@@ -32,10 +32,12 @@ logger = logging.getLogger(__name__)
 _QUOTED_FORMULA_VARIABLE = re.compile(r"""\bQ\(\s*(['"])(.*?)\1\s*\)""")
 
 
-def _supplied_penalty_rank(penalty: ArrayLike | lsl.Value | None) -> int | None:
-    """Estimate rank from the supplied precision before JAX converts the dtype."""
+def _supplied_penalty_metadata(
+    penalty: ArrayLike | lsl.Value | None,
+) -> tuple[int | None, bool]:
+    """Return the rank supported by storage and whether conversion is exact."""
     if penalty is None:
-        return None
+        return None, False
     matrix = np.asarray(penalty.value if isinstance(penalty, lsl.Value) else penalty)
     if (
         matrix.ndim != 2
@@ -44,8 +46,23 @@ def _supplied_penalty_rank(penalty: ArrayLike | lsl.Value | None) -> int | None:
         or np.iscomplexobj(matrix)
         or not np.isfinite(matrix).all()
     ):
-        return None
-    return int(np.linalg.matrix_rank(matrix.astype(np.float64, copy=False)))
+        return None, False
+    stored = np.asarray(jnp.asarray(matrix))
+    if not np.isfinite(stored).all():
+        return None, False
+    exact = np.array_equal(matrix, stored)
+    source = matrix.astype(np.float64, copy=False)
+    # Compute the spectrum in float64, but judge rank at the source precision.
+    eigenvalues = np.linalg.eigvalsh((source + source.T) / 2)
+    eps = np.finfo(matrix.dtype if matrix.dtype.kind == "f" else source.dtype).eps
+    tolerance = len(matrix) * eps * np.abs(eigenvalues).max()
+    rank = int(np.count_nonzero(np.abs(eigenvalues) > tolerance))
+    if not exact:
+        rounded = stored.astype(np.float64)
+        eigenvalues = np.linalg.eigvalsh((rounded + rounded.T) / 2)
+        floor = 10 * np.finfo(stored.dtype).eps * np.abs(eigenvalues).max()
+        rank = min(rank, int(np.count_nonzero(eigenvalues > floor)))
+    return rank, exact
 
 
 def _validate_bs(bs):
@@ -269,7 +286,7 @@ class BasisBuilder:
         >>> basis.value.shape
         (100, 3)
         """
-        penalty_rank = _supplied_penalty_rank(penalty)
+        penalty_rank, penalty_exact = _supplied_penalty_metadata(penalty)
         if isinstance(penalty, lsl.Value):
             penalty.value = jnp.asarray(penalty.value)
         elif penalty is not None:
@@ -301,6 +318,7 @@ class BasisBuilder:
         )
         basis._input_name = Xname
         basis._penalty_rank = penalty_rank
+        basis._penalty_exact = penalty_exact
         # Stacking encoded categories must not turn them into a numeric domain.
         basis._numeric_input = all(not isinstance(var, CatVar) for var in x_vars)
 
@@ -1792,7 +1810,7 @@ class BasisBuilder:
             penalty=penalty,
             row_wise=True,
         )
-        basis._penalty_rank = _supplied_penalty_rank(penalty)
+        basis._penalty_rank, basis._penalty_exact = _supplied_penalty_metadata(penalty)
 
         return basis
 

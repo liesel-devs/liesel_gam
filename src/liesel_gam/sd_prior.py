@@ -256,6 +256,7 @@ def _prepare_gaussian(
     basis: Basis | GaussianGeometry, grid_size: int | None
 ) -> _PreparedGaussian:
     known_rank = None
+    penalty_exact = False
     indexed = False
     if isinstance(basis, Basis):
         if basis.row_wise is not True:
@@ -288,6 +289,7 @@ def _prepare_gaussian(
         indexed = categorical and design.ndim == 1
         raw_penalties = None if basis.penalty is None else (basis.penalty.value,)
         known_rank = getattr(basis, "_penalty_rank", None)
+        penalty_exact = getattr(basis, "_penalty_exact", False)
         grid_shape = (size,)
         if indexed:
             if not np.issubdtype(design.dtype, np.integer) or not np.array_equal(
@@ -364,12 +366,12 @@ def _prepare_gaussian(
             if np.any(penalty_eigenvalues[~penalty_positive] > tolerance):
                 raise ValueError("The fitted rank no longer matches the penalty.")
             # Fitted rank cannot restore precision lost when the penalty was stored.
-            if np.any(
-                penalty_eigenvalues[penalty_positive] <= 10 * penalty_precision * scale
-            ):
+            floor = 0.0 if penalty_exact else 10 * penalty_precision * scale
+            if np.any(penalty_eigenvalues[penalty_positive] <= floor):
                 raise ValueError(
                     "The raw penalty is too ill-conditioned to resolve its fitted rank "
-                    "at its stored precision. Rebuild with diagonal_penalty=True."
+                    "at its stored precision. Use a better-conditioned penalty. "
+                    "For splines and MRFs, rebuild with diagonal_penalty=True."
                 )
         stochastic_eigenvalues = np.where(penalty_positive, penalty_eigenvalues, 0.0)
         penalty = (
@@ -729,9 +731,11 @@ class SDPrior:
         Fitting draws stay fixed during search; validation uses an independent
         random stream. Grid and Monte Carlo approximations do not certify
         continuous-domain coverage. Calibration uses the fitted penalty rank when
-        available. If a required eigenvalue is at or below
-        ``10 * eps * max(abs(eigenvalues))``, rebuild the basis with
-        ``diagonal_penalty=True``. Without a fitted rank, penalty eigenvalues within
+        available. For a supplied penalty stored exactly, each retained eigenvalue
+        must be positive. Otherwise, required eigenvalues at or below
+        ``10 * eps * max(abs(eigenvalues))`` require a better-conditioned penalty.
+        For splines and MRFs, use ``diagonal_penalty=True``. Without a fitted rank,
+        penalty eigenvalues within
         ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
         where ``eps`` is the penalty's floating precision (at least float32).
         Each penalty is reconstructed with those eigenvalues set to zero before

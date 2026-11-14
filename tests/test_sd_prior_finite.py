@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import liesel.model as lsl
 import numpy as np
@@ -422,3 +423,41 @@ def test_f_uses_rank_of_supplied_penalty() -> None:
 
     assert result.diagnostics["rank"] == 16
     assert prior_rank(term) == 16
+
+
+@pytest.mark.parametrize("source", ["rounded_float64", "float32"])
+def test_supplied_f_penalty_has_finite_prior_samples(source) -> None:
+    rng = np.random.default_rng(0)
+    if source == "rounded_float64":
+        rotation, _ = np.linalg.qr(rng.normal(size=(6, 6)))
+        penalty = (rotation * np.array([1e-9, 1, 2, 3, 4, 5])) @ rotation.T
+    else:
+        factors = jnp.asarray(rng.normal(size=(6, 5)), dtype=jnp.float32)
+        penalty = factors @ factors.T
+    builder = gam.TermBuilder.from_dict({"x": np.linspace(0, 1, 24)})
+    term = builder.f(
+        "x", basis_fn=lambda x: jnp.cos(x * jnp.arange(6)), penalty=penalty, scale=1.0
+    )
+
+    assert term.coef.dist_node is not None
+    draws = term.coef.dist_node.init_dist().sample(8, seed=jax.random.PRNGKey(1))
+    assert np.isfinite(draws).all()
+    assert prior_rank(term) == 5
+
+
+@pytest.mark.parametrize("size", [100, 400])
+def test_exact_second_order_ri_penalty_keeps_full_rank(size) -> None:
+    levels = [f"r{i:03d}" for i in range(size)]
+    differences = np.diff(np.eye(size), n=2, axis=0)
+    penalty = differences.T @ differences
+    builder = gam.TermBuilder.from_dict({"region": levels})
+    prior = gam.SDPrior.from_max_abs_effect(2.0, probability=0.9, draws=128)
+
+    term = builder.ri("region", penalty=penalty, scale=prior)
+    result = prior.calibrate(term.basis)
+
+    assert result.diagnostics["rank"] == size - 2
+    assert prior_rank(term) == size - 2
+    assert term.coef.dist_node is not None
+    draws = term.coef.dist_node.init_dist().sample(8, seed=jax.random.PRNGKey(1))
+    assert np.isfinite(draws).all()
