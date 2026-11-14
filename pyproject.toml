@@ -13,7 +13,8 @@ dependencies = [
     "numpy>=2.0",
     "pandas>=1.4",
     "plotnine>=0.14.5",
-    "smoothcon>=0.3.0",
+    # smoothcon 0.4.0b1 (float64 setup, liesel-devs/smoothcon#3), merged into main.
+    "smoothcon @ git+https://github.com/liesel-devs/smoothcon@57a1aa90136c0e4307acd6908f94b3dbb9a4c4eb",
 ]
 authors = [
     { name = "Johannes Brachem" },
@@ -106,7 +107,3 @@ exclude = ["tests/", "notebooks/"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
-
-[tool.uv.sources]
-# Float64 setup from liesel-devs/smoothcon#2. Replace with the released version.
-smoothcon = { git = "https://github.com/liesel-devs/smoothcon", rev = "b60339a4ad42aeb57c6401f3e1463538b75d0ada" }

@@ -1069,7 +1069,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=1.4" },
     { name = "plotnine", specifier = ">=0.14.5" },
-    { name = "smoothcon", git = "https://github.com/liesel-devs/smoothcon?rev=b60339a4ad42aeb57c6401f3e1463538b75d0ada" },
+    { name = "smoothcon", git = "https://github.com/liesel-devs/smoothcon?rev=57a1aa90136c0e4307acd6908f94b3dbb9a4c4eb" },
 ]
 
 [package.metadata.requires-dev]
@@ -2067,8 +2067,8 @@ wheels = [
 
 [[package]]
 name = "smoothcon"
-version = "0.3.0"
-source = { git = "https://github.com/liesel-devs/smoothcon?rev=b60339a4ad42aeb57c6401f3e1463538b75d0ada#b60339a4ad42aeb57c6401f3e1463538b75d0ada" }
+version = "0.4.0b1"
+source = { git = "https://github.com/liesel-devs/smoothcon?rev=57a1aa90136c0e4307acd6908f94b3dbb9a4c4eb#57a1aa90136c0e4307acd6908f94b3dbb9a4c4eb" }
 dependencies = [
     { name = "jax" },
     { name = "numpy" },
