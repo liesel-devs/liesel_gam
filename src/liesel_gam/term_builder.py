@@ -10,11 +10,12 @@ import jax.numpy as jnp
 import liesel.goose as gs
 import liesel.model as lsl
 import pandas as pd
+import smoothcon
 import tensorflow_probability.substrates.jax.bijectors as tfb
 from liesel.model.model import TemporaryModel
 
 from .basis import ApproximationSpec, LinBasis
-from .basis_builder import BasisBuilder
+from .basis_builder import BasisBuilder, _validate_penalty_order
 from .mv_utils import as_penalty_value
 from .names import NameManager
 from .registry import CategoryMapping, DictRegistry, PandasRegistry
@@ -1813,25 +1814,28 @@ class TermBuilder:
         >>> tb.np("x_nonlin", k=20)
         StrctTerm(name="np(x_nonlin)")
         """
-        basis = self.bases.ps(
-            x=x,
+        # smoothcon removes the trends, scales, and diagonalizes in float64, so the
+        # penalty's smallest directions survive float32 storage.
+        _validate_penalty_order(penalty_order)
+        x_var, x_array = self.bases._get_var_and_value(x)
+        smooth = smoothcon.pspline(
+            x_array,
             k=k,
-            basis_degree=basis_degree,
+            degree=basis_degree,
             penalty_order=penalty_order,
             knots=knots,
+        ).constrain("constant_and_linear", values=x_var.value)
+        basis = self.bases._native_basis(
+            x_var,
+            xname=x_var.name,
+            smooth=smooth,
             absorb_cons=False,
-            diagonal_penalty=False,
-            scale_penalty=False,
+            diagonal_penalty=diagonal_penalty,
+            scale_penalty=scale_penalty,
             basis_name="B",
-            approximation=False,
+            approximation=approximation,
         )
-
-        basis.constrain("constant_and_linear")
-        if scale_penalty:
-            basis.scale_penalty()
-        if diagonal_penalty:
-            basis.diagonalize_penalty()
-        basis = self.bases._maybe_approximate(basis, approximation)
+        basis._constraint = "constant_and_linear"
 
         fname = self.names.fname(prefix + "np", basis.input_name)
         term_name = prefix + name if name is not None else fname

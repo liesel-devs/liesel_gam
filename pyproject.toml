@@ -13,7 +13,8 @@ dependencies = [
     "numpy>=2.0",
     "pandas>=1.4",
     "plotnine>=0.14.5",
-    "smoothcon>=0.3.0",
+    # smoothcon 0.4.0b1 (float64 setup, liesel-devs/smoothcon#3), merged into main.
+    "smoothcon @ git+https://github.com/liesel-devs/smoothcon@57a1aa90136c0e4307acd6908f94b3dbb9a4c4eb",
 ]
 authors = [
     { name = "Johannes Brachem" },
