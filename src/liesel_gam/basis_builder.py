@@ -283,6 +283,8 @@ class BasisBuilder:
             row_wise=row_wise,
         )
         basis._input_name = Xname
+        # Stacking encoded categories must not turn them into a numeric domain.
+        basis._numeric_input = all(not isinstance(var, CatVar) for var in x_vars)
 
         return self._maybe_approximate(
             basis,
@@ -1772,6 +1774,7 @@ class BasisBuilder:
             use_callback=False,
             cache_basis=False,
             penalty=jnp.asarray(penalty) if penalty is not None else penalty,
+            row_wise=True,
         )
 
         return basis
@@ -2057,6 +2060,7 @@ class BasisBuilder:
             cache_basis=True,
             use_callback=False,
             penalty=smooth.penalty,
+            row_wise=True,
         )
         basis._penalty_rank = smooth.rank
         if absorb_cons:

@@ -112,10 +112,19 @@ class TermBuilder:
         :meth:`cr <liesel_gam.TermBuilder.cr>`,
         :meth:`cs <liesel_gam.TermBuilder.cs>`,
         :meth:`cc <liesel_gam.TermBuilder.cc>`,
-        :meth:`bs <liesel_gam.TermBuilder.bs>`, and
-        :meth:`cp <liesel_gam.TermBuilder.cp>`, creating fresh scale variables
-        for each term. Other constructors require an explicit ``scale=`` under
-        this default. SD calibration is not supported for multivariate terms.
+        :meth:`bs <liesel_gam.TermBuilder.bs>`,
+        :meth:`cp <liesel_gam.TermBuilder.cp>`,
+        :meth:`ri <liesel_gam.TermBuilder.ri>`,
+        :meth:`mrf <liesel_gam.TermBuilder.mrf>`, and compatible
+        :meth:`f <liesel_gam.TermBuilder.f>` bases, creating fresh scale variables
+        for each term. Custom bases require a known row-wise scalar numeric input
+        and matrix output. :meth:`rs <liesel_gam.TermBuilder.rs>` inherits its
+        group-coefficient calibration through :meth:`ri <liesel_gam.TermBuilder.ri>`.
+        :meth:`vc
+        <liesel_gam.TermBuilder.vc>` preserves the supplied coefficient term's
+        prior and start. Other constructors that resolve a scale require an
+        explicit ``scale=`` under this default. SD calibration is not supported for
+        multivariate terms.
     approximation
         Default approximation policy passed to the internal
         :class:`BasisBuilder <liesel_gam.BasisBuilder>`. ``False`` keeps exact
@@ -467,7 +476,14 @@ class TermBuilder:
                     f"SDPrior calibration for {term_name!r} needs a fitted scalar "
                     "basis; pass an explicit, non-SDPrior scale for this term."
                 )
-            result = scale.calibrate(basis)
+            try:
+                result = scale.calibrate(basis)
+            except ValueError as error:
+                raise ValueError(
+                    f"SDPrior calibration for {term_name!r} failed: {error} "
+                    "To skip calibration, pass an explicit, non-SDPrior scale "
+                    "for this term."
+                ) from error
             factory = scale._variance_factories(1)[0]
             prior = lsl.Dist(
                 lambda s: _independent_scalar(factory(s)), s=result.prior_scale
@@ -2115,7 +2131,12 @@ class TermBuilder:
     def ri(
         self,
         cluster: str | CatVar,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
@@ -2133,6 +2154,10 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` calibrates over every declared
+            category once, including unobserved levels, using the indexed basis
+            as an indicator design. Duplicate rows do not affect calibration.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -2225,12 +2250,9 @@ class TermBuilder:
             penalty=basis.penalty,
             coef_name=coef_name,
             inference=self._get_inference(inference),
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             name=fname,
         )
-
-        if factor_scale:
-            term.factor_scale()
 
         mapping = (
             cluster.mapping
@@ -2245,6 +2267,8 @@ class TermBuilder:
             # this takes care of increasing the parameter number in case this term
             # covers unobserved clusters
             term.coef.value = jnp.zeros(nparams)
+        if factor_scale:
+            term.factor_scale()
         return term
 
     # random scaling
@@ -2252,7 +2276,12 @@ class TermBuilder:
         self,
         x: str | lsl.Var | StrctTerm | LinTerm,
         cluster: str | CatVar,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         penalty: ArrayLike | None = None,
         factor_scale: bool = False,
@@ -2338,6 +2367,10 @@ class TermBuilder:
         when supplying
         label-valued prediction data.
 
+        An :class:`SDPrior <liesel_gam.SDPrior>` calibrates the group coefficients
+        through :meth:`ri <liesel_gam.TermBuilder.ri>`. It does not bound their
+        product with ``x``, whether ``x`` is fixed or random. A supplied smooth's
+        prior and starting value are preserved.
 
         Examples
         ---------
@@ -2435,6 +2468,10 @@ class TermBuilder:
         Notes
         -----
 
+        The supplied coefficient term keeps its prior and starting value.
+        If the coefficient term uses an :class:`SDPrior <liesel_gam.SDPrior>` scale,
+        its bound applies before multiplication for both fixed and random multipliers.
+
         The old
         ``vc(x, by=term)`` and ``vc(x=x, by=term)`` conventions are deprecated.
         Summary and plotting helpers show the coefficient curve by default;
@@ -2529,7 +2566,12 @@ class TermBuilder:
         self,
         x: str | CatVar,
         k: int = -1,
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         polys: Mapping[Any, ArrayLike] | None = None,
         nb: Mapping[Any, ArrayLike | list[Any] | list[int]] | None = None,
@@ -2561,6 +2603,10 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` bounds stochastic region
+            field values after the fitted basis transformations. Every represented
+            region is evaluated regardless of the ``grid_size`` setting.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -2726,7 +2772,7 @@ class TermBuilder:
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )
@@ -2748,7 +2794,12 @@ class TermBuilder:
         self,
         *x: str | lsl.Var,
         basis_fn: Callable[[Array], Array],
-        scale: ScaleIG | lsl.Var | float | VarIGPrior | Literal["default"] = "default",
+        scale: ScaleIG
+        | lsl.Var
+        | float
+        | VarIGPrior
+        | SDPrior
+        | Literal["default"] = "default",
         inference: InferenceTypes | None | Literal["default"] = "default",
         use_callback: bool = True,
         cache_basis: bool = True,
@@ -2778,6 +2829,11 @@ class TermBuilder:
         scale
             Scale parameter passed to the coefficient prior, :attr:`StrctTerm.scale
             <liesel_gam.StrctTerm.scale>`.
+
+            An :class:`SDPrior <liesel_gam.SDPrior>` requires a scalar numeric
+            input, matrix-valued output, and ``row_wise=True``. One-column input
+            matrices are supported with either callback or JAX evaluation.
+            Later basis edits do not automatically recalibrate the prior.
 
             - If ``"default"``, the scale will be initialized according to the default
               scale function defined for this :class:`TermBuilder
@@ -2909,7 +2965,7 @@ class TermBuilder:
             basis,
             penalty=basis.penalty,
             name=fname,
-            scale=self.init_scale(scale, fname),
+            scale=self.init_scale(scale, fname, basis=basis),
             inference=self._get_inference(inference),
             coef_name=coef_name,
         )

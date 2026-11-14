@@ -15,6 +15,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 from scipy.optimize import brentq
 
 from .basis import Basis
+from .var import CatVar
 
 type _VariancePriorFactory = Callable[[float], tfd.Distribution]
 
@@ -115,8 +116,10 @@ class CalibrationTarget(Protocol):
 
     A scalar fitted basis is evaluated at equally spaced locations from its
     setup-input minimum to its maximum, including endpoints. ``grid_size=None``
-    selects 129 locations. Explicit geometry uses design-row order. Targets that
-    need locations store matching domain context themselves.
+    selects 129 locations. Categorical bases evaluate every declared code in
+    category-code order, regardless of ``grid_size``. Explicit geometry uses
+    design-row order. Targets that need locations store matching domain context
+    themselves.
 
     A target may additionally supply ``variance_limits(values)`` for the
     single-variance CDF shortcut. Each limit must be nonnegative and describe
@@ -191,7 +194,7 @@ class GaussianGeometry:
 
 @dataclass(frozen=True)
 class _PreparedGaussian:
-    design: np.ndarray
+    design: np.ndarray | None
     penalties: tuple[np.ndarray, ...]
     penalty_sizes: np.ndarray
     unit_design: np.ndarray | None
@@ -200,7 +203,11 @@ class _PreparedGaussian:
 
     @property
     def rank(self) -> int:
-        return self.design.shape[1]
+        return self.grid_shape[0] if self.design is None else self.design.shape[1]
+
+    @property
+    def n_variances(self) -> int:
+        return len(self.penalties) if self.design is not None else 1
 
     def statistics(
         self, target: CalibrationTarget, normals: np.ndarray, variances: np.ndarray
@@ -216,7 +223,9 @@ class _PreparedGaussian:
         for start in range(0, len(normals), 128):
             stop = start + 128
             z, v = normals[start:stop], variances[start:stop]
-            if self.unit_design is not None:
+            if self.design is None:
+                effects = z * np.sqrt(v[:, :1])
+            elif self.unit_design is not None:
                 effects = (z @ self.unit_design.T) * np.sqrt(v[:, :1])
             else:
                 try:
@@ -246,42 +255,73 @@ class _PreparedGaussian:
 def _prepare_gaussian(
     basis: Basis | GaussianGeometry, grid_size: int | None
 ) -> _PreparedGaussian:
+    known_rank = None
+    indexed = False
     if isinstance(basis, Basis):
-        size = 129 if grid_size is None else grid_size
-        x = np.asarray(basis.x.value)
-        if (
-            basis.row_wise is not True
-            or x.ndim != 1
-            or not x.size
-            or not _is_real_numeric(x)
-        ):
+        if basis.row_wise is not True:
             raise ValueError(
-                "Automatic grids require a finite numeric scalar row-wise basis."
+                "Automatic calibration requires a scalar row-wise basis; "
+                "declare row_wise=True."
             )
-        grid = jnp.asarray(np.linspace(x.min(), x.max(), size))
+        basis_input = basis.x
+        categorical = isinstance(basis_input, CatVar)
+        if categorical:
+            size = len(basis_input.mapping.labels_to_codes_map)
+            grid = jnp.arange(size)
+        else:
+            size = 129 if grid_size is None else grid_size
+            x = np.asarray(basis_input.value)
+            scalar_input = x.ndim == 1 or (x.ndim == 2 and x.shape[1] == 1)
+            if (
+                not getattr(basis, "_numeric_input", True)
+                or not scalar_input
+                or not x.size
+                or not _is_real_numeric(x)
+            ):
+                raise ValueError(
+                    "Automatic grids require a finite numeric scalar row-wise basis."
+                )
+            grid = jnp.asarray(np.linspace(x.min(), x.max(), size))
+            if x.ndim == 2:
+                grid = grid[:, None]
         design = np.asarray(basis._exact_basis_fn(grid, **basis._basis_kwargs_values()))
-        if design.ndim == 2 and len(design) != size:
+        indexed = categorical and design.ndim == 1
+        raw_penalties = None if basis.penalty is None else (basis.penalty.value,)
+        known_rank = getattr(basis, "_penalty_rank", None)
+        grid_shape = (size,)
+        if indexed:
+            if not np.issubdtype(design.dtype, np.integer) or not np.array_equal(
+                design, np.arange(size)
+            ):
+                raise ValueError(
+                    "Indexed categorical bases must return each declared code "
+                    "as an integer, once and in order."
+                )
+            if raw_penalties is None:
+                # The coefficient draws already are the effects in category order.
+                return _PreparedGaussian(None, (), np.empty(0), None, 0, grid_shape)
+        elif design.ndim == 2 and len(design) != size:
             raise ValueError(
                 "A fitted basis must return one row per evaluation-grid point."
             )
-        raw_penalties = None if basis.penalty is None else (basis.penalty.value,)
-        grid_shape = (size,)
     elif isinstance(basis, GaussianGeometry):
         design = np.asarray(basis.design)
         raw_penalties = basis.penalties
         grid_shape = None
     else:
         raise TypeError("Expected a fitted Basis or evaluated GaussianGeometry.")
-    if design.ndim != 2 or not design.size or not _is_real_numeric(design):
+    if not indexed and (
+        design.ndim != 2 or not design.size or not _is_real_numeric(design)
+    ):
         raise ValueError(
             "Calibration requires a finite nonempty real matrix-valued basis."
         )
     effect_precision = np.finfo(np.result_type(design.dtype, np.float32)).eps
-    design = np.asarray(design, dtype=float)
+    n_coefficients = len(design) if indexed else design.shape[1]
     if grid_shape is None:
         grid_shape = (len(design),)
     if raw_penalties is None:
-        raw_penalties = (np.eye(design.shape[1]),)
+        raw_penalties = (np.eye(n_coefficients),)
     if not isinstance(raw_penalties, tuple):
         raise TypeError("penalties must be a tuple of matrices or None.")
     if not raw_penalties:
@@ -295,7 +335,7 @@ def _prepare_gaussian(
         if not _is_real_numeric(raw):
             raise ValueError("The penalty must be finite and real numeric.")
         penalty = np.asarray(raw, dtype=float)
-        if penalty.shape != (design.shape[1], design.shape[1]):
+        if penalty.shape != (n_coefficients, n_coefficients):
             raise ValueError("The penalty must match the design columns.")
         penalty_precision = np.finfo(np.result_type(raw.dtype, np.float32)).eps
         effect_precision = max(effect_precision, penalty_precision)
@@ -313,13 +353,29 @@ def _prepare_gaussian(
         penalty_sizes.append(scale)
         if penalty_eigenvalues.min() < -relative_tolerance * scale:
             raise ValueError("The penalty must be positive semidefinite.")
-        stochastic_eigenvalues = np.where(
-            penalty_eigenvalues > relative_tolerance * scale, penalty_eigenvalues, 0.0
-        )
+        tolerance = relative_tolerance * scale
+        if known_rank is None:
+            penalty_positive = penalty_eigenvalues > tolerance
+        else:
+            rank = int(known_rank)
+            if not 0 <= rank <= n_coefficients:
+                raise ValueError("The fitted penalty rank must match its dimensions.")
+            penalty_positive = np.arange(n_coefficients) >= n_coefficients - rank
+            if np.any(penalty_eigenvalues[~penalty_positive] > tolerance):
+                raise ValueError("The fitted rank no longer matches the penalty.")
+            # Fitted rank cannot restore precision lost when the penalty was stored.
+            floor = 10 * penalty_precision * scale
+            if np.any(penalty_eigenvalues[penalty_positive] <= floor):
+                raise ValueError(
+                    "The raw penalty is too ill-conditioned to resolve its fitted rank "
+                    "at its stored precision. Use a better-conditioned penalty. "
+                    "For splines and MRFs, rebuild with diagonal_penalty=True."
+                )
+        stochastic_eigenvalues = np.where(penalty_positive, penalty_eigenvalues, 0.0)
         penalty = (
             penalty_eigenvectors * stochastic_eigenvalues
         ) @ penalty_eigenvectors.T
-        if scale > 0:
+        if scale > 0 and np.any(penalty_positive):
             normalized_penalties.append(penalty / scale)
             rank_relative_tolerance = max(rank_relative_tolerance, relative_tolerance)
         penalties.append(penalty)
@@ -327,14 +383,15 @@ def _prepare_gaussian(
         raise ValueError("Calibration requires a nonzero stochastic penalty.")
     if len(penalties) == 1:
         eigenvalues, eigenvectors = penalty_eigenvalues, penalty_eigenvectors
+        positive = penalty_positive
     else:
         eigenvalues, eigenvectors = np.linalg.eigh(sum(normalized_penalties))
-    positive = eigenvalues > rank_relative_tolerance * np.max(np.abs(eigenvalues))
+        positive = eigenvalues > rank_relative_tolerance * np.max(np.abs(eigenvalues))
     rotation = eigenvectors[:, positive]
-    effect_tolerance = (
-        effect_precision * design.shape[1] * np.linalg.norm(design, axis=1).max()
-    )
-    design = design @ rotation
+    design = np.asarray(design, dtype=float)
+    max_row_norm = 1.0 if indexed else np.linalg.norm(design, axis=1).max()
+    effect_tolerance = effect_precision * n_coefficients * max_row_norm
+    design = rotation if indexed else design @ rotation
     if not np.any(np.abs(design) > effect_tolerance):
         raise ValueError("The evaluation grid has no stochastic effect to calibrate.")
     return _PreparedGaussian(
@@ -429,6 +486,7 @@ class MaxAbsEffect:
     grid_size
         Points over the scalar input's setup range, including endpoints.
         ``None`` selects 129 points. An explicit integer must be at least two.
+        Finite categorical domains always evaluate every declared level.
     seed
         Nonnegative integer seed for independent fit and validation draws.
     draws
@@ -494,7 +552,7 @@ class MaxAbsEffect:
 class SDPrior:
     r"""Reusable recipe for a basis-dependent prior on :math:`\tau^2`.
 
-    Pass this configuration as ``scale`` to a compatible scalar spline constructor
+    Pass this configuration as ``scale`` to a compatible term constructor
     on :class:`TermBuilder <liesel_gam.TermBuilder>`, or opt in for a builder
     instance with ``default_scale_fn``. Every independent term receives fresh scale
     variables; reusing the recipe does not share random variables. Creating the
@@ -633,10 +691,12 @@ class SDPrior:
         Parameters
         ----------
         basis
-            Fitted numeric scalar, known row-wise :class:`Basis <liesel_gam.Basis>`
-            or evaluated :class:`GaussianGeometry <liesel_gam.GaussianGeometry>`.
-            Constraints and reparameterizations are retained. Singular PSD
-            penalties are supported; multiple penalties use their common
+            Fitted :class:`Basis <liesel_gam.Basis>` or evaluated
+            :class:`GaussianGeometry <liesel_gam.GaussianGeometry>`. Fitted bases
+            must declare ``row_wise=True``. Numeric scalar inputs may be vectors or
+            one-column matrices. Categorical inputs evaluate every declared code once.
+            Indexed outputs must return those integer codes in order. Calibration
+            preserves fitted transformations. Multiple penalties use their common
             stochastic subspace.
 
         Returns
@@ -668,8 +728,12 @@ class SDPrior:
 
         Fitting draws stay fixed during search; validation uses an independent
         random stream. Grid and Monte Carlo approximations do not certify
-        continuous-domain coverage. Penalty eigenvalues within
-        ``n * eps * max(abs(eigenvalues))`` of zero count as null directions,
+        continuous-domain coverage. Calibration uses the fitted penalty rank when
+        available. If a required eigenvalue is at or below
+        ``10 * eps * max(abs(eigenvalues))``, use a better-conditioned penalty.
+        For splines and MRFs, use ``diagonal_penalty=True``. Without a fitted rank,
+        penalty eigenvalues within ``n * eps * max(abs(eigenvalues))`` of zero count
+        as null directions,
         where ``eps`` is the penalty's floating precision (at least float32).
         Each penalty is reconstructed with those eigenvalues set to zero before
         computing conditional precision. A design's stochastic projection counts
@@ -711,7 +775,7 @@ class SDPrior:
         target = self.calibration
         _validate_target(target)
         geometry = _prepare_gaussian(basis, target.grid_size)
-        n_variances = len(geometry.penalties)
+        n_variances = geometry.n_variances
         factories = self._variance_factories(n_variances)
         rank = geometry.rank
         variance_limits = getattr(target, "variance_limits", None)

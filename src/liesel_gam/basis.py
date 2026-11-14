@@ -282,6 +282,7 @@ class Basis(UserVar):
         self._exact_basis_fn = fn
         self._basis_kwargs = basis_kwargs
         self._row_wise = row_wise
+        self._numeric_input = True
         self._penalty_rank: int | None = None
         self._approximation_spec: ApproximationSpec | None = None
         self._approximation_grid_size: int | None = None

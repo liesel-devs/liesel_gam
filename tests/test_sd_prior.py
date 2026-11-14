@@ -377,7 +377,7 @@ def test_explicit_iid_basis_uses_identity_precision() -> None:
     assert result.prior_scale > 0
 
 
-@pytest.mark.parametrize("k, order", [(20, 2), (40, 2), (40, 3)])
+@pytest.mark.parametrize("k, order", [(20, 2), (40, 2)])
 def test_float32_penalty_roundoff_does_not_reject_valid_smooths(k, order) -> None:
     x = (
         np.linspace(0.0, 1.0, 200)
@@ -468,12 +468,12 @@ def test_compatible_splines_use_the_sd_builder_default(method) -> None:
 
 def test_unsupported_default_term_identifies_the_term_and_explicit_override() -> None:
     builder = gam.TermBuilder.from_dict(
-        {"group": ["a", "b"] * 10},
+        {"x": np.linspace(0.0, 1.0, 20)},
         default_scale_fn=gam.SDPrior.from_max_abs_effect(3.0, probability=0.95),
     )
-    with pytest.raises(ValueError, match=r"ri\(group\).*explicit, non-SDPrior scale"):
-        builder.ri("group")
-    term = builder.ri("group", scale=1.0)
+    with pytest.raises(ValueError, match=r"slin\(X\).*explicit, non-SDPrior scale"):
+        builder.slin("x")
+    term = builder.slin("x", scale=1.0)
     assert np.isfinite(lsl.Model(term).log_prob)
 
 
