@@ -208,3 +208,85 @@ class TestGibbsKernelUsesPriorRank:
         b = variance.dist_node["scale"].value
         expected = b / jax.random.gamma(key, a + 0.5 * 399)
         assert jnp.allclose(draw, expected)
+
+
+class TestPriorRankFitsStoredPenalty:
+    """
+    smoothcon reports the float64 rank. The prior samples with a float32 ``eigh``
+    of the stored penalty, so it only counts directions that copy resolves.
+    """
+
+    def test_raw_ill_conditioned_ps_caps_prior_rank(self, x) -> None:
+        tb = gam.TermBuilder.from_dict({"x": x})
+        term = tb.ps("x", k=80, penalty_order=4, diagonal_penalty=False, scale=1.0)
+
+        # The basis keeps the float64 rank; the prior counts fewer directions.
+        assert term.basis._penalty_rank == 76
+        assert prior_rank(term) < 76
+
+    def test_raw_ill_conditioned_ps_samples_are_finite(self) -> None:
+        x = np.linspace(0.0, 1.0, 400)
+        tb = gam.TermBuilder.from_dict({"x": x})
+        term = tb.ps("x", k=200, penalty_order=4, diagonal_penalty=False, scale=1.0)
+
+        assert term.coef.dist_node is not None
+        dist = term.coef.dist_node.init_dist()
+        samples = dist.sample(3, seed=jax.random.key(0))
+
+        assert bool(jnp.all(jnp.isfinite(samples)))
+
+    def test_diagonalized_ps_keeps_full_rank(self, x) -> None:
+        tb = gam.TermBuilder.from_dict({"x": x})
+        term = tb.ps("x", k=80, penalty_order=4, scale=1.0)
+
+        assert prior_rank(term) == 76
+
+    def test_raw_low_rank_mrf_keeps_full_rank(self, regions) -> None:
+        # The low-rank MRF penalty is diagonal, so float32 holds every entry.
+        tb = gam.TermBuilder.from_dict({"r": regions})
+        term = tb.mrf(
+            "r", nb=chain_neighbors(400), k=60, diagonal_penalty=False, scale=1.0
+        )
+
+        assert term.basis._penalty_rank is not None
+        assert prior_rank(term) == term.basis._penalty_rank
+
+
+class TestNpUsesFloat64Setup:
+    def test_np_geometry_matches_float64_reference(self, x) -> None:
+        import smoothcon
+
+        tb = gam.TermBuilder.from_dict({"x": x})
+        term = tb.np("x", k=100, scale=1.0)
+        design = np.asarray(term.basis.value, dtype=np.float64)
+        # The same knots as the term, which computes them in float32.
+        knots = np.asarray(
+            smoothcon.pspline(jnp.asarray(x), k=100, degree=3, penalty_order=2).knots,
+            dtype=np.float64,
+        )
+
+        with jax.enable_x64(True):
+            values = jnp.asarray(np.asarray(x, dtype=np.float32), dtype=jnp.float64)
+            reference = (
+                smoothcon.pspline(values, k=100, degree=3, penalty_order=2, knots=knots)
+                .constrain("constant_and_linear", values=values)
+                .scale_penalty(values=values)
+                .diagonalize_penalty(values=values)
+            )
+            expected = np.asarray(reference.basis(values))
+
+        rank = reference.rank
+        assert term.nbases == 98
+        assert prior_rank(term) == rank == 98
+        covariance = design[:, :rank] @ design[:, :rank].T
+        expected_covariance = expected[:, :rank] @ expected[:, :rank].T
+        error = np.linalg.norm(covariance - expected_covariance) / np.linalg.norm(
+            expected_covariance
+        )
+        assert error < 1e-5
+
+    def test_np_records_its_constraint(self, x) -> None:
+        tb = gam.TermBuilder.from_dict({"x": x})
+        term = tb.np("x", k=20, scale=1.0)
+
+        assert term.basis.constraint == "constant_and_linear"

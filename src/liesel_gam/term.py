@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 import jax
 import jax.numpy as jnp
 import liesel.model as lsl
+import numpy as np
 import tensorflow_probability.substrates.jax.distributions as tfd
 from formulaic import ModelSpec
 
@@ -134,6 +135,39 @@ def mvn_structured_prior(
         penalty_rank=penalty_rank,
     )
     return prior
+
+
+_RESOLVED_EIGENVALUE_EPS_FACTOR = 10.0
+"""A stored eigenvalue counts if it exceeds this many ``eps`` of the largest."""
+
+
+def _resolved_penalty_rank(penalty: ArrayLike, rank: int) -> int:
+    """
+    Cap ``rank`` at the penalized directions the stored penalty resolves.
+
+    The coefficient prior samples with ``jnp.linalg.eigh`` of the penalty in its
+    stored precision. Below about ``eps`` times the largest eigenvalue, that
+    decomposition returns rounding noise, which can be zero or negative even when
+    the penalty is stored exactly. So a known rank is capped at the eigenvalues of
+    the stored copy, computed in float64, above ``10 * eps`` times the largest. A
+    diagonal penalty keeps its eigenvalues as entries, so every positive entry
+    counts. Float64 storage and batched penalties keep ``rank``.
+    """
+    array = np.asarray(penalty)
+    if array.ndim != 2 or not np.issubdtype(array.dtype, np.floating):
+        return rank
+    eps = float(np.finfo(array.dtype).eps)
+    if eps <= float(np.finfo(np.float64).eps):
+        return rank
+    matrix = array.astype(np.float64)
+    if not np.any(matrix - np.diag(np.diag(matrix))):
+        return min(rank, int(np.sum(np.diag(matrix) > 0.0)))
+    eigenvalues = np.linalg.eigvalsh((matrix + matrix.T) / 2.0)
+    largest = float(np.max(eigenvalues, initial=0.0))
+    if largest <= 0.0:
+        return 0
+    cutoff = _RESOLVED_EIGENVALUE_EPS_FACTOR * eps * largest
+    return min(rank, int(np.sum(eigenvalues > cutoff)))
 
 
 def term_prior(
@@ -377,7 +411,7 @@ class StrctTerm(UserVar):
             nparam = self.nbases
             self._penalty = None
 
-        prior = term_prior(scale, self._penalty, self._known_penalty_rank())
+        prior = term_prior(scale, self._penalty, self._known_prior_rank())
 
         if scale is not None:
             _validate_scalar_or_p_scale(scale.value, nparam)
@@ -411,10 +445,17 @@ class StrctTerm(UserVar):
             return None
         return getattr(self.basis, "_penalty_rank", None)
 
+    def _known_prior_rank(self) -> int | None:
+        """The basis's known rank, capped at what the stored penalty resolves."""
+        known_rank = self._known_penalty_rank()
+        if known_rank is None or self._penalty is None:
+            return known_rank
+        return _resolved_penalty_rank(self._penalty.value, known_rank)
+
     def _prior_penalty_rank(self) -> Array:
         """The penalty rank that the coefficient prior uses."""
         assert self._penalty is not None
-        known_rank = self._known_penalty_rank()
+        known_rank = self._known_prior_rank()
         if known_rank is None:
             return jnp.linalg.matrix_rank(self._penalty.value)
         return jnp.asarray(known_rank)
