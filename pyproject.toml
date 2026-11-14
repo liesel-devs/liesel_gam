@@ -106,3 +106,7 @@ exclude = ["tests/", "notebooks/"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.sources]
+# Float64 setup from liesel-devs/smoothcon#2. Replace with the released version.
+smoothcon = { git = "https://github.com/liesel-devs/smoothcon", rev = "b60339a4ad42aeb57c6401f3e1463538b75d0ada" }
