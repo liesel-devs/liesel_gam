@@ -32,39 +32,6 @@ logger = logging.getLogger(__name__)
 _QUOTED_FORMULA_VARIABLE = re.compile(r"""\bQ\(\s*(['"])(.*?)\1\s*\)""")
 
 
-def _supplied_penalty_metadata(
-    penalty: ArrayLike | lsl.Value | None,
-) -> tuple[int | None, bool]:
-    """Return the rank supported by storage and whether conversion is exact."""
-    if penalty is None:
-        return None, False
-    matrix = np.asarray(penalty.value if isinstance(penalty, lsl.Value) else penalty)
-    if (
-        matrix.ndim != 2
-        or matrix.shape[0] != matrix.shape[1]
-        or not matrix.size
-        or np.iscomplexobj(matrix)
-        or not np.isfinite(matrix).all()
-    ):
-        return None, False
-    stored = np.asarray(jnp.asarray(matrix))
-    if not np.isfinite(stored).all():
-        return None, False
-    exact = np.array_equal(matrix, stored)
-    source = matrix.astype(np.float64, copy=False)
-    # Compute the spectrum in float64, but judge rank at the source precision.
-    eigenvalues = np.linalg.eigvalsh((source + source.T) / 2)
-    eps = np.finfo(matrix.dtype if matrix.dtype.kind == "f" else source.dtype).eps
-    tolerance = len(matrix) * eps * np.abs(eigenvalues).max()
-    rank = int(np.count_nonzero(np.abs(eigenvalues) > tolerance))
-    if not exact:
-        rounded = stored.astype(np.float64)
-        eigenvalues = np.linalg.eigvalsh((rounded + rounded.T) / 2)
-        floor = 10 * np.finfo(stored.dtype).eps * np.abs(eigenvalues).max()
-        rank = min(rank, int(np.count_nonzero(eigenvalues > floor)))
-    return rank, exact
-
-
 def _validate_bs(bs):
     if isinstance(bs, str):
         bs = [bs]
@@ -286,7 +253,6 @@ class BasisBuilder:
         >>> basis.value.shape
         (100, 3)
         """
-        penalty_rank, penalty_exact = _supplied_penalty_metadata(penalty)
         if isinstance(penalty, lsl.Value):
             penalty.value = jnp.asarray(penalty.value)
         elif penalty is not None:
@@ -317,8 +283,6 @@ class BasisBuilder:
             row_wise=row_wise,
         )
         basis._input_name = Xname
-        basis._penalty_rank = penalty_rank
-        basis._penalty_exact = penalty_exact
         # Stacking encoded categories must not turn them into a numeric domain.
         basis._numeric_input = all(not isinstance(var, CatVar) for var in x_vars)
 
@@ -1794,9 +1758,11 @@ class BasisBuilder:
         Basis(name="B(x_cat)")
 
         """
+        if penalty is not None:
+            penalty = jnp.asarray(penalty)
         var, mapping, input_name = self._get_categorical_input(cluster)
         n_categories = len(mapping.labels_to_integers_map)
-        if penalty is not None and np.shape(penalty) != (n_categories, n_categories):
+        if penalty is not None and penalty.shape != (n_categories, n_categories):
             raise ValueError(
                 f"Random-intercept penalty must be {n_categories} x {n_categories}."
             )
@@ -1807,10 +1773,9 @@ class BasisBuilder:
             name=self.names.create(basis_name + "(" + input_name + ")"),
             use_callback=False,
             cache_basis=False,
-            penalty=penalty,
+            penalty=jnp.asarray(penalty) if penalty is not None else penalty,
             row_wise=True,
         )
-        basis._penalty_rank, basis._penalty_exact = _supplied_penalty_metadata(penalty)
 
         return basis
 

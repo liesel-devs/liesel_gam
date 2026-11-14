@@ -109,6 +109,30 @@ class TestPriorUsesKnownRank:
             gam.term.mvn_structured_prior(scale, penalty, penalty_rank=4)
 
 
+class TestSuppliedPenaltyRank:
+    def test_ri_with_float32_penalty_cast_to_float64(self) -> None:
+        regions = [str(i) for i in range(50)]
+        differences = np.diff(np.eye(len(regions), dtype=np.float32), n=2, axis=0)
+        penalty = ((differences.T @ differences) / np.float32(3)).astype(np.float64)
+        tb = gam.TermBuilder.from_dict({"region": regions})
+
+        term = tb.ri("region", penalty=penalty)
+
+        assert prior_rank(term) == 47
+
+    def test_f_with_constrained_penalty(self) -> None:
+        tb = gam.TermBuilder.from_dict({"x": np.array([-1.0, -0.5, 0.5, 1.0])})
+
+        term = tb.f(
+            "x",
+            basis_fn=lambda x: jnp.concatenate([x, jnp.ones_like(x), x**3], axis=1),
+            penalty=jnp.diag(jnp.array([0.0, 1.0, 1.0])),
+            row_wise=True,
+        ).constrain("sumzero_term")
+
+        assert prior_rank(term) == 1
+
+
 class TestTermTransformsUpdateRank:
     def test_constrain(self) -> None:
         x = jnp.linspace(0.0, 1.0, 4)

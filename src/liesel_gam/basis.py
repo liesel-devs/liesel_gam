@@ -284,7 +284,6 @@ class Basis(UserVar):
         self._row_wise = row_wise
         self._numeric_input = True
         self._penalty_rank: int | None = None
-        self._penalty_exact = False
         self._approximation_spec: ApproximationSpec | None = None
         self._approximation_grid_size: int | None = None
 
@@ -426,7 +425,6 @@ class Basis(UserVar):
         else:
             self._penalty.value = self._validate_penalty_shape(value).value
         self._penalty_rank = None
-        self._penalty_exact = False
 
     @classmethod
     def new_linear(
